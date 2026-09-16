@@ -1,0 +1,30 @@
+{
+  "name": "guitar-ai-coach",
+  "version": "0.1.0",
+  "description": "An intelligent musical sketchbook, riff memory and guitar collaborator.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "build": "node --no-warnings scripts/build.mjs",
+    "start": "npm run build && node scripts/serve.mjs",
+    "serve": "node scripts/serve.mjs",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "demo": "node --experimental-strip-types demo/sketchbook.ts"
+  },
+  "keywords": [
+    "guitar",
+    "riff",
+    "music",
+    "improvisation",
+    "pitch-detection"
+  ],
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "@types/node": "^22.20.3",
+    "typescript": "5.8"
+  }
+}

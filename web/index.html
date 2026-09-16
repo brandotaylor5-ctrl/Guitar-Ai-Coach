@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guitar AI Coach</title>
+<meta name="description" content="An intelligent musical sketchbook, riff memory and guitar collaborator.">
+<meta name="color-scheme" content="dark light">
+<link rel="stylesheet" href="./styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎸</text></svg>">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span id="live-dot" class="live-dot" aria-hidden="true"></span>
+      <h1>Guitar AI Coach</h1>
+      <p class="tagline">Your own playing is the curriculum.</p>
+    </div>
+    <nav id="nav" class="nav" aria-label="Sections"></nav>
+    <label class="tuning-field">
+      <span>Tuning</span>
+      <select id="tuning" class="select"></select>
+    </label>
+  </header>
+
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <main id="view" class="main"></main>
+
+  <footer class="app-footer">
+    <p>
+      Nothing you play is recorded or uploaded. The last minute is held in memory and
+      forgotten unless you save it. Saved riffs stay in this browser.
+    </p>
+  </footer>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
