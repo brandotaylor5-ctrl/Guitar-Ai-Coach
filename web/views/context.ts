@@ -5,8 +5,9 @@ import type { RiffLibrary } from '../../src/library/riffLibrary.ts';
 import type { SketchbookSession } from '../../src/session/session.ts';
 import type { RiffPlayer } from '../audio/playback.ts';
 import type { ClipStore } from '../audio/clipStore.ts';
+import type { ChordDetection } from '../audio/chordDetect.ts';
 
-export type ViewName = 'session' | 'library' | 'songs' | 'fingerprint';
+export type ViewName = 'session' | 'lab' | 'library' | 'songs' | 'fingerprint';
 
 export interface AppContext {
   session: SketchbookSession;
@@ -27,15 +28,11 @@ export interface AppContext {
 
 export interface View {
   element: HTMLElement;
-  /** Explicit refresh, after the player changes something. */
   update?(): void;
-  /**
-   * Called as notes are detected. Only views that show live playing implement
-   * this: rebuilding a screen the player is working in — the library, say —
-   * every time a note arrives pulls the ground out from under them mid-click.
-   */
   onNotes?(): void;
-  /** Live audio readout, called for every analysis frame. */
+  /** Live single-note analysis frame. */
   onFrame?(frame: Frame): void;
+  /** Stable live chord recognition. */
+  onChord?(chord: ChordDetection): void;
   dispose?(): void;
 }
