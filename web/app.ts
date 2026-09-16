@@ -1,6 +1,6 @@
 /**
  * The app shell: owns the session, routes between views, and connects the
- * microphone to everything else.
+ * microphone to the live musical views.
  */
 
 import { SketchbookSession } from '../src/session/session.ts';
@@ -14,6 +14,7 @@ import { RiffPlayer } from './audio/playback.ts';
 import { ClipStore } from './audio/clipStore.ts';
 import { h, clear, qs, replace } from './ui/dom.ts';
 import { sessionView } from './views/session.ts';
+import { labView } from './views/lab.ts';
 import { libraryView } from './views/library.ts';
 import { songsView } from './views/songs.ts';
 import { fingerprintView } from './views/fingerprint.ts';
@@ -47,16 +48,10 @@ function storage(): Storage | null {
     window.localStorage.removeItem(probe);
     return window.localStorage;
   } catch {
-    // Private browsing, or storage blocked. The app still works; it just
-    // forgets when the tab closes, and it should say so rather than crash.
     return null;
   }
 }
 
-/**
- * The session can only be built once the audio hardware has told us its sample
- * rate, so it starts without audio and is rebuilt on the first listen.
- */
 function ensureSessionFor(sampleRate: number): void {
   state.sampleRate = sampleRate;
   state.session = new SketchbookSession({
@@ -78,6 +73,9 @@ const capture = new MicCapture({
   onFrame(frame) {
     calibrationLevels?.push(frame.rms);
     current?.onFrame?.(frame);
+  },
+  onChord(chord) {
+    current?.onChord?.(chord);
   },
   onError(error) {
     say(error.message, 'error');
@@ -120,12 +118,12 @@ const context: AppContext = {
       state.listening = true;
       qs<HTMLSelectElement>('#microphone').disabled = true;
       await listMicrophones();
-      say('New listening session. Audio stays in memory on this device unless you save a riff.');
+      say('Live Coach is listening. Play naturally — notes and chord guesses stay on this device.');
     } catch (err) {
       const error = err as Error;
       say(
         error.name === 'NotAllowedError'
-          ? 'Microphone access was declined. The app cannot hear anything without it.'
+          ? 'Microphone access was declined. Live Coach cannot hear the guitar without it.'
           : `Could not start listening: ${error.message}`,
         'error',
       );
@@ -146,7 +144,7 @@ const context: AppContext = {
     stoppedAt = performance.now();
     stoppedClock = state.session.currentTimeMs;
     pausedElapsed = 0;
-    say('Stopped. What you played is still in memory for a minute.');
+    say('Stopped. Your recent playing is still in memory for a minute.');
     render();
   },
 
@@ -164,6 +162,7 @@ const context: AppContext = {
 
 function buildView(): View {
   switch (state.view) {
+    case 'lab': return labView(context);
     case 'library': return libraryView(context, state.params);
     case 'songs': return songsView(context);
     case 'fingerprint': return fingerprintView(context);
@@ -205,13 +204,18 @@ function mountChrome(): void {
       const threshold = noiseGate(calibrationLevels);
       capture.setSensitivity(threshold);
       gate.value = String(Number(threshold.toFixed(4)));
-      say('Noise gate calibrated. Play a few single notes to check it.');
+      say('Room noise calibrated. Play normally now.');
     } catch (error) { say((error as Error).message, 'error'); }
     finally { calibrationLevels = null; calibrate.disabled = false; }
   });
+
   const nav = qs('#nav');
   const tabs: Array<[ViewName, string]> = [
-    ['session', 'Session'], ['library', 'Riff Library'], ['songs', 'Songs'], ['fingerprint', 'Fingerprint'],
+    ['session', 'Live Coach'],
+    ['lab', 'Riff Lab'],
+    ['library', 'My Riffs'],
+    ['songs', 'Songs'],
+    ['fingerprint', 'Fingerprint'],
   ];
   for (const [view, label] of tabs) {
     nav.appendChild(h('button', {
@@ -221,9 +225,7 @@ function mountChrome(): void {
   }
 
   const select = qs<HTMLSelectElement>('#tuning');
-  for (const tuning of TUNINGS) {
-    select.appendChild(h('option', { value: tuning.name, text: tuning.name }));
-  }
+  for (const tuning of TUNINGS) select.appendChild(h('option', { value: tuning.name, text: tuning.name }));
   select.appendChild(h('option', { value: 'custom', text: 'Custom' }));
   const custom = qs<HTMLInputElement>('#custom-tuning');
   const capo = qs<HTMLInputElement>('#capo');
@@ -234,7 +236,7 @@ function mountChrome(): void {
         : TUNINGS.find((t) => t.name === select.value) ?? STANDARD_TUNING;
       state.tuning = withCapo(base, Number(capo.value));
       state.session.tuning = state.tuning;
-      say(`Reading the fretboard as ${state.tuning.name}.`);
+      say(`Reading the guitar as ${state.tuning.name}.`);
       render();
     } catch (error) { say((error as Error).message, 'error'); }
   }
@@ -244,11 +246,9 @@ function mountChrome(): void {
 
   window.addEventListener('hashchange', () => {
     const view = window.location.hash.replace('#', '') as ViewName;
-    state.view = ['library', 'songs', 'fingerprint'].includes(view) ? view : 'session';
+    state.view = ['lab', 'library', 'songs', 'fingerprint'].includes(view) ? view : 'session';
     render();
   });
-
-  // A note still ringing when the tab closes should not be lost mid-session.
   window.addEventListener('beforeunload', () => { void capture.stop(); });
 }
 
@@ -270,7 +270,7 @@ function start(): void {
 
   mountChrome();
   const hash = window.location.hash.replace('#', '') as ViewName;
-  if (['library', 'songs', 'fingerprint'].includes(hash)) state.view = hash;
+  if (['lab', 'library', 'songs', 'fingerprint'].includes(hash)) state.view = hash;
   render();
 
   window.setInterval(() => {
@@ -292,12 +292,8 @@ function start(): void {
     }
   }, 250);
 
-  if (!store) {
-    say('Browser storage is unavailable, so saved riffs will not survive closing this tab.', 'error');
-  }
-  if (!window.AudioWorkletNode) {
-    say('This browser is missing the audio features the app needs. Try a recent Chrome, Edge, Firefox or Safari.', 'error');
-  }
+  if (!store) say('Browser storage is unavailable, so saved riffs will not survive closing this tab.', 'error');
+  if (!window.AudioWorkletNode) say('This browser is missing audio features the app needs. Try a recent Safari, Chrome, Edge or Firefox.', 'error');
 }
 
 start();
