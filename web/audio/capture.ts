@@ -1,22 +1,27 @@
 /**
- * Microphone in, notes out.
+ * Microphone in, notes and chords out.
  *
  * Three threads cooperate: an AudioWorklet collects samples on the audio
- * thread, a Worker turns them into notes, and the main thread only ever
- * handles finished results and a level reading.
+ * thread, a Worker turns them into monophonic notes, and a lightweight spectrum
+ * pass on the main thread looks for stable guitar-chord shapes. The UI only sees
+ * finished musical events.
  */
 
 import type { NoteEvent } from '../../src/types.ts';
 import type { Frame } from '../../src/audio/noteTracker.ts';
 import type { DetectorResult } from '../detector.worker.ts';
+import { ChordTracker } from './chordDetect.ts';
+import type { ChordDetection } from './chordDetect.ts';
 
 export interface CaptureHandlers {
   /** Notes that finished sounding, with the detector's clock. */
   onNotes(notes: NoteEvent[], timeMs: number): void;
   /** Every chunk of raw audio, for retention. Do not hold onto it. */
   onAudio(chunk: Float32Array): void;
-  /** The latest analysis frame, for the live readout. */
+  /** The latest analysis frame, for the live single-note readout. */
   onFrame(frame: Frame): void;
+  /** A stable chord guess. Chord detection is intentionally conservative. */
+  onChord?(chord: ChordDetection): void;
   onError(error: Error): void;
 }
 
@@ -25,6 +30,10 @@ export class MicCapture {
   private stream: MediaStream | null = null;
   private node: AudioWorkletNode | null = null;
   private worker: Worker | null = null;
+  private analyser: AnalyserNode | null = null;
+  private spectrum: Float32Array | null = null;
+  private chordTimer: number | null = null;
+  private chordTracker = new ChordTracker();
   private readonly handlers: CaptureHandlers;
   deviceId = '';
   minRms = 0.012;
@@ -55,9 +64,6 @@ export class MicCapture {
       throw new Error('This browser will not give a page microphone access.');
     }
 
-    // Every one of these processors is designed to make speech intelligible and
-    // wrecks an instrument signal: gain riding kills the decay of a note, and
-    // noise suppression eats quiet playing entirely.
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         ...(this.deviceId ? { deviceId: { exact: this.deviceId } } : {}),
@@ -70,7 +76,6 @@ export class MicCapture {
 
     const context = new AudioContext({ latencyHint: 'interactive' });
     this.context = context;
-    // Safari starts contexts suspended until a gesture has been handled.
     if (context.state === 'suspended') await context.resume();
 
     try {
@@ -95,19 +100,44 @@ export class MicCapture {
     this.node = new AudioWorkletNode(context, 'capture', { numberOfOutputs: 0 });
     this.node.port.onmessage = (event: MessageEvent<Float32Array>) => {
       const chunk = event.data;
-      // Retention happens here, on a copy, because the original is transferred
-      // to the worker and this thread loses access to it.
       this.handlers.onAudio(chunk.slice());
       this.worker?.postMessage({ type: 'audio', chunk }, [chunk.buffer]);
     };
     source.connect(this.node);
+
+    // Chords need the whole spectrum rather than one fundamental pitch. Keep
+    // this path separate so the proven monophonic note detector stays untouched.
+    this.analyser = context.createAnalyser();
+    this.analyser.fftSize = 8192;
+    this.analyser.smoothingTimeConstant = 0.38;
+    this.analyser.minDecibels = -100;
+    this.analyser.maxDecibels = -20;
+    this.spectrum = new Float32Array(this.analyser.frequencyBinCount);
+    source.connect(this.analyser);
+    this.chordTracker.reset();
+    this.chordTimer = window.setInterval(() => {
+      if (!this.analyser || !this.spectrum || !this.context) return;
+      this.analyser.getFloatFrequencyData(this.spectrum);
+      const chord = this.chordTracker.update(
+        this.spectrum,
+        this.context.sampleRate,
+        this.analyser.fftSize,
+      );
+      if (chord) this.handlers.onChord?.(chord);
+    }, 120);
   }
 
   /** Close out any note still ringing, then tear everything down. */
   async stop(): Promise<void> {
     this.worker?.postMessage({ type: 'flush' });
-    // Let the flush result come back before the worker goes away.
     await new Promise((resolve) => setTimeout(resolve, 60));
+
+    if (this.chordTimer !== null) window.clearInterval(this.chordTimer);
+    this.chordTimer = null;
+    this.analyser?.disconnect();
+    this.analyser = null;
+    this.spectrum = null;
+    this.chordTracker.reset();
 
     this.node?.port.close();
     this.node?.disconnect();
