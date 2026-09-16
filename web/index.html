@@ -2,12 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Guitar AI Coach</title>
 <meta name="description" content="An intelligent musical sketchbook, riff memory and guitar collaborator.">
 <meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#12141a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Guitar Coach">
+<link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./styles.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎸</text></svg>">
+<link rel="stylesheet" href="./mvp.css">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icon.svg">
 </head>
 <body>
   <header class="app-header">
@@ -45,5 +52,12 @@
   </footer>
 
   <script type="module" src="./app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator && window.isSecureContext) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>

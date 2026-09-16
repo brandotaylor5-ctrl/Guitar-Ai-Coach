@@ -16,6 +16,7 @@ import {
   analysisFacts, button, explanationBlock, fretboardDiagram, highlightNote, noteRow, tabBlock,
 } from '../ui/render.ts';
 import type { AppContext } from './context.ts';
+import { riffConversation } from './conversation.ts';
 
 function playable(context: AppContext, notes: Parameters<AppContext['player']['play']>[0], label = 'Play'): HTMLElement {
   const row = noteRow(notes);
@@ -172,6 +173,8 @@ export function recallPanel(context: AppContext, recall: Recall): HTMLElement {
     }
     panel.appendChild(more);
   }
+
+  panel.appendChild(riffConversation(context, analysis));
 
   return panel;
 }

@@ -1,0 +1,88 @@
+/* MVP additions: riff conversation + phone-friendly installable app. */
+
+.riff-chat-examples {
+  display: flex;
+  gap: .45rem;
+  flex-wrap: wrap;
+  margin: .65rem 0 .9rem;
+}
+
+.riff-chat-history {
+  display: grid;
+  gap: .7rem;
+  margin: .7rem 0;
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: .15rem;
+}
+
+.riff-chat-turn {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: .75rem .85rem;
+  background: var(--bg-sunken);
+}
+
+.riff-chat-turn.is-you {
+  border-color: var(--accent-dim);
+  margin-left: min(12%, 5rem);
+}
+
+.riff-chat-turn.is-coach {
+  margin-right: min(7%, 3rem);
+}
+
+.riff-chat-turn > strong {
+  display: block;
+  margin-bottom: .25rem;
+  color: var(--text-dim);
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.riff-chat-body > :last-child { margin-bottom: 0; }
+.riff-chat-suggestion { margin-top: .55rem; }
+
+.riff-chat-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .5rem;
+  position: sticky;
+  bottom: 0;
+  padding-top: .6rem;
+  background: var(--bg-raised);
+}
+
+.riff-chat-input {
+  width: 100%;
+  min-width: 0;
+  background: var(--bg-sunken);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: .65rem .75rem;
+  font: inherit;
+}
+
+.riff-chat-input:focus {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: 1px;
+}
+
+@media (max-width: 700px) {
+  .app-header { padding: .7rem .8rem; gap: .55rem; }
+  .brand { width: 100%; }
+  .tagline { display: none; }
+  .nav { width: 100%; margin: 0; overflow-x: auto; padding-bottom: .1rem; }
+  .nav-tab { flex: 0 0 auto; }
+  .main { padding: 1rem .75rem 3rem; }
+  .panel { padding: 1rem; }
+  .listen-bar { gap: .7rem; padding: .8rem; }
+  .btn-ask, .btn-listen { width: 100%; }
+  .riff-chat-compose { grid-template-columns: 1fr; }
+  .riff-chat-compose .btn { width: 100%; }
+  .riff-chat-turn.is-you { margin-left: 1.5rem; }
+  .riff-chat-turn.is-coach { margin-right: 0; }
+  .suggestions { grid-template-columns: 1fr; }
+}
