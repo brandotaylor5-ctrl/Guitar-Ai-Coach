@@ -95,7 +95,7 @@ function countWord(n: number): string {
 export class SketchbookSession {
   readonly memory: RollingMemory;
   readonly library: RiffLibrary;
-  readonly tuning: Tuning;
+  tuning: Tuning;
   readonly audioRing: AudioRingBuffer | null;
   private readonly audioSampleRate: number;
   private readonly tracker: NoteTracker;
@@ -153,6 +153,7 @@ export class SketchbookSession {
     if (!this.audioSampleRate) throw new Error('Session was not constructed with audio options');
     if (this.audioRing) this.audioRing.write(chunk);
     this.retainedMs += (chunk.length / this.audioSampleRate) * 1000;
+    this.memory.tick(this.retainedMs);
     if (!this.streamer) return [];
     const completed: NoteEvent[] = [];
     for (const frame of this.streamer.push(chunk)) completed.push(...this.feedFrame(frame));
@@ -190,7 +191,7 @@ export class SketchbookSession {
    */
   async newEchoes(threshold = 0.88): Promise<RecognitionMatch[]> {
     const phrases = this.phrases();
-    const phrase = this.lastSettledPhrase(phrases);
+    const phrase = this.lastSettledPhrase(phrases, false);
     if (!phrase) return [];
 
     const matches = await this.library.findSimilar(phrase.notes, { threshold });
@@ -231,14 +232,14 @@ export class SketchbookSession {
    * it, using the same threshold that decided where the phrase ended. If
    * nothing has settled yet, the most recent phrase is still the best answer.
    */
-  private lastSettledPhrase(phrases: Phrase[]): Phrase | undefined {
+  private lastSettledPhrase(phrases: Phrase[], allowUnfinished = true): Phrase | undefined {
     if (phrases.length === 0) return undefined;
     const breathMs = restThreshold(this.memory.all());
     const now = this.currentTimeMs;
     for (let i = phrases.length - 1; i >= 0; i--) {
       if (now - phrases[i]!.endMs >= breathMs) return phrases[i];
     }
-    return phrases[phrases.length - 1];
+    return allowUnfinished ? phrases[phrases.length - 1] : undefined;
   }
 
   /**

@@ -46,7 +46,7 @@ the tests run and the demo runs with nothing installed at all.
 ```bash
 npm start       # build and serve the app → http://localhost:4173
 npm run demo    # the whole vision in the terminal, from synthesised audio
-npm test        # 214 tests, no network and no audio hardware needed
+npm test        # Automated tests; no network or audio hardware needed
 ```
 
 Ships with **no runtime dependencies**. `npm install` fetches only TypeScript

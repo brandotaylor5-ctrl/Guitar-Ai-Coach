@@ -160,7 +160,7 @@ without meaning to. Absolute pitch level is reported separately
 
 ## Testing
 
-`npm test` runs 166 tests across 7 files, with no network and no audio hardware.
+`npm test` runs the automated suite with no network and no audio hardware.
 
 Notable: `test/audio.test.ts` synthesises plucked-string tones with a
 deliberately *weak fundamental* — the classic octave-error trap — and asserts

@@ -12,7 +12,8 @@ import type { Frame } from '../src/audio/noteTracker.ts';
 import type { NoteEvent } from '../src/types.ts';
 
 export type DetectorRequest =
-  | { type: 'init'; sampleRate: number }
+  | { type: 'init'; sampleRate: number; minRms?: number }
+  | { type: 'sensitivity'; minRms: number }
   | { type: 'audio'; chunk: Float32Array }
   | { type: 'flush' }
   | { type: 'reset' };
@@ -43,7 +44,13 @@ scope.onmessage = (event) => {
   switch (message.type) {
     case 'init':
       streamer = new FrameStreamer({ sampleRate: message.sampleRate });
-      tracker = new NoteTracker();
+      tracker = new NoteTracker({ minRms: message.minRms ?? 0.012 });
+      break;
+
+    case 'sensitivity':
+      if (Number.isFinite(message.minRms) && message.minRms >= 0.002 && message.minRms <= 0.1) {
+        tracker = new NoteTracker({ minRms: message.minRms });
+      }
       break;
 
     case 'audio': {

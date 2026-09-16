@@ -125,6 +125,7 @@ export class RiffLibrary {
 
   /** A new take becomes a branch, not a replacement. */
   async addVersion(riffId: string, notes: NoteEvent[], options: AddVersionOptions = {}): Promise<RiffVersion> {
+    if (!notes.length) throw new Error('Cannot save an empty version.');
     const riff = await this.mustGet(riffId);
     const parentId = options.parentId ?? riff.currentVersionId;
     if (!riff.versions.some((v) => v.id === parentId)) {
@@ -261,7 +262,8 @@ export class RiffLibrary {
    */
   async export(): Promise<string> {
     const [riffs, songs] = await Promise.all([this.store.listRiffs(), this.store.listSongs()]);
-    return JSON.stringify({ version: 1, exportedAt: Date.now(), riffs, songs }, null, 2);
+    return JSON.stringify({ version: 1, exportedAt: Date.now(), riffs, songs },
+      (key, value) => key === 'audioRef' ? undefined : value, 2);
   }
 
   /**
@@ -286,7 +288,9 @@ export class RiffLibrary {
     for (const riff of parsed.riffs) {
       if (!riff?.id || !Array.isArray(riff.versions) || riff.versions.length === 0) { skipped++; continue; }
       if (existing.has(riff.id)) { skipped++; continue; }
-      await this.store.putRiff(riff);
+      // Older exports carried references to recordings that were never bundled.
+      const portable = { ...riff, versions: riff.versions.map(({ audioRef, ...version }) => version) };
+      await this.store.putRiff(portable);
       riffs++;
     }
     for (const song of parsed.songs ?? []) {
