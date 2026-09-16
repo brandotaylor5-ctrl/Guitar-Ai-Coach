@@ -1,0 +1,18 @@
+{
+  "name": "Guitar AI Coach",
+  "short_name": "Guitar Coach",
+  "description": "An intelligent musical sketchbook, riff memory and guitar collaborator.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#12141a",
+  "theme_color": "#12141a",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

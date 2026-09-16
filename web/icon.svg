@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Guitar AI Coach">
+  <rect width="512" height="512" rx="112" fill="#12141a"/>
+  <circle cx="256" cy="256" r="158" fill="#191c24" stroke="#5ee0b0" stroke-width="18"/>
+  <path d="M126 338c72-18 107-74 126-152 20 42 50 70 134 91" fill="none" stroke="#f0b866" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="126" cy="338" r="18" fill="#5ee0b0"/>
+  <circle cx="252" cy="186" r="18" fill="#5ee0b0"/>
+  <circle cx="386" cy="277" r="18" fill="#5ee0b0"/>
+</svg>
