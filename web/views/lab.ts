@@ -164,7 +164,7 @@ export function labView(context:AppContext):View {
     const pool=filteredTemplates();
     if(!pool.some((x)=>x.id===selectedId)) selectedId=pool[0]?.id??TEMPLATES[0]!.id;
     clear(riffsHost);
-    riffsHost.appendChild(h('div',{class:'lab-riff-grid'},...pool.map((template)=>h('button',{class:`lab-riff-card${template.id===selectedId?' is-active':''}`,type:'button',onClick:()=>{selectedId=template.id;renderRiffs();}},h('span',{class:'lab-level',text:template.level}),h('strong',{text:template.name}),h('span',{text:template.feel}))));
+    riffsHost.appendChild(h('div',{class:'lab-riff-grid'},...pool.map((template)=>h('button',{class:`lab-riff-card${template.id===selectedId?' is-active':''}`,type:'button',onClick:()=>{selectedId=template.id;renderRiffs();}},h('span',{class:'lab-level',text:template.level}),h('strong',{text:template.name}),h('span',{text:template.feel})))));
     renderDetail();
   }
 
