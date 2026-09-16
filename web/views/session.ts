@@ -256,7 +256,11 @@ export function sessionView(context: AppContext): View {
         button('Hear what I mean', async () => { await context.player.play(idea.notes, { onNote:(i)=>highlightNote(row,i), onEnd:()=>highlightNote(row,null) }); }, 'btn-quiet'), row);
       text += ' I made one tiny answer from your own musical context — not a random lick.';
       tryNext.innerHTML = '';
-      tryNext.appendChild(h('strong', { text: 'Answer the phrase: ' }), row, button('Hear it', () => { void context.player.play(idea.notes); }, 'btn-quiet'));
+      tryNext.append(
+        h('strong', { text: 'Answer the phrase: ' }),
+        row,
+        button('Hear it', () => { void context.player.play(idea.notes); }, 'btn-quiet'),
+      );
     }
     addCoach(text, 'phrase', action);
   }
