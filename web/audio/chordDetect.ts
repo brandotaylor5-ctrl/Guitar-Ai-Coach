@@ -33,7 +33,6 @@ function binEnergy(db: Float32Array, frequency: number, sampleRate: number, fftS
   if (frequency <= 0 || frequency >= sampleRate / 2) return 0;
   const bin = Math.round(frequency * fftSize / sampleRate);
   if (bin < 1 || bin >= db.length) return 0;
-  // Read a tiny neighbourhood so a note between FFT bins is not punished.
   let best = -120;
   for (let i = Math.max(1, bin - 1); i <= Math.min(db.length - 1, bin + 1); i++) best = Math.max(best, db[i]!);
   if (best < -82) return 0;
@@ -77,10 +76,32 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
       const inside = wanted.reduce((sum, p) => sum + chroma[p]!, 0) / wanted.length;
       const outsideValues = chroma.filter((_, p) => !wanted.includes(p));
       const outside = outsideValues.reduce((a, b) => a + b, 0) / outsideValues.length;
-      // Root presence matters on guitar. It also stops a single fifth from being
-      // labelled as several unrelated inversions with equal confidence.
       const rootBonus = chroma[rootPc]! * 0.18;
-      const score = inside - outside * 0.34 + rootBonus;
+      const present = wanted.filter((p) => chroma[p]! >= 0.22).length;
+      const coverage = present / wanted.length;
+
+      // A two-note power chord naturally gets a higher arithmetic average than
+      // a full triad. If the third is genuinely audible, prefer the chord that
+      // explains it instead of throwing that information away and calling Em
+      // "E5". Conversely, a real power chord still wins when no third exists.
+      const fullChordBonus = template.pcs.length >= 3 ? 0.08 : 0;
+      let powerChordPenalty = 0;
+      if (template.quality === '5') {
+        const thirdEvidence = Math.max(chroma[(rootPc + 3) % 12]!, chroma[(rootPc + 4) % 12]!);
+        powerChordPenalty = Math.max(0, thirdEvidence - 0.20) * 0.22;
+      }
+
+      // Reward templates whose defining color note is actually present. This
+      // helps major/minor quality survive the harmonic clutter of guitar audio.
+      let qualityEvidence = 0;
+      if (template.quality === 'minor' || template.quality === 'm7') {
+        qualityEvidence = Math.max(0, chroma[(rootPc + 3) % 12]! - 0.20) * 0.10;
+      } else if (template.quality === 'major' || template.quality === '7' || template.quality === 'maj7') {
+        qualityEvidence = Math.max(0, chroma[(rootPc + 4) % 12]! - 0.20) * 0.10;
+      }
+
+      const score = inside - outside * 0.34 + rootBonus + fullChordBonus + coverage * 0.04
+        + qualityEvidence - powerChordPenalty;
       if (!best || score > best.score) {
         if (best) second = best.score;
         best = { score, rootPc, template };
