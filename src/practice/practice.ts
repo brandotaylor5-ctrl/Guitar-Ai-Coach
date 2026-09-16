@@ -7,7 +7,8 @@
  * keep it to something you can act on before the next attempt.
  */
 
-import type { NoteEvent, RiffVersion } from '../types.ts';
+import type { NoteEvent, Riff, RiffVersion } from '../types.ts';
+import { cleanestIndex } from '../phrase/quality.ts';
 import { diffTakes } from '../phrase/diff.ts';
 import type { NoteChange, TakeDiff } from '../phrase/diff.ts';
 import { timeScale } from '../phrase/edit.ts';
@@ -77,7 +78,7 @@ export function practiceAttempt(
 
   const feedback: string[] = [];
   const inTime = Math.abs(diff.tempoRatio - 1) <= tolerance;
-  const nailed = accuracy >= requiredAccuracy && diff.identical;
+  const nailed = accuracy >= requiredAccuracy && diff.identical && inTime;
 
   if (attempt.length === 0) {
     return {
@@ -131,6 +132,14 @@ function capitalise(s: string): string {
 }
 
 export type PracticeTarget = 'original' | 'latest' | 'best';
+
+/** Versions are appended in creation order, including branches from older takes. */
+export function practiceVersion(riff: Riff, target: PracticeTarget): RiffVersion {
+  if (!riff.versions.length) throw new Error('This riff has no takes to practise.');
+  if (target === 'original') return riff.versions[0]!;
+  if (target === 'latest') return riff.versions[riff.versions.length - 1]!;
+  return riff.versions[cleanestIndex(riff.versions.map((v) => v.notes))]!;
+}
 
 export interface PracticePlan {
   target: PracticeTarget;

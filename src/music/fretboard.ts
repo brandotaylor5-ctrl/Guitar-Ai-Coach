@@ -8,7 +8,7 @@
  */
 
 import type { FretPosition, NoteEvent } from '../types.ts';
-import { midiToName } from './notes.ts';
+import { midiToName, nameToMidi } from './notes.ts';
 
 export interface Tuning {
   name: string;
@@ -19,6 +19,23 @@ export interface Tuning {
 export const STANDARD_TUNING: Tuning = { name: 'Standard (EADGBE)', strings: [40, 45, 50, 55, 59, 64] };
 export const DROP_D_TUNING: Tuning = { name: 'Drop D (DADGBE)', strings: [38, 45, 50, 55, 59, 64] };
 export const HALF_STEP_DOWN: Tuning = { name: 'Eb standard', strings: [39, 44, 49, 54, 58, 63] };
+export const DADGAD_TUNING: Tuning = { name: 'DADGAD', strings: [38, 45, 50, 55, 57, 62] };
+
+export function customTuning(notes: string): Tuning {
+  const strings = notes.trim().split(/[\s,]+/).map(nameToMidi);
+  if (strings.length !== 6 || strings.some((n, i) =>
+    n < 24 || n > 88 || (i > 0 && n < strings[i - 1]!))) {
+    throw new Error('Enter six notes, low string first, with octaves: E2 A2 D3 G3 B3 E4.');
+  }
+  return { name: 'Custom', strings };
+}
+
+/** Frets in the resulting tuning are counted from the capo, where open is 0. */
+export function withCapo(tuning: Tuning, fret: number): Tuning {
+  if (!Number.isInteger(fret) || fret < 0 || fret > 12) throw new Error('Capo must be a whole fret from 0 to 12.');
+  return { name: fret ? `${tuning.name}, capo ${fret} (frets from capo)` : tuning.name,
+    strings: tuning.strings.map((n) => n + fret) };
+}
 
 export interface FingeringOptions {
   tuning?: Tuning;

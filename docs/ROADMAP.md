@@ -54,11 +54,6 @@ the change to your actual phrase is the missing piece, and it is where an LLM
 belongs. The musical operations it would call are written and tested; what is
 missing is the parsing and a place to put an API key.
 
-**Riff conversation.** The suggestion primitives exist (`create/suggest.ts`) but
-nothing routes natural language to them. This is where an LLM belongs: parsing
-"make the ending darker" into a call against the player's actual phrase. The
-musical operations it would call are already in place and tested.
-
 **Polyphony.** Pitch detection is monophonic. Chords are currently only
 *suggested*, not *detected*. Polyphonic transcription is a substantially harder
 problem and should be treated as its own project, not a patch to

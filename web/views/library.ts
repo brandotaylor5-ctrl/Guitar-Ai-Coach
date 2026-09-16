@@ -21,6 +21,7 @@ import { practicePanel } from './practice.ts';
 import type { AppContext, View } from './context.ts';
 
 export function libraryView(context: AppContext, params: Record<string, string> = {}): View {
+  let practice: ReturnType<typeof practicePanel> | null = null;
   const list = h('div', { class: 'riff-list' });
   const detail = h('div', { class: 'riff-detail' });
 
@@ -114,7 +115,9 @@ export function libraryView(context: AppContext, params: Record<string, string> 
           void render();
         }, 'btn-quiet') : null,
         button('Practise this', () => {
-          replace(practiceHost, practicePanel(context, riff, version));
+          practice?.dispose();
+          practice = practicePanel(context, riff, version);
+          replace(practiceHost, practice);
           practiceHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 'btn-quiet'),
       ),
@@ -241,10 +244,12 @@ export function libraryView(context: AppContext, params: Record<string, string> 
   }
 
   async function render(): Promise<void> {
+    practice?.dispose();
+    practice = null;
     await renderList();
     await renderDetail();
   }
 
   void render();
-  return { element, update: () => { void render(); } };
+  return { element, update: () => { void render(); }, dispose() { practice?.dispose(); } };
 }

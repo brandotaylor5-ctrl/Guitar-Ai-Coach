@@ -26,6 +26,16 @@ export class MicCapture {
   private node: AudioWorkletNode | null = null;
   private worker: Worker | null = null;
   private readonly handlers: CaptureHandlers;
+  deviceId = '';
+  minRms = 0.012;
+
+  setSensitivity(minRms: number): void {
+    if (!Number.isFinite(minRms) || minRms < 0.002 || minRms > 0.1) {
+      throw new Error('The noise gate must be between 0.002 and 0.1.');
+    }
+    this.minRms = minRms;
+    this.worker?.postMessage({ type: 'sensitivity', minRms });
+  }
 
   constructor(handlers: CaptureHandlers) {
     this.handlers = handlers;
@@ -50,6 +60,7 @@ export class MicCapture {
     // noise suppression eats quiet playing entirely.
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
+        ...(this.deviceId ? { deviceId: { exact: this.deviceId } } : {}),
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
@@ -72,13 +83,13 @@ export class MicCapture {
     this.worker = new Worker(new URL('../detector.worker.js', import.meta.url), { type: 'module' });
     this.worker.onmessage = (event: MessageEvent<DetectorResult>) => {
       const { notes, timeMs, frame } = event.data;
-      if (notes.length) this.handlers.onNotes(notes, timeMs);
+      this.handlers.onNotes(notes, timeMs);
       if (frame) this.handlers.onFrame(frame);
     };
     this.worker.onerror = (event) => {
       this.handlers.onError(new Error(`Pitch detection failed: ${event.message}`));
     };
-    this.worker.postMessage({ type: 'init', sampleRate: context.sampleRate });
+    this.worker.postMessage({ type: 'init', sampleRate: context.sampleRate, minRms: this.minRms });
 
     const source = context.createMediaStreamSource(this.stream);
     this.node = new AudioWorkletNode(context, 'capture', { numberOfOutputs: 0 });

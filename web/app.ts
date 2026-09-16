@@ -4,9 +4,10 @@
  */
 
 import { SketchbookSession } from '../src/session/session.ts';
+import { noiseGate } from '../src/audio/calibration.ts';
 import { RiffLibrary } from '../src/library/riffLibrary.ts';
 import { LocalStorageRiffStore } from '../src/library/localStorageStore.ts';
-import { STANDARD_TUNING, DROP_D_TUNING, HALF_STEP_DOWN } from '../src/music/fretboard.ts';
+import { STANDARD_TUNING, DROP_D_TUNING, HALF_STEP_DOWN, DADGAD_TUNING, customTuning, withCapo } from '../src/music/fretboard.ts';
 import type { Tuning } from '../src/music/fretboard.ts';
 import { MicCapture } from './audio/capture.ts';
 import { RiffPlayer } from './audio/playback.ts';
@@ -18,7 +19,7 @@ import { songsView } from './views/songs.ts';
 import { fingerprintView } from './views/fingerprint.ts';
 import type { AppContext, View, ViewName } from './views/context.ts';
 
-const TUNINGS: Tuning[] = [STANDARD_TUNING, DROP_D_TUNING, HALF_STEP_DOWN];
+const TUNINGS: Tuning[] = [STANDARD_TUNING, DROP_D_TUNING, HALF_STEP_DOWN, DADGAD_TUNING];
 
 const state = {
   session: new SketchbookSession(),
@@ -31,6 +32,11 @@ const state = {
 };
 
 let current: View | null = null;
+let stoppedAt: number | null = null;
+let stoppedClock = 0;
+let pausedElapsed = 0;
+let changingCapture = false;
+let calibrationLevels: number[] | null = null;
 const player = new RiffPlayer();
 const clips = new ClipStore();
 
@@ -52,7 +58,6 @@ function storage(): Storage | null {
  * rate, so it starts without audio and is rebuilt on the first listen.
  */
 function ensureSessionFor(sampleRate: number): void {
-  if (state.sampleRate === sampleRate) return;
   state.sampleRate = sampleRate;
   state.session = new SketchbookSession({
     library: state.library,
@@ -71,6 +76,7 @@ const capture = new MicCapture({
     if (state.sampleRate) state.session.feedAudio(chunk);
   },
   onFrame(frame) {
+    calibrationLevels?.push(frame.rms);
     current?.onFrame?.(frame);
   },
   onError(error) {
@@ -105,11 +111,16 @@ const context: AppContext = {
   },
 
   async startListening() {
+    if (changingCapture || state.listening) return;
+    changingCapture = true;
     try {
       await capture.start();
       ensureSessionFor(capture.sampleRate);
+      stoppedAt = null;
       state.listening = true;
-      say('Listening. Nothing is being recorded — play something.');
+      qs<HTMLSelectElement>('#microphone').disabled = true;
+      await listMicrophones();
+      say('New listening session. Audio stays in memory on this device unless you save a riff.');
     } catch (err) {
       const error = err as Error;
       say(
@@ -119,13 +130,22 @@ const context: AppContext = {
         'error',
       );
       state.listening = false;
+    } finally {
+      changingCapture = false;
     }
     render();
   },
 
   async stopListening() {
+    if (changingCapture || !state.listening) return;
+    changingCapture = true;
     await capture.stop();
     state.listening = false;
+    qs<HTMLSelectElement>('#microphone').disabled = false;
+    changingCapture = false;
+    stoppedAt = performance.now();
+    stoppedClock = state.session.currentTimeMs;
+    pausedElapsed = 0;
     say('Stopped. What you played is still in memory for a minute.');
     render();
   },
@@ -166,6 +186,29 @@ function render(): void {
 }
 
 function mountChrome(): void {
+  const input = qs<HTMLSelectElement>('#microphone');
+  input.addEventListener('change', () => { capture.deviceId = input.value; });
+  const gate = qs<HTMLInputElement>('#noise-gate');
+  gate.addEventListener('change', () => {
+    try { capture.setSensitivity(Number(gate.value)); }
+    catch (error) { say((error as Error).message, 'error'); gate.value = String(capture.minRms); }
+  });
+  const calibrate = qs<HTMLButtonElement>('#calibrate');
+  calibrate.addEventListener('click', async () => {
+    if (!state.listening) { say('Start listening first, then mute your strings.'); return; }
+    calibrate.disabled = true;
+    calibrationLevels = [];
+    say('Keep your strings muted for two seconds.');
+    await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    try {
+      if (!state.listening) throw new Error('Listening stopped. Start again before calibrating.');
+      const threshold = noiseGate(calibrationLevels);
+      capture.setSensitivity(threshold);
+      gate.value = String(Number(threshold.toFixed(4)));
+      say('Noise gate calibrated. Play a few single notes to check it.');
+    } catch (error) { say((error as Error).message, 'error'); }
+    finally { calibrationLevels = null; calibrate.disabled = false; }
+  });
   const nav = qs('#nav');
   const tabs: Array<[ViewName, string]> = [
     ['session', 'Session'], ['library', 'Riff Library'], ['songs', 'Songs'], ['fingerprint', 'Fingerprint'],
@@ -181,17 +224,23 @@ function mountChrome(): void {
   for (const tuning of TUNINGS) {
     select.appendChild(h('option', { value: tuning.name, text: tuning.name }));
   }
-  select.addEventListener('change', () => {
-    state.tuning = TUNINGS.find((t) => t.name === select.value) ?? STANDARD_TUNING;
-    // The session holds the tuning, so rebuild it — but keep what was played.
-    const heard = state.session.memory.all();
-    state.sampleRate = 0;
-    if (capture.running) ensureSessionFor(capture.sampleRate);
-    else state.session = new SketchbookSession({ library: state.library, tuning: state.tuning });
-    state.session.addNotes(heard);
-    say(`Reading the fretboard as ${state.tuning.name}.`);
-    render();
-  });
+  select.appendChild(h('option', { value: 'custom', text: 'Custom' }));
+  const custom = qs<HTMLInputElement>('#custom-tuning');
+  const capo = qs<HTMLInputElement>('#capo');
+  function applyTuning(): void {
+    custom.hidden = select.value !== 'custom';
+    try {
+      const base = select.value === 'custom' ? customTuning(custom.value)
+        : TUNINGS.find((t) => t.name === select.value) ?? STANDARD_TUNING;
+      state.tuning = withCapo(base, Number(capo.value));
+      state.session.tuning = state.tuning;
+      say(`Reading the fretboard as ${state.tuning.name}.`);
+      render();
+    } catch (error) { say((error as Error).message, 'error'); }
+  }
+  select.addEventListener('change', applyTuning);
+  custom.addEventListener('change', applyTuning);
+  capo.addEventListener('change', applyTuning);
 
   window.addEventListener('hashchange', () => {
     const view = window.location.hash.replace('#', '') as ViewName;
@@ -203,6 +252,17 @@ function mountChrome(): void {
   window.addEventListener('beforeunload', () => { void capture.stop(); });
 }
 
+async function listMicrophones(): Promise<void> {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const input = qs<HTMLSelectElement>('#microphone');
+    replace(input, h('option', { value: '', text: 'Default microphone' }),
+      ...devices.filter((d) => d.kind === 'audioinput').map((d, i) =>
+        h('option', { value: d.deviceId, text: d.label || `Microphone ${i + 1}` })));
+    input.value = capture.deviceId;
+  } catch { say('This browser could not list microphones. The active input still works.'); }
+}
+
 function start(): void {
   const store = storage();
   state.library = new RiffLibrary(store ? new LocalStorageRiffStore(store) : undefined);
@@ -212,6 +272,25 @@ function start(): void {
   const hash = window.location.hash.replace('#', '') as ViewName;
   if (['library', 'songs', 'fingerprint'].includes(hash)) state.view = hash;
   render();
+
+  window.setInterval(() => {
+    if (stoppedAt === null) return;
+    const elapsed = performance.now() - stoppedAt;
+    state.session.memory.tick(stoppedClock + elapsed);
+    if (elapsed >= state.session.memory.windowMs) {
+      state.session = new SketchbookSession({ library: state.library, tuning: state.tuning });
+      state.sampleRate = 0;
+      stoppedAt = null;
+      render();
+    } else {
+      if (state.sampleRate) {
+        state.session.feedAudio(new Float32Array(
+          Math.max(0, Math.floor((elapsed - pausedElapsed) * state.sampleRate / 1000))));
+      }
+      pausedElapsed = elapsed;
+      current?.onNotes?.();
+    }
+  }, 250);
 
   if (!store) {
     say('Browser storage is unavailable, so saved riffs will not survive closing this tab.', 'error');

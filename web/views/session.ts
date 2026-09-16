@@ -62,8 +62,8 @@ export function sessionView(context: AppContext): View {
     h('section', { class: 'panel' },
       h('div', { class: 'ask-row' }, askButton),
       h('p', { class: 'muted hint' },
-        'Nothing is recorded. The last minute of what you play is held in memory ' +
-        'and forgotten unless you save it.'),
+        'While listening, the last minute of microphone audio and detected notes stays in memory on this device. ' +
+        'It is not uploaded. Saving a riff keeps its notes and available recording in this browser.'),
       echoHost,
       noteStream,
     ),
@@ -178,9 +178,6 @@ export function sessionView(context: AppContext): View {
     if (signature !== lastPhraseSignature) {
       lastPhraseSignature = signature;
       renderTimeline();
-      // A finished idea is the only moment worth checking, and the session
-      // decides whether it is worth mentioning at all.
-      void context.session.newEchoes().then((echoes) => echoes.forEach(showEcho));
     }
   }
 
@@ -189,7 +186,8 @@ export function sessionView(context: AppContext): View {
       const midi = frequencyToMidi(frame.hz);
       const cents = Math.round((midi - Math.round(midi)) * 100);
       noteReadout.textContent = midiToName(Math.round(midi));
-      centsBar.style.transform = `translateX(${Math.max(-50, Math.min(50, cents))}%)`;
+      centsBar.style.left = `${50 + Math.max(-50, Math.min(50, cents))}%`;
+      centsBar.style.transform = 'translateX(-50%)';
       centsLabel.textContent = Math.abs(cents) <= 5
         ? 'in tune'
         : `${Math.abs(cents)} cents ${cents > 0 ? 'sharp' : 'flat'}`;
@@ -202,6 +200,24 @@ export function sessionView(context: AppContext): View {
     levelFill.style.width = `${Math.min(100, frame.rms * 320)}%`;
   }
 
+  let disposed = false;
+  let checking = false;
+  const timer = window.setInterval(async () => {
+    if (checking) return;
+    checking = true;
+    try {
+      renderTimeline();
+      const echoes = await context.session.newEchoes();
+      if (!disposed) echoes.forEach(showEcho);
+    } catch (error) {
+      if (!disposed) context.say((error as Error).message, 'error');
+    } finally {
+      checking = false;
+    }
+  }, 500);
   update();
-  return { element, update, onNotes: update, onFrame };
+  return { element, update, onNotes: update, onFrame, dispose() {
+    disposed = true;
+    window.clearInterval(timer);
+  } };
 }
