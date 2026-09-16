@@ -14,14 +14,19 @@
 
 /* ---- Live Coach ---- */
 .live-coach-hero { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; background:linear-gradient(135deg,var(--bg-raised),color-mix(in srgb,var(--accent-dim) 13%,var(--bg-raised))); }
-.live-coach-copy { max-width:58ch; }
+.live-coach-copy { max-width:62ch; }
 .live-coach-actions { display:flex; gap:.5rem; flex-wrap:wrap; justify-content:flex-end; }
 .lab-kicker { margin:0 0 .2rem; color:var(--accent); font-size:.72rem; font-weight:800; letter-spacing:.14em; }
 .live-hearing-grid { display:grid; grid-template-columns:1fr 1fr 1.35fr; gap:.8rem; margin-bottom:1.25rem; }
+.live-hearing-grid-v3 { grid-template-columns:.9fr .9fr 1fr 1.35fr; }
 .live-hearing-card { margin:0; min-height:150px; display:flex; flex-direction:column; justify-content:center; }
 .live-hearing-label { color:var(--text-dim); font-size:.7rem; font-weight:800; letter-spacing:.12em; margin-bottom:.45rem; }
-.live-chord-value { font:700 clamp(2.8rem,7vw,4.8rem)/1 var(--mono); color:var(--warm); letter-spacing:-.06em; margin:.15rem 0 .35rem; }
-.live-progression { font:700 clamp(1.15rem,2.6vw,1.8rem)/1.45 var(--mono); color:var(--text); word-break:break-word; }
+.live-chord-value,.live-center-value { font:700 clamp(2.35rem,6vw,4.4rem)/1 var(--mono); color:var(--warm); letter-spacing:-.06em; margin:.15rem 0 .35rem; }
+.live-center-value { color:var(--accent); font-size:clamp(1.9rem,4vw,3.35rem); }
+.live-progression { font:700 clamp(1.05rem,2.25vw,1.65rem)/1.45 var(--mono); color:var(--text); word-break:break-word; }
+.live-next-panel { margin-bottom:1.25rem; border-color:color-mix(in srgb,var(--warm) 45%,var(--line)); background:linear-gradient(135deg,var(--bg-raised),color-mix(in srgb,var(--warm) 7%,var(--bg-raised))); }
+.live-try-next { display:flex; align-items:center; gap:.55rem; flex-wrap:wrap; font-size:1.02rem; line-height:1.5; }
+.live-try-next strong { color:var(--warm); font-family:var(--mono); font-size:1.14em; }
 .live-coach-panel { border-color:color-mix(in srgb,var(--accent-dim) 55%,var(--line)); }
 .live-coach-panel-head { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
 .live-coach-feed { display:grid; gap:.65rem; margin:.8rem 0; max-height:430px; overflow:auto; padding-right:.15rem; }
@@ -42,9 +47,10 @@
 .lab-note-buttons { display:flex; gap:.45rem; flex-wrap:wrap; margin:.8rem 0; }
 .lab-section-head { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; }
 .lab-riff-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.65rem; margin:.85rem 0 1rem; }
-.lab-riff-card { text-align:left; min-height:104px; border:1px solid var(--line); background:var(--bg-sunken); color:var(--text); border-radius:12px; padding:.75rem; cursor:pointer; font:inherit; }
+.lab-riff-card { text-align:left; min-height:112px; border:1px solid var(--line); background:var(--bg-sunken); color:var(--text); border-radius:12px; padding:.75rem; cursor:pointer; font:inherit; }
 .lab-riff-card strong { display:block; margin-bottom:.35rem; color:var(--text); }
 .lab-riff-card span { display:block; color:var(--text-dim); font-size:.78rem; line-height:1.35; }
+.lab-riff-card .lab-level { color:var(--accent); font-weight:800; letter-spacing:.08em; font-size:.65rem; margin-bottom:.35rem; text-transform:uppercase; }
 .lab-riff-card:hover,.lab-riff-card.is-active { border-color:var(--accent-dim); background:color-mix(in srgb,var(--accent-dim) 10%,var(--bg-sunken)); }
 .lab-selected-riff { border-top:1px solid var(--line); padding-top:1rem; }
 .lab-selected-copy { margin-bottom:.6rem; }
@@ -54,6 +60,14 @@
 .lab-progression-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.7rem; margin-top:.8rem; }
 .lab-progression-card { background:var(--bg-sunken); border:1px solid var(--line); border-radius:12px; padding:.8rem; }
 .lab-progression-card > strong { display:block; font:700 1rem/1.5 var(--mono); color:var(--warm); margin:.35rem 0; }
+.lab-progression-actions { display:flex; gap:.4rem; flex-wrap:wrap; margin-top:.65rem; }
+.lab-generated-lead { margin-top:.7rem; padding:.7rem; border-radius:10px; background:color-mix(in srgb,var(--accent-dim) 8%,var(--bg-raised)); border:1px solid var(--line); }
+.lab-generated-lead p { margin:.35rem 0 .6rem; }
+
+@media (max-width: 1080px) {
+  .live-hearing-grid-v3 { grid-template-columns:1fr 1fr; }
+  .progression-card { grid-column:span 2; }
+}
 
 @media (max-width: 900px) {
   .live-hearing-grid { grid-template-columns:1fr 1fr; }
@@ -80,9 +94,9 @@
   .live-coach-hero,.lab-hero { align-items:flex-start; flex-direction:column; }
   .live-coach-actions { width:100%; justify-content:stretch; }
   .live-coach-actions .btn { flex:1 1 130px; }
-  .live-hearing-grid { grid-template-columns:1fr; }
+  .live-hearing-grid,.live-hearing-grid-v3 { grid-template-columns:1fr; }
   .progression-card { grid-column:auto; }
-  .live-hearing-card { min-height:125px; }
+  .live-hearing-card { min-height:122px; }
   .live-coach-panel-head { flex-direction:column; }
   .live-coach-panel-head .btn-ask { width:100%; }
   .lab-controls { width:100%; }
