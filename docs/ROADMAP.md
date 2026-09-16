@@ -1,7 +1,8 @@
 # Roadmap
 
-Honest status. This repository currently contains the **musical intelligence
-core** and the **audio foundation** beneath it. There is no user interface yet.
+Honest status. The **musical intelligence core**, the **audio foundation**
+beneath it, and a **browser app** on top of it all work. `npm start` gives you
+something you can plug a guitar into.
 
 ## Built and tested
 
@@ -28,25 +29,23 @@ core** and the **audio foundation** beneath it. There is no user interface yet.
 | Musical Fingerprint | ✅ Refuses to invent habits from thin material | `fingerprint/` |
 | Song Seed grouping | ✅ Basic grouping + "these riffs seem related" | `library/riffLibrary.ts` |
 | The headline recall interaction | ✅ `session.whatDidIJustPlay()` | `session/` |
+| Live microphone input | ✅ AudioWorklet capture, detection in a Web Worker | `web/audio/capture.ts` |
+| The session screen | ✅ Live readout, phrase timeline, motif colouring | `web/views/session.ts` |
+| "PLAY THIS WITH ME" | ✅ Additive pluck synthesis of any riff or suggestion | `web/audio/playback.ts` |
+| Original audio on a saved riff | ✅ Kept in IndexedDB, survives a reload | `web/audio/clipStore.ts` |
+| Fretboard diagrams | ✅ Numbered by playing order, repeats folded together | `web/ui/render.ts` |
+| Practice Mode in the app | ✅ Hear it, play it, get coached, slow it down | `web/views/practice.ts` |
+| Library persistence | ✅ Local storage, with export/import | `library/localStorageStore.ts` |
 
-Run `npm run demo` to see the whole vision executed end to end, from
-synthesised audio through to the fingerprint.
+Run `npm run demo` for the whole vision in the terminal, or `npm start` to use
+it with an actual guitar.
 
 ## Not built yet
 
-**User interface.** Nothing visual exists. The core is deliberately
-framework-free so a UI can sit on top of it; the natural next step is a browser
-app wiring `getUserMedia` → `AudioWorklet` → `SketchbookSession`, with a live
-note display, a phrase timeline, and the Riff Library.
-
-**Audio playback.** "PLAY THIS WITH ME" needs a playback engine. Saved clips are
-currently held in memory as `Float32Array` and are not encoded or persisted;
-`RiffVersion.audioRef` is the hook where a real audio store belongs.
-
-**Time-stretching audio.** `buildPracticePlan` slows the *note data* without
-changing pitch, which is correct for a click-along or a synthesised playback. To
-slow down the player's own *recording* without changing its pitch needs a phase
-vocoder, which is not written.
+**Time-stretching the player's own recording.** `buildPracticePlan` slows the
+*note data* without changing pitch, so the synthesised playback slows down
+correctly. Slowing the actual recording of your guitar without the pitch
+dropping needs a phase vocoder, which is not written.
 
 **Riff conversation.** The suggestion primitives exist (`create/suggest.ts`) but
 nothing routes natural language to them. This is where an LLM belongs: parsing
@@ -58,9 +57,18 @@ musical operations it would call are already in place and tested.
 problem and should be treated as its own project, not a patch to
 `pitchDetect.ts`.
 
-**Live recognition during play.** `findSimilar` works, but nothing yet runs it
-continuously to interrupt with "that's close to Riff 14". The debounce and
+**Live recognition during play.** `findSimilar` works and the recall screen
+reports a match when you ask, but nothing runs it continuously to interrupt
+with "that's close to Riff 14" unprompted. The debounce and
 interruption-etiquette questions there are product design, not engineering.
+
+**Song Seed has no screen.** The grouping and the "these riffs seem related"
+detection both work and are reachable from the library, but there is no
+workspace for arranging riffs into sections.
+
+**Nothing syncs.** Riffs live in one browser on one machine. The export/import
+on `LocalStorageRiffStore` is the manual version of an answer; recordings in
+IndexedDB are not included in it.
 
 ## Known limitations
 
@@ -76,7 +84,16 @@ interruption-etiquette questions there are product design, not engineering.
 - **Tempo estimation assumes a roughly steady pulse.** Rubato playing will
   report low confidence, which is correct, but the app has nothing better to say
   in that case yet.
-- **`tsc --noEmit` has not been run**; there is no network access to install
-  TypeScript, and the project has no dependencies by design. Types are checked
-  by an editor or by installing TypeScript locally. Runtime behaviour is covered
-  by the test suite.
+- **`tsc --noEmit` has not been run in this environment.** The project has no
+  dependencies by design, and Node's type stripping checks syntax but not
+  types. Run `npm run typecheck` with TypeScript installed to check them.
+  Runtime behaviour is covered by the test suite and by browser testing against
+  a fake microphone device.
+- **The browser app has no automated test in the repository.** It was verified
+  end to end by driving Chromium with a WAV file as a fake microphone — real
+  audio in, riffs saved, clips surviving a reload — but that harness needs
+  Playwright, which would mean a dependency. The musical logic it exercises is
+  all covered by `npm test`.
+- **Saved recordings are uncompressed.** A clip is a few seconds of 32-bit
+  float, so a large library will eventually press against browser storage
+  quotas. Encoding to Opus via `MediaRecorder` is the obvious fix.

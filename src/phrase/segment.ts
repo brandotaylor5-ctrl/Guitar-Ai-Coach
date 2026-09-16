@@ -9,7 +9,6 @@
  */
 
 import type { NoteEvent, Phrase } from '../types.ts';
-import { makeId } from '../util/id.ts';
 
 export interface SegmentOptions {
   /** A gap shorter than this is never a boundary, however slowly you play. */
@@ -66,11 +65,27 @@ export function restThreshold(notes: NoteEvent[], options: SegmentOptions = {}):
   return Math.min(o.maxRestMs, Math.max(o.minRestMs, adaptive));
 }
 
+/**
+ * A phrase's identity comes from its content, not from a counter.
+ *
+ * Segmentation re-runs constantly — every time the UI redraws, every time a
+ * note arrives — and a fresh random id each pass would mean nothing could hold
+ * a reference to an idea. Deriving the id from where the phrase sits in the
+ * stream makes "that phrase" a stable handle for as long as it is still that
+ * phrase.
+ */
+export function phraseId(notes: NoteEvent[]): string {
+  const first = notes[0];
+  const last = notes[notes.length - 1];
+  if (!first || !last) return 'phr_empty';
+  return `phr_${Math.round(first.startMs)}_${Math.round(last.startMs + last.durationMs)}_${notes.length}`;
+}
+
 function toPhrase(notes: NoteEvent[]): Phrase {
   const first = notes[0]!;
   const last = notes[notes.length - 1]!;
   return {
-    id: makeId('phr'),
+    id: phraseId(notes),
     notes,
     startMs: first.startMs,
     endMs: last.startMs + last.durationMs,

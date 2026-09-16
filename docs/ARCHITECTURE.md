@@ -31,6 +31,60 @@ signal processing pushed to a single edge.
 `session/` is the only module that knows about all the others. Everything below
 it is independently usable and independently tested.
 
+The browser app sits on top and holds no musical logic of its own:
+
+```
+web/audio/     microphone capture, playback, WAV encoding, the clip store
+web/ui/        DOM helpers and shared renderers (tab, fretboard, explanations)
+web/views/     one module per screen
+web/app.ts     owns the session, routes between views
+```
+
+## Three threads
+
+Detection costs about a fifth of a core at a 512-sample hop, measured on a fast
+machine — enough to make an interface stutter if it shared a thread with
+rendering. So the work is split:
+
+```
+audio thread   capture-worklet.js   copies samples, posts 2048-frame chunks
+main thread    app.ts               retains audio, renders, handles results
+worker         detector.worker.ts   FrameStreamer + NoteTracker → NoteEvents
+```
+
+The worklet does nothing but copy, because the audio thread must never miss a
+deadline. The main thread writes each chunk into the retention ring — cheap —
+and transfers it to the worker, which posts back finished notes. The session is
+constructed with `audio.detect: false` so it retains audio without duplicating
+the detection already happening off-thread.
+
+## No bundler
+
+Node can strip TypeScript types itself (`node:module`'s `stripTypeScriptTypes`),
+so `scripts/build.mjs` is about sixty lines: blank the types, rewrite `./x.ts`
+specifiers to `./x.js`, mirror the tree into `dist/`. Stripping preserves source
+positions, so line numbers in the emitted JavaScript still match the TypeScript.
+The project keeps its zero-dependency property, and there is no toolchain to
+keep up to date.
+
+`dist/` mirrors the repository root, so every relative import resolves to the
+same place it did in source. The dev server redirects `/` to `/web/index.html`
+rather than rewriting the path internally — a rewrite would leave the browser
+resolving the page's relative URLs against the wrong directory.
+
+## Where state lives in the browser
+
+| What | Where | Survives reload |
+|---|---|---|
+| Recent notes | `RollingMemory`, one minute | No, by design |
+| Recent audio | `AudioRingBuffer`, one minute | No, by design |
+| Riffs and versions | `localStorage` | Yes |
+| Saved recordings | IndexedDB (`ClipStore`) | Yes |
+
+The top two forget continuously and the bottom two are only ever written when
+the player saves something. That split is the whole privacy story, and it is
+enforced by which object holds what rather than by a policy.
+
 ## Why these boundaries
 
 **Audio is quarantined.** `audio/` is the only place that touches `Float32Array`

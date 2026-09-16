@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { RiffLibrary, versionLabel } from '../src/library/riffLibrary.ts';
 import { InMemoryRiffStore } from '../src/library/store.ts';
 import { JsonFileRiffStore } from '../src/library/fileStore.ts';
+import { LocalStorageRiffStore } from '../src/library/localStorageStore.ts';
+import type { StorageLike } from '../src/library/localStorageStore.ts';
 import { transpose } from '../src/phrase/edit.ts';
 import { midiToName } from '../src/music/notes.ts';
 import { seq } from './helpers.ts';
@@ -236,5 +238,69 @@ describe('persistence', () => {
     await library.deleteRiff(a.id);
     assert.equal((await library.listRiffs()).length, 1);
     assert.equal(await library.getRiff(a.id), null);
+  });
+});
+
+describe('browser storage', () => {
+  /** A stand-in for window.localStorage, so this runs anywhere. */
+  function fakeStorage(): StorageLike & { fail: boolean } {
+    const entries = new Map<string, string>();
+    return {
+      fail: false,
+      getItem: (key) => entries.get(key) ?? null,
+      setItem(key, value) {
+        if (this.fail) throw new Error('QuotaExceededError');
+        entries.set(key, value);
+      },
+      removeItem: (key) => { entries.delete(key); },
+    };
+  }
+
+  test('a library survives the tab being closed', async () => {
+    const storage = fakeStorage();
+    const first = new RiffLibrary(new LocalStorageRiffStore(storage));
+    const riff = await first.saveRiff(seq(RIFF), { name: 'Late Night Thing' });
+    await first.addVersion(riff.id, seq(VARIATION), { comment: 'darker ending' });
+
+    const reopened = new RiffLibrary(new LocalStorageRiffStore(storage));
+    const riffs = await reopened.listRiffs();
+    assert.equal(riffs.length, 1);
+    assert.equal(riffs[0]!.versions.length, 2);
+    assert.deepEqual(names(riffs[0]!.versions[0]!.notes), RIFF);
+  });
+
+  test('starts empty rather than throwing on corrupt storage', async () => {
+    const storage = fakeStorage();
+    storage.setItem('guitar-ai-coach.library.v1', '{not json');
+    const library = new RiffLibrary(new LocalStorageRiffStore(storage));
+    assert.deepEqual(await library.listRiffs(), []);
+  });
+
+  test('explains itself when storage is full', async () => {
+    const storage = fakeStorage();
+    const library = new RiffLibrary(new LocalStorageRiffStore(storage));
+    storage.fail = true;
+    await assert.rejects(() => library.saveRiff(seq(RIFF)), /browser storage/i);
+  });
+
+  test('exports and re-imports without duplicating riffs', async () => {
+    const storage = fakeStorage();
+    const store = new LocalStorageRiffStore(storage);
+    const library = new RiffLibrary(store);
+    await library.saveRiff(seq(RIFF), { name: 'Late Night Thing' });
+    const exported = store.export();
+
+    const elsewhere = new LocalStorageRiffStore(fakeStorage());
+    assert.deepEqual(elsewhere.import(exported), { added: 1, skipped: 0 });
+    assert.deepEqual(elsewhere.import(exported), { added: 0, skipped: 1 });
+    assert.equal((await elsewhere.listRiffs()).length, 1);
+  });
+
+  test('two keys keep two separate libraries', async () => {
+    const storage = fakeStorage();
+    const mine = new RiffLibrary(new LocalStorageRiffStore(storage, 'mine'));
+    const yours = new RiffLibrary(new LocalStorageRiffStore(storage, 'yours'));
+    await mine.saveRiff(seq(RIFF), { name: 'Mine' });
+    assert.deepEqual(await yours.listRiffs(), []);
   });
 });

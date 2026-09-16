@@ -14,7 +14,11 @@ import { timeScale } from '../phrase/edit.ts';
 import { timingSteadiness } from '../music/rhythm.ts';
 
 export interface PracticeResult {
-  /** Fraction of the reference notes played correctly, 0..1. */
+  /**
+   * How much of the attempt and the riff line up, 0..1. Measured against
+   * whichever is longer, so playing the right notes buried in a pile of wrong
+   * ones does not read as a perfect run.
+   */
   accuracy: number;
   /** >1 means the attempt was faster than the reference. */
   tempoRatio: number;
@@ -64,7 +68,8 @@ export function practiceAttempt(
   const requiredAccuracy = options.requiredAccuracy ?? 1;
   const tolerance = options.tempoTolerance ?? 0.12;
   const diff = diffTakes(reference, attempt);
-  const accuracy = reference.length === 0 ? 0 : diff.keptCount / reference.length;
+  const compared = Math.max(reference.length, attempt.length);
+  const accuracy = compared === 0 ? 0 : diff.keptCount / compared;
   const openingRun = countOpeningRun(diff.changes);
 
   const firstMistake = diff.changes.find((c) => c.kind !== 'kept');

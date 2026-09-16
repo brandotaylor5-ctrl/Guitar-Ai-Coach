@@ -41,12 +41,37 @@ through the actual pipeline.
 ## Try it
 
 Requires **Node 22.6+** (it strips TypeScript natively, so there is no build
-step and no dependencies to install).
+step to configure and nothing to install).
 
 ```bash
-npm run demo    # the whole vision, executed end to end
-npm test        # 166 tests, no network and no audio hardware needed
+npm start       # build and serve the app → http://localhost:4173
+npm run demo    # the whole vision in the terminal, from synthesised audio
+npm test        # 183 tests, no network and no audio hardware needed
 ```
+
+`npm start` opens the browser app: plug in, press **Start listening**, play for
+a while, then press **What did I just play?**
+
+### In the browser
+
+- **Session** — a live note readout, the ideas it has picked out drawn on a
+  minute-long timeline, and the one button that matters. Click any idea on the
+  timeline to ask about that one instead of the last thing you played.
+- **Riff Library** — your riffs, each with its version tree, tab, fretboard
+  diagram, original recording, and a plain-language read of what it is.
+- **Practice** — pick a version, hear it, play it back, get coached. Slow it to
+  75% or 50% without the pitch moving.
+- **Fingerprint** — what your habits look like once there are enough ideas to
+  say anything honest.
+
+Pitch detection runs in a Web Worker and capture in an AudioWorklet, so the
+interface stays responsive while the audio thread never misses a deadline.
+Riffs persist in local storage and saved recordings in IndexedDB — on your
+machine, in your browser. Nothing is uploaded, because there is no server to
+upload it to.
+
+Needs a recent Chrome, Edge, Firefox or Safari (AudioWorklet and module
+workers). Microphone access requires `localhost` or HTTPS.
 
 ## What it does
 
@@ -94,6 +119,9 @@ and the tests:
 ## Layout
 
 ```
+web/              the browser app: capture, playback, and the interface.
+scripts/          a 60-line build (Node strips the types) and a static server.
+
 src/audio/        samples → discrete notes. The only DSP in the project.
 src/music/        notes, scales, rhythm, fretboard reasoning.
 src/phrase/       carving notes into ideas; comparing, diffing, grouping them.
@@ -105,3 +133,6 @@ src/practice/     playing your riff back to you and coaching the attempt.
 src/fingerprint/  what your habits look like over time.
 src/session/      the thing that behaves like another musician in the room.
 ```
+
+`src/` has no browser dependencies and `web/` holds no musical logic — which is
+why the same core runs under `node --test` with no audio hardware at all.

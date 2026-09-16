@@ -39,6 +39,7 @@ export * from './memory/audioRing.ts';
 
 export * from './library/store.ts';
 export * from './library/riffLibrary.ts';
+export * from './library/localStorageStore.ts';
 
 export * from './explain/explain.ts';
 export * from './create/suggest.ts';

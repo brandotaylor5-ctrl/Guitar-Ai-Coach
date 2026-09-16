@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { SketchbookSession } from '../src/session/session.ts';
+import { SketchbookSession, describeAgo } from '../src/session/session.ts';
 import { RiffLibrary } from '../src/library/riffLibrary.ts';
 import { midiToName } from '../src/music/notes.ts';
 import { pluck, seqAt, synthesize } from './helpers.ts';
@@ -202,5 +202,109 @@ describe('saving', () => {
     session.clear();
     assert.equal(session.memory.size, 0);
     assert.equal(session.audioRing!.durationMs, 0);
+  });
+});
+
+describe('detection running off-thread', () => {
+  test('keeps audio for saving without detecting anything itself', async () => {
+    const session = new SketchbookSession({
+      audio: { sampleRate: 44100, retainAudio: true, detect: false },
+    });
+    const audio = synthesize(pluck(RIFF));
+    for (let offset = 0; offset < audio.length; offset += 512) {
+      assert.deepEqual(
+        session.feedAudio(audio.subarray(offset, Math.min(offset + 512, audio.length))),
+        [],
+        'a session that does not detect must not return notes',
+      );
+    }
+    assert.equal(session.memory.size, 0);
+    assert.ok(session.audioRing!.durationMs > 1000, 'but it should still be keeping the audio');
+  });
+
+  test('the session clock still advances from the audio it was fed', () => {
+    const session = new SketchbookSession({ audio: { sampleRate: 44100, detect: false } });
+    session.feedAudio(new Float32Array(44100));
+    assert.ok(Math.abs(session.currentTimeMs - 1000) < 1e-6);
+  });
+
+  test('notes detected elsewhere still produce the full recall', async () => {
+    const session = new SketchbookSession({
+      audio: { sampleRate: 44100, retainAudio: true, detect: false },
+    });
+    // What a worker would post back after running detection itself.
+    session.addNotes(seqAt(RIFF, 0, 300));
+    session.addNotes(seqAt(VARIATION, 3000, 300));
+    session.addNotes(seqAt(RIFF, 6000, 300, 0.99));
+    session.memory.tick(8000);
+
+    const recall = (await session.whatDidIJustPlay())!;
+    assert.equal(recall.takes.length, 3);
+    assert.match(recall.say, /You played a variation of it three times/);
+  });
+});
+
+describe('recalling an older idea', () => {
+  test('answers about a phrase further back, not just the last one', async () => {
+    const session = new SketchbookSession();
+    playVisionSession(session);
+
+    const phrases = session.phrases();
+    const detour = phrases[1]!;
+    assert.deepEqual(names(detour.notes), ['C3', 'D3', 'E3', 'G3']);
+
+    const recall = (await session.recallPhrase(detour.id))!;
+    assert.equal(recall.phrase.id, detour.id);
+    assert.equal(recall.takes.length, 1, 'the detour was only played once');
+    assert.ok(!/variation of it/.test(recall.say));
+  });
+
+  test('finds every take when asked about an early one', async () => {
+    const session = new SketchbookSession();
+    playVisionSession(session);
+    const first = session.phrases()[0]!;
+    const recall = (await session.recallPhrase(first.id))!;
+    assert.equal(recall.takes.length, 3);
+  });
+
+  test('has nothing to say about a phrase that is not there', async () => {
+    const session = new SketchbookSession();
+    playVisionSession(session);
+    assert.equal(await session.recallPhrase('nope'), null);
+  });
+});
+
+describe('asking while still playing', () => {
+  test('returns the last finished idea, not the fragment in progress', async () => {
+    const session = new SketchbookSession();
+    session.addNotes(seqAt(RIFF, 0, 300));
+    // The player has started the riff again and is three notes in.
+    session.addNotes(seqAt(['E2', 'G2', 'A2'], 3000, 300));
+    session.memory.tick(3700);
+
+    const recall = (await session.whatDidIJustPlay())!;
+    assert.deepEqual(
+      names(recall.phrase.notes), RIFF,
+      'a phrase still being played is not what "what did I just play" means',
+    );
+  });
+
+  test('falls back to the phrase in progress when nothing has settled', async () => {
+    const session = new SketchbookSession();
+    session.addNotes(seqAt(['E2', 'G2', 'A2', 'B2'], 0, 300));
+    session.memory.tick(1200);
+    const recall = (await session.whatDidIJustPlay())!;
+    assert.deepEqual(names(recall.phrase.notes), ['E2', 'G2', 'A2', 'B2']);
+  });
+
+  test('never says "1 seconds ago"', async () => {
+    const session = new SketchbookSession();
+    session.addNotes(seqAt(RIFF, 0, 300));
+    session.memory.tick(2400);
+    const recall = (await session.whatDidIJustPlay())!;
+    assert.ok(!/\b1 seconds\b/.test(recall.say), recall.say);
+    assert.equal(describeAgo(0), 'a moment ago');
+    assert.equal(describeAgo(1), 'a moment ago');
+    assert.equal(describeAgo(12), 'about 12 seconds ago');
   });
 });

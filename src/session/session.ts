@@ -13,6 +13,7 @@ import type {
   MotifGroup, NoteEvent, Phrase, PhraseAnalysis, RecognitionMatch, Riff,
 } from '../types.ts';
 import { RollingMemory } from '../memory/rollingMemory.ts';
+import { restThreshold } from '../phrase/segment.ts';
 import { AudioRingBuffer } from '../memory/audioRing.ts';
 import { NoteTracker } from '../audio/noteTracker.ts';
 import type { Frame } from '../audio/noteTracker.ts';
@@ -39,6 +40,13 @@ export interface SessionOptions {
     hopSize?: number;
     /** Keep recent audio so a saved riff can carry its recording. */
     retainAudio?: boolean;
+    /**
+     * Whether this session runs pitch detection itself. Set false when
+     * detection happens off the main thread — in a Web Worker, say — and the
+     * notes arrive through `addNotes` instead. `feedAudio` then only keeps
+     * audio for saving, which is cheap enough to do while the UI renders.
+     */
+    detect?: boolean;
   };
 }
 
@@ -71,6 +79,11 @@ function secondsBetween(fromMs: number, toMs: number): number {
   return Math.max(0, Math.round((toMs - fromMs) / 1000));
 }
 
+/** "about 12 seconds ago", but without the "1 seconds" problem. */
+export function describeAgo(seconds: number): string {
+  return seconds <= 1 ? 'a moment ago' : `about ${seconds} seconds ago`;
+}
+
 function ordinalWord(n: number): string {
   return ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'][n] ?? `${n + 1}th`;
 }
@@ -84,8 +97,10 @@ export class SketchbookSession {
   readonly library: RiffLibrary;
   readonly tuning: Tuning;
   readonly audioRing: AudioRingBuffer | null;
+  private readonly audioSampleRate: number;
   private readonly tracker: NoteTracker;
   private readonly streamer: FrameStreamer | null;
+  private retainedMs = 0;
   private listeners: Array<(note: NoteEvent) => void> = [];
   /** Clips the player chose to keep, by `audioRef`. Nothing else is retained. */
   readonly savedClips = new Map<string, Float32Array>();
@@ -95,7 +110,9 @@ export class SketchbookSession {
     this.library = options.library ?? new RiffLibrary();
     this.tuning = options.tuning ?? STANDARD_TUNING;
     this.tracker = new NoteTracker();
-    this.streamer = options.audio ? new FrameStreamer(options.audio) : null;
+    const detects = options.audio ? options.audio.detect !== false : false;
+    this.streamer = options.audio && detects ? new FrameStreamer(options.audio) : null;
+    this.audioSampleRate = options.audio?.sampleRate ?? 0;
     this.audioRing = options.audio?.retainAudio
       ? new AudioRingBuffer({ sampleRate: options.audio.sampleRate, windowMs: options.memoryWindowMs ?? 60_000 })
       : null;
@@ -126,10 +143,15 @@ export class SketchbookSession {
     return this.emit(this.tracker.process(frame));
   }
 
-  /** Feed raw audio. Requires `audio` options. */
+  /**
+   * Feed raw audio. Requires `audio` options. Returns the notes that completed
+   * on this chunk, or nothing when detection is running elsewhere.
+   */
   feedAudio(chunk: Float32Array): NoteEvent[] {
-    if (!this.streamer) throw new Error('Session was not constructed with audio options');
+    if (!this.audioSampleRate) throw new Error('Session was not constructed with audio options');
     if (this.audioRing) this.audioRing.write(chunk);
+    this.retainedMs += (chunk.length / this.audioSampleRate) * 1000;
+    if (!this.streamer) return [];
     const completed: NoteEvent[] = [];
     for (const frame of this.streamer.push(chunk)) completed.push(...this.feedFrame(frame));
     return completed;
@@ -141,7 +163,7 @@ export class SketchbookSession {
   }
 
   get currentTimeMs(): number {
-    return Math.max(this.memory.currentTimeMs, this.streamer?.currentTimeMs ?? 0);
+    return Math.max(this.memory.currentTimeMs, this.streamer?.currentTimeMs ?? 0, this.retainedMs);
   }
 
   // --- Asking -------------------------------------------------------------
@@ -169,9 +191,40 @@ export class SketchbookSession {
    */
   async whatDidIJustPlay(): Promise<Recall | null> {
     const phrases = this.phrases();
-    const phrase = phrases[phrases.length - 1];
-    if (!phrase) return null;
+    const phrase = this.lastSettledPhrase(phrases);
+    return phrase ? this.buildRecall(phrase, phrases) : null;
+  }
 
+  /**
+   * The last idea the player actually *finished*.
+   *
+   * Asking this question while still playing used to hand back whatever notes
+   * had arrived so far — a three-note fragment of a riff still in progress.
+   * A phrase counts as finished once a breath's worth of silence has followed
+   * it, using the same threshold that decided where the phrase ended. If
+   * nothing has settled yet, the most recent phrase is still the best answer.
+   */
+  private lastSettledPhrase(phrases: Phrase[]): Phrase | undefined {
+    if (phrases.length === 0) return undefined;
+    const breathMs = restThreshold(this.memory.all());
+    const now = this.currentTimeMs;
+    for (let i = phrases.length - 1; i >= 0; i--) {
+      if (now - phrases[i]!.endMs >= breathMs) return phrases[i];
+    }
+    return phrases[phrases.length - 1];
+  }
+
+  /**
+   * The same question asked about an older idea — for when the player points at
+   * something further back rather than meaning the last thing they played.
+   */
+  async recallPhrase(phraseId: string): Promise<Recall | null> {
+    const phrases = this.phrases();
+    const phrase = phrases.find((p) => p.id === phraseId);
+    return phrase ? this.buildRecall(phrase, phrases) : null;
+  }
+
+  private async buildRecall(phrase: Phrase, phrases: Phrase[]): Promise<Recall> {
     const now = this.currentTimeMs;
     const motif = motifContaining(groupMotifs(phrases), phrase.id);
     const takePhrases = motif ? motif.takes : [phrase];
@@ -205,7 +258,7 @@ export class SketchbookSession {
     const first = takes[0]!;
     const lines: string[] = [];
 
-    lines.push(`I think you mean this phrase from about ${first.secondsAgo} seconds ago:`);
+    lines.push(`I think you mean this phrase from ${describeAgo(first.secondsAgo)}:`);
     lines.push('');
     lines.push(`  ${describeNotes(first.phrase.notes)}`);
     lines.push('');
@@ -289,5 +342,6 @@ export class SketchbookSession {
     this.tracker.reset();
     this.streamer?.reset();
     this.audioRing?.clear();
+    this.retainedMs = 0;
   }
 }

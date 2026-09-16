@@ -81,6 +81,16 @@ describe('segmentation', () => {
     assert.deepEqual(names(segmentPhrases(shuffled)[0]!.notes), RIFF);
   });
 
+  test('gives a phrase the same id every time it is segmented', () => {
+    // Load-bearing: the UI re-segments on every redraw and must still be able
+    // to point at "that phrase" afterwards.
+    const notes = [...seqAt(RIFF, 0, 300), ...seqAt(['C3', 'D3', 'E3', 'G3'], 3200, 300)];
+    const first = segmentPhrases(notes).map((p) => p.id);
+    const again = segmentPhrases(notes).map((p) => p.id);
+    assert.deepEqual(first, again);
+    assert.equal(new Set(first).size, first.length, 'ids must still be distinct');
+  });
+
   test('measures the silence between notes, never below zero', () => {
     for (const rest of restsBetween(seq(RIFF, 300))) assert.ok(rest >= 0);
   });

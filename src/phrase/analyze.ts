@@ -7,9 +7,9 @@ import { estimateRhythm } from '../music/rhythm.ts';
 import { inferFingering, renderTab, STANDARD_TUNING } from '../music/fretboard.ts';
 import type { FingeringOptions } from '../music/fretboard.ts';
 import { takeQuality } from './quality.ts';
-import { makeId } from '../util/id.ts';
+import { phraseId } from './segment.ts';
 
-export function notesToPhrase(notes: NoteEvent[], id = makeId('phr')): Phrase {
+export function notesToPhrase(notes: NoteEvent[], id = phraseId(notes)): Phrase {
   const last = notes[notes.length - 1];
   return {
     id,

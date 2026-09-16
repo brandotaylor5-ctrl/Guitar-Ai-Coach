@@ -195,6 +195,17 @@ describe('practice mode', () => {
     assert.ok(!result.feedback.some((f) => /faster|slower/.test(f)));
   });
 
+  test('does not call a run perfect when it is buried in extra notes', () => {
+    const noisy = seq([...RIFF, 'C3', 'D3', 'E3', 'G3', 'A3', 'C4'], 400);
+    const result = practiceAttempt(reference, noisy);
+    assert.ok(result.accuracy < 0.6, `right notes plus six wrong ones scored ${result.accuracy}`);
+    assert.ok(!result.nailed);
+  });
+
+  test('a note-perfect run is still 100%', () => {
+    assert.equal(practiceAttempt(reference, seq(RIFF, 400)).accuracy, 1);
+  });
+
   test('handles hearing nothing at all', () => {
     const result = practiceAttempt(reference, []);
     assert.equal(result.accuracy, 0);

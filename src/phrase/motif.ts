@@ -7,7 +7,7 @@
  */
 
 import type { MotifGroup, NoteEvent, Phrase } from '../types.ts';
-import { makeId } from '../util/id.ts';
+import { phraseId } from './segment.ts';
 import { comparePhrases } from './similarity.ts';
 import { takeQuality } from './quality.ts';
 
@@ -50,7 +50,9 @@ function buildGroup(takes: Phrase[]): MotifGroup {
     }
   }
   return {
-    id: makeId('motif'),
+    // Named after the take that started it, so the group keeps its identity
+    // across the re-grouping that happens on every redraw.
+    id: `motif_${ordered[0]!.id}`,
     takes: ordered,
     representative,
     cleanest,
@@ -97,7 +99,7 @@ export function motifContaining(groups: MotifGroup[], phraseId: string): MotifGr
 /** Convenience for callers holding raw notes rather than phrases. */
 export function sameIdea(a: NoteEvent[], b: NoteEvent[], threshold = DEFAULTS.threshold): boolean {
   const phrase = (notes: NoteEvent[]): Phrase => ({
-    id: makeId('tmp'),
+    id: phraseId(notes),
     notes,
     startMs: notes[0]?.startMs ?? 0,
     endMs: notes.length ? notes[notes.length - 1]!.startMs + notes[notes.length - 1]!.durationMs : 0,
