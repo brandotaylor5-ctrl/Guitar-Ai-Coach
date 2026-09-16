@@ -40,6 +40,10 @@ web/views/     one module per screen
 web/app.ts     owns the session, routes between views
 ```
 
+Views declare `onNotes` only if they show live playing. The library and song
+screens deliberately do not: rebuilding a screen someone is working in every
+time a note arrives pulls the ground out from under them mid-click.
+
 ## Three threads
 
 Detection costs about a fifth of a core at a 512-sample hop, measured on a fast
@@ -64,8 +68,9 @@ Node can strip TypeScript types itself (`node:module`'s `stripTypeScriptTypes`),
 so `scripts/build.mjs` is about sixty lines: blank the types, rewrite `./x.ts`
 specifiers to `./x.js`, mirror the tree into `dist/`. Stripping preserves source
 positions, so line numbers in the emitted JavaScript still match the TypeScript.
-The project keeps its zero-dependency property, and there is no toolchain to
-keep up to date.
+The project ships no runtime dependencies, and there is no toolchain to keep up
+to date. TypeScript is a dev dependency, used only by `npm run typecheck`;
+nothing else needs it.
 
 `dist/` mirrors the repository root, so every relative import resolves to the
 same place it did in source. The dev server redirects `/` to `/web/index.html`
@@ -122,6 +127,7 @@ player just played, and clamped to the range of the instrument they are holding.
 | Is this the same idea | Interval + rhythm + contour similarity over a Needleman-Wunsch alignment | `phrase/similarity.ts` |
 | What changed | The same aligner, run on absolute pitch so the answer names real notes | `phrase/diff.ts` |
 | Which take was cleanest | Detector confidence, timing steadiness, articulation | `phrase/quality.ts` |
+| Slowing audio down | WSOLA: overlapping windows relaid at a new spacing, each nudged to the best-matching nearby position | `audio/timeStretch.ts` |
 
 One aligner (`phrase/align.ts`) serves similarity, diffing and practice
 feedback. Nearly every question this product answers reduces to lining two
@@ -138,9 +144,9 @@ without meaning to. Absolute pitch level is reported separately
 
 ## Conventions
 
-- **Zero runtime dependencies.** Node 22+ strips TypeScript natively, so there
-  is no build step and no `node_modules`. `npm test` runs the `.ts` files
-  directly.
+- **No runtime dependencies.** Node 22+ strips TypeScript natively, so `npm
+  test` runs the `.ts` files directly and the browser build needs no bundler.
+  TypeScript itself is a dev dependency for `npm run typecheck`.
 - **Erasable syntax only.** No `enum`, no `namespace`, no parameter properties —
   they cannot be stripped without a compiler. `tsconfig.json` enforces this with
   `erasableSyntaxOnly`.

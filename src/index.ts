@@ -24,6 +24,7 @@ export * from './music/rhythm.ts';
 export * from './audio/pitchDetect.ts';
 export * from './audio/noteTracker.ts';
 export * from './audio/stream.ts';
+export * from './audio/timeStretch.ts';
 
 export * from './phrase/align.ts';
 export * from './phrase/segment.ts';

@@ -101,6 +101,8 @@ export class SketchbookSession {
   private readonly tracker: NoteTracker;
   private readonly streamer: FrameStreamer | null;
   private retainedMs = 0;
+  /** Riffs already mentioned this session: say it once, then let it go. */
+  private readonly announced = new Set<string>();
   private listeners: Array<(note: NoteEvent) => void> = [];
   /** Clips the player chose to keep, by `audioRef`. Nothing else is retained. */
   readonly savedClips = new Map<string, Float32Array>();
@@ -175,6 +177,31 @@ export class SketchbookSession {
 
   motifs(): MotifGroup[] {
     return groupMotifs(this.phrases());
+  }
+
+  /**
+   * "You just played something very similar to Riff 14 from three weeks ago."
+   *
+   * Checks the last finished idea against the library and reports anything the
+   * player has not already been told about this session. Interrupting someone
+   * mid-flow is the fastest way to make a listening app unbearable, so the bar
+   * is deliberately higher than for an answer they asked for, an unsettled
+   * phrase is never matched, and each riff is only ever mentioned once.
+   */
+  async newEchoes(threshold = 0.88): Promise<RecognitionMatch[]> {
+    const phrases = this.phrases();
+    const phrase = this.lastSettledPhrase(phrases);
+    if (!phrase) return [];
+
+    const matches = await this.library.findSimilar(phrase.notes, { threshold });
+    const fresh = matches.filter((match) => !this.announced.has(match.riffId));
+    for (const match of fresh) this.announced.add(match.riffId);
+    return fresh;
+  }
+
+  /** Let a riff be mentioned again — after the player saves a new one, say. */
+  forgetAnnouncement(riffId: string): void {
+    this.announced.delete(riffId);
   }
 
   /** Instant Recall: the structured pitch data for the last `seconds`. */
@@ -343,5 +370,6 @@ export class SketchbookSession {
     this.streamer?.reset();
     this.audioRing?.clear();
     this.retainedMs = 0;
+    this.announced.clear();
   }
 }

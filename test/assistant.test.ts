@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { analyzeNotes } from '../src/phrase/analyze.ts';
-import { describeFretLocation, explainMood, explainPhrase, renderExplanation } from '../src/explain/explain.ts';
+import { describeFretLocation, explainMood, explainPhrase, explainRelation, renderExplanation } from '../src/explain/explain.ts';
 import { scaleNotesInRange, suggestAnswer, suggestChords, suggestEndings } from '../src/create/suggest.ts';
 import { buildPracticePlan, practiceAttempt } from '../src/practice/practice.ts';
 import { buildFingerprint, describeFingerprint, renderMelodicShape, suggestDeparture } from '../src/fingerprint/fingerprint.ts';
@@ -280,5 +280,62 @@ describe('musical fingerprint', () => {
     const fingerprint = buildFingerprint([seq(RIFF), seq(RIFF), seq(RIFF), seq(RIFF)]);
     assert.equal(fingerprint.register.lowest, nameToMidi('E2'));
     assert.equal(fingerprint.register.highest, nameToMidi('B2'));
+  });
+});
+
+describe('explaining why two riffs belong together', () => {
+  test('names the notes two related riffs are built from', () => {
+    const relation = explainRelation(seq(RIFF), seq(['E2', 'G2', 'B2', 'E3', 'B2', 'G2']))!;
+    assert.ok(relation);
+    assert.match(relation.plain.join(' '), /same handful of notes/i);
+    assert.match(relation.plain.join(' '), /\bE\b/);
+  });
+
+  test('says plainly when two riffs sit on different ground', () => {
+    const relation = explainRelation(seq(RIFF), seq(['C3', 'E3', 'G3', 'C4', 'G3', 'E3']))!;
+    assert.match(relation.plain.join(' '), /different ground/i);
+  });
+
+  test('keeps theory out of the plain language here too', () => {
+    const relation = explainRelation(seq(RIFF), seq(['A2', 'C3', 'E3', 'A3']))!;
+    for (const line of relation.plain) {
+      for (const term of JARGON) {
+        assert.ok(!term.test(line), `jargon "${term}" leaked into: "${line}"`);
+      }
+    }
+  });
+
+  test('has nothing to say about nothing', () => {
+    assert.equal(explainRelation([], seq(RIFF)), null);
+    assert.equal(explainRelation(seq(RIFF), []), null);
+  });
+});
+
+describe('relation copy does not contradict itself', () => {
+  test('does not call two riffs the same idea when they share almost nothing', () => {
+    // Same arch, different key: similarity is transposition-blind by design.
+    const relation = explainRelation(seq(RIFF), seq(['A2', 'C3', 'D3', 'C3', 'A2']))!;
+    const text = relation.plain.join(' ');
+    const saysBarelyOverlaps = /only really share|different ground/i.test(text);
+    const saysSameIdea = /nearly the same idea/i.test(text);
+    assert.ok(!(saysBarelyOverlaps && saysSameIdea), `contradictory: "${text}"`);
+    assert.match(text, /shape is the same, just started somewhere else/i);
+  });
+
+  test('does call them the same idea when they really are', () => {
+    // A riff and its own one-note variation, which rest on different notes but
+    // use the same material.
+    const relation = explainRelation(seq(RIFF), seq(['E2', 'G2', 'A2', 'C3', 'B2', 'G2']))!;
+    assert.match(relation.plain.join(' '), /nearly the same idea/i);
+    assert.ok(
+      !/different ground/i.test(relation.plain.join(' ')),
+      'a riff and its own variation are not on different ground',
+    );
+  });
+
+  test('the headline says something rather than listing two letters', () => {
+    const relation = explainRelation(seq(RIFF), seq(['A2', 'C3', 'D3', 'C3', 'A2']))!;
+    assert.ok(relation.headline.length > 12, relation.headline);
+    assert.match(relation.headline, /same shape/i);
   });
 });

@@ -6,7 +6,7 @@ import type { SketchbookSession } from '../../src/session/session.ts';
 import type { RiffPlayer } from '../audio/playback.ts';
 import type { ClipStore } from '../audio/clipStore.ts';
 
-export type ViewName = 'session' | 'library' | 'fingerprint';
+export type ViewName = 'session' | 'library' | 'songs' | 'fingerprint';
 
 export interface AppContext {
   session: SketchbookSession;

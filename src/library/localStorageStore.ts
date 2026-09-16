@@ -97,28 +97,4 @@ export class LocalStorageRiffStore implements RiffStore {
     data.songs = data.songs.filter((s) => s.id !== id);
     this.write(data);
   }
-
-  /** Everything, as JSON. The player's ideas should never be locked in. */
-  export(): string {
-    return JSON.stringify(this.read(), null, 2);
-  }
-
-  /** Merge an exported library in, keeping both sides where ids collide. */
-  import(json: string): { added: number; skipped: number } {
-    const incoming = JSON.parse(json) as Partial<LibraryData>;
-    const data = this.read();
-    const existing = new Set(data.riffs.map((r) => r.id));
-    let added = 0;
-    let skipped = 0;
-    for (const riff of incoming.riffs ?? []) {
-      if (existing.has(riff.id)) { skipped++; continue; }
-      data.riffs.push(riff);
-      added++;
-    }
-    for (const song of incoming.songs ?? []) {
-      if (!data.songs.some((s) => s.id === song.id)) data.songs.push(song);
-    }
-    this.write(data);
-    return { added, skipped };
-  }
 }

@@ -8,9 +8,9 @@
  */
 
 import type { Frame } from '../../src/audio/noteTracker.ts';
-import type { Phrase } from '../../src/types.ts';
+import type { Phrase, RecognitionMatch } from '../../src/types.ts';
 import { frequencyToMidi, midiToName } from '../../src/music/notes.ts';
-import { h, clear, replace } from '../ui/dom.ts';
+import { h, clear, relativeTime, replace } from '../ui/dom.ts';
 import { button, empty } from '../ui/render.ts';
 import { recallPanel } from './recall.ts';
 import type { AppContext, View } from './context.ts';
@@ -28,6 +28,7 @@ export function sessionView(context: AppContext): View {
   const levelFill = h('div', { class: 'level-fill' });
   const timeline = h('div', { class: 'timeline' });
   const timelineNote = h('p', { class: 'timeline-note muted' });
+  const echoHost = h('div', { class: 'echo-host' });
   const noteStream = h('div', { class: 'note-stream' });
 
   const listenButton = button(
@@ -63,6 +64,7 @@ export function sessionView(context: AppContext): View {
       h('p', { class: 'muted hint' },
         'Nothing is recorded. The last minute of what you play is held in memory ' +
         'and forgotten unless you save it.'),
+      echoHost,
       noteStream,
     ),
     h('section', { class: 'panel' },
@@ -133,6 +135,27 @@ export function sessionView(context: AppContext): View {
     }
   }
 
+  /**
+   * Shown, never spoken over: a quiet line the player can take or dismiss.
+   * The session only ever offers each riff once, so this cannot pile up.
+   */
+  function showEcho(match: RecognitionMatch): void {
+    const notice = h('div', { class: 'echo' },
+      h('p', {},
+        'That sounded a lot like ',
+        h('strong', { text: match.riffName ?? 'a riff you saved' }),
+        ` from ${relativeTime(match.createdAt)}.`,
+      ),
+      h('div', { class: 'echo-actions' },
+        button('Show me it', () => {
+          context.navigate('library', { riff: match.riffId });
+        }, 'btn-quiet'),
+        button('Not now', () => notice.remove(), 'btn-quiet'),
+      ),
+    );
+    echoHost.appendChild(notice);
+  }
+
   async function showPhrase(phrase: Phrase): Promise<void> {
     const recall = await context.session.recallPhrase(phrase.id);
     if (!recall) {
@@ -155,6 +178,9 @@ export function sessionView(context: AppContext): View {
     if (signature !== lastPhraseSignature) {
       lastPhraseSignature = signature;
       renderTimeline();
+      // A finished idea is the only moment worth checking, and the session
+      // decides whether it is worth mentioning at all.
+      void context.session.newEchoes().then((echoes) => echoes.forEach(showEcho));
     }
   }
 

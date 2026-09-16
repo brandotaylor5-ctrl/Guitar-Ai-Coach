@@ -284,16 +284,19 @@ describe('browser storage', () => {
   });
 
   test('exports and re-imports without duplicating riffs', async () => {
-    const storage = fakeStorage();
-    const store = new LocalStorageRiffStore(storage);
-    const library = new RiffLibrary(store);
-    await library.saveRiff(seq(RIFF), { name: 'Late Night Thing' });
-    const exported = store.export();
+    const library = new RiffLibrary(new LocalStorageRiffStore(fakeStorage()));
+    const riff = await library.saveRiff(seq(RIFF), { name: 'Late Night Thing' });
+    await library.addVersion(riff.id, seq(VARIATION));
+    const exported = await library.export();
 
-    const elsewhere = new LocalStorageRiffStore(fakeStorage());
-    assert.deepEqual(elsewhere.import(exported), { added: 1, skipped: 0 });
-    assert.deepEqual(elsewhere.import(exported), { added: 0, skipped: 1 });
-    assert.equal((await elsewhere.listRiffs()).length, 1);
+    const elsewhere = new RiffLibrary(new LocalStorageRiffStore(fakeStorage()));
+    assert.deepEqual(await elsewhere.import(exported), { riffs: 1, songs: 0, skipped: 0 });
+    assert.deepEqual(await elsewhere.import(exported), { riffs: 0, songs: 0, skipped: 1 });
+
+    const imported = await elsewhere.listRiffs();
+    assert.equal(imported.length, 1);
+    assert.equal(imported[0]!.versions.length, 2, 'every version should come across');
+    assert.deepEqual(names(imported[0]!.versions[0]!.notes), RIFF);
   });
 
   test('two keys keep two separate libraries', async () => {
@@ -302,5 +305,129 @@ describe('browser storage', () => {
     const yours = new RiffLibrary(new LocalStorageRiffStore(storage, 'yours'));
     await mine.saveRiff(seq(RIFF), { name: 'Mine' });
     assert.deepEqual(await yours.listRiffs(), []);
+  });
+});
+
+describe('arranging a song', () => {
+  async function songWith(library: RiffLibrary) {
+    const verse = await library.saveRiff(seq(RIFF), { name: 'Riff 4' });
+    const chorus = await library.saveRiff(seq(VARIATION), { name: 'Riff 9' });
+    const bridge = await library.saveRiff(seq(['C3', 'C3', 'F3', 'A3']), { name: 'Riff 13' });
+    let song = await library.createSong('Song Idea 01');
+    song = await library.addToSong(song.id, 'verse', verse.id);
+    song = await library.addToSong(song.id, 'chorus', chorus.id);
+    song = await library.addToSong(song.id, 'transition', bridge.id);
+    return { song, verse, chorus, bridge };
+  }
+
+  test('sections can be reordered', async () => {
+    const library = new RiffLibrary();
+    const { song } = await songWith(library);
+    const moved = await library.moveSection(song.id, 2, 0);
+    assert.deepEqual(moved.sections.map((s) => s.role), ['transition', 'verse', 'chorus']);
+  });
+
+  test('moving to the end works, and out-of-range is clamped not crashed', async () => {
+    const library = new RiffLibrary();
+    const { song } = await songWith(library);
+    const moved = await library.moveSection(song.id, 0, 99);
+    assert.deepEqual(moved.sections.map((s) => s.role), ['chorus', 'transition', 'verse']);
+    await assert.rejects(() => library.moveSection(song.id, 7, 0));
+  });
+
+  test('a section can be removed or renamed without touching the riff', async () => {
+    const library = new RiffLibrary();
+    const { song, chorus } = await songWith(library);
+    const renamed = await library.setSectionRole(song.id, 1, 'pre-chorus');
+    assert.equal(renamed.sections[1]!.role, 'pre-chorus');
+
+    const removed = await library.removeFromSong(song.id, 1);
+    assert.deepEqual(removed.sections.map((s) => s.role), ['verse', 'transition']);
+    assert.ok(await library.getRiff(chorus.id), 'removing a section must not delete the riff');
+  });
+
+  test('plays the arrangement through in order', async () => {
+    const library = new RiffLibrary();
+    const { song } = await songWith(library);
+    const notes = await library.songNotes(song.id);
+    assert.equal(notes.length, RIFF.length + VARIATION.length + 4);
+    assert.deepEqual(names(notes).slice(0, RIFF.length), RIFF);
+  });
+
+  test('sections are laid end to end in time, not stacked on top of each other', async () => {
+    const library = new RiffLibrary();
+    const { song } = await songWith(library);
+    const notes = await library.songNotes(song.id);
+    for (let i = 1; i < notes.length; i++) {
+      assert.ok(
+        notes[i]!.startMs > notes[i - 1]!.startMs,
+        `note ${i} starts at ${notes[i]!.startMs}, before note ${i - 1} at ${notes[i - 1]!.startMs}`,
+      );
+    }
+  });
+
+  test('a section keeps its own timing within itself', async () => {
+    const library = new RiffLibrary();
+    const { song } = await songWith(library);
+    const notes = await library.songNotes(song.id);
+    const firstGap = notes[1]!.startMs - notes[0]!.startMs;
+    assert.equal(firstGap, 400, 'the riff should still be played at the speed it was written');
+  });
+
+  test('skips a section whose riff has been deleted rather than failing', async () => {
+    const library = new RiffLibrary();
+    const { song, chorus } = await songWith(library);
+    await library.deleteRiff(chorus.id);
+    const notes = await library.songNotes(song.id);
+    assert.equal(notes.length, RIFF.length + 4);
+  });
+
+  test('renaming and deleting a song leaves the riffs alone', async () => {
+    const library = new RiffLibrary();
+    const { song } = await songWith(library);
+    assert.equal((await library.renameSong(song.id, 'The Good One')).name, 'The Good One');
+    await library.deleteSong(song.id);
+    assert.deepEqual(await library.listSongs(), []);
+    assert.equal((await library.listRiffs()).length, 3);
+  });
+});
+
+describe('taking your ideas with you', () => {
+  test('carries songs across as well as riffs', async () => {
+    const library = new RiffLibrary();
+    const riff = await library.saveRiff(seq(RIFF), { name: 'Riff 4' });
+    const song = await library.createSong('Song Idea 01');
+    await library.addToSong(song.id, 'verse', riff.id);
+
+    const elsewhere = new RiffLibrary();
+    assert.deepEqual(await elsewhere.import(await library.export()), { riffs: 1, songs: 1, skipped: 0 });
+    assert.equal((await elsewhere.listSongs())[0]!.sections.length, 1);
+  });
+
+  test('never replaces work with an older copy of itself', async () => {
+    const library = new RiffLibrary();
+    const riff = await library.saveRiff(seq(RIFF), { name: 'Late Night Thing' });
+    const snapshot = await library.export();
+    await library.addVersion(riff.id, seq(VARIATION), { comment: 'newer work' });
+
+    await library.import(snapshot);
+    const after = await library.listRiffs();
+    assert.equal(after.length, 1);
+    assert.equal(after[0]!.versions.length, 2, 'the newer version must survive the import');
+  });
+
+  test('refuses a file that is not a library', async () => {
+    const library = new RiffLibrary();
+    await assert.rejects(() => library.import('{not json'), /not a riff library/i);
+    await assert.rejects(() => library.import('{"hello":true}'), /not a riff library/i);
+  });
+
+  test('skips malformed riffs rather than importing rubbish', async () => {
+    const library = new RiffLibrary();
+    const result = await library.import(JSON.stringify({
+      riffs: [{ id: 'x', versions: [] }, { notes: 'nope' }],
+    }));
+    assert.deepEqual(result, { riffs: 0, songs: 0, skipped: 2 });
+    assert.deepEqual(await library.listRiffs(), []);
   });
 });

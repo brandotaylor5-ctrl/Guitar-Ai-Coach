@@ -23,11 +23,51 @@ import type { AppContext, View } from './context.ts';
 export function libraryView(context: AppContext, params: Record<string, string> = {}): View {
   const list = h('div', { class: 'riff-list' });
   const detail = h('div', { class: 'riff-detail' });
+
+  /** Your ideas should never be locked inside someone else's app. */
+  const fileInput = h('input', {
+    type: 'file', accept: 'application/json,.json', class: 'hidden-file',
+    onChange: async (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0];
+      input.value = '';
+      if (!file) return;
+      try {
+        const result = await context.library.import(await file.text());
+        context.say(
+          `Brought in ${result.riffs} riff${result.riffs === 1 ? '' : 's'}` +
+          `${result.songs ? ` and ${result.songs} song idea${result.songs === 1 ? '' : 's'}` : ''}` +
+          `${result.skipped ? `, skipping ${result.skipped} already here` : ''}.`,
+        );
+        void render();
+      } catch (err) {
+        context.say((err as Error).message, 'error');
+      }
+    },
+  });
+
+  const dataRow = h('div', { class: 'data-row' },
+    button('Export everything', async () => {
+      const json = await context.library.export();
+      const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      const link = h('a', {
+        href: url,
+        download: `riff-library-${new Date().toISOString().slice(0, 10)}.json`,
+      });
+      link.click();
+      // Give the download a moment to start before releasing the URL.
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }, 'btn-quiet'),
+    button('Import a library', () => fileInput.click(), 'btn-quiet'),
+    fileInput,
+    h('p', { class: 'muted', text: 'Riffs live in this browser. Export keeps a copy you own; importing adds to what is here without overwriting it. Recordings are not included.' }),
+  );
   const element = h('div', { class: 'view view-library' },
     h('section', { class: 'panel' },
       h('h2', { text: 'Your riffs' }),
       h('p', { class: 'muted', text: 'Everything here is something you played.' }),
       list,
+      dataRow,
     ),
     detail,
   );

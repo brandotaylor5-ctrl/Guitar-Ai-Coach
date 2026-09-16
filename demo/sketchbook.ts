@@ -7,7 +7,7 @@
  */
 
 import { SketchbookSession } from '../src/session/session.ts';
-import { explainMood, explainPhrase, renderExplanation } from '../src/explain/explain.ts';
+import { explainMood, explainPhrase, explainRelation, renderExplanation } from '../src/explain/explain.ts';
 import { suggestAnswer, suggestChords, suggestEndings } from '../src/create/suggest.ts';
 import { practiceAttempt } from '../src/practice/practice.ts';
 import { buildFingerprint, describeFingerprint, suggestDeparture } from '../src/fingerprint/fingerprint.ts';
@@ -140,15 +140,39 @@ async function main(): Promise<void> {
     said(departure);
   }
 
-  heading('11. Three weeks later, you play something familiar.');
+  heading('11. Weeks later, you wander back into it without noticing.');
   const later = new SketchbookSession({ library: session.library });
   later.addNotes(seqOf(['E2', 'G2', 'A2', 'B2', 'G2', 'E2'], 300));
   later.memory.tick(2500);
-  const matches = await later.library.findSimilar(later.memory.all());
-  for (const match of matches) {
-    said(`You just played something very similar to "${match.riffName}" — ` +
+
+  // Volunteered, not asked for — and only once, however long you keep playing.
+  for (const match of await later.newEchoes()) {
+    said(`That sounded a lot like "${match.riffName}" — ` +
       `${Math.round(match.similarity * 100)}% the same idea.`);
   }
+  const again = await later.newEchoes();
+  console.log(`  (asked again a moment later: ${again.length} — it says it once and lets it go)`);
+
+  heading('12. Two riffs become a song idea.');
+  const second = await session.library.saveRiff(seqOf(['A2', 'C3', 'D3', 'C3', 'A2']), { name: 'Nylon Idea' });
+  let song = await session.library.createSong('Song Idea 01');
+  song = await session.library.addToSong(song.id, 'verse', riff.id);
+  song = await session.library.addToSong(song.id, 'chorus', second.id);
+  for (const section of song.sections) {
+    const part = await session.library.getRiff(section.riffId);
+    console.log(`  ${section.role.padEnd(10)} ${part?.name}`);
+  }
+
+  const verseNotes = (await session.library.currentVersion(riff.id)).notes;
+  const chorusNotes = (await session.library.currentVersion(second.id)).notes;
+  const relation = explainRelation(verseNotes, chorusNotes);
+  if (relation) {
+    console.log();
+    said(renderExplanation(relation, false));
+  }
+  const arrangement = await session.library.songNotes(song.id);
+  console.log(`\n  Played end to end, that is ${arrangement.length} notes over ` +
+    `${((arrangement[arrangement.length - 1]!.startMs - arrangement[0]!.startMs) / 1000).toFixed(1)}s.`);
 
   console.log();
 }

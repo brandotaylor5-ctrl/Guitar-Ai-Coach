@@ -10,7 +10,7 @@
 import type { NoteEvent, RecognitionMatch, Riff, RiffVersion, SongSeed } from '../types.ts';
 import { makeId } from '../util/id.ts';
 import { compareNotes } from '../phrase/similarity.ts';
-import { combineTakes } from '../phrase/edit.ts';
+import { combineTakes, spliceNotes } from '../phrase/edit.ts';
 import { cleanestIndex } from '../phrase/quality.ts';
 import { InMemoryRiffStore } from './store.ts';
 import type { RiffStore } from './store.ts';
@@ -253,6 +253,50 @@ export class RiffLibrary {
     return matches.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
   }
 
+  // --- Taking your ideas with you -------------------------------------------
+
+  /**
+   * The whole library as JSON. A musician's own ideas should never be locked
+   * inside someone's app, so this works whatever the riffs are stored in.
+   */
+  async export(): Promise<string> {
+    const [riffs, songs] = await Promise.all([this.store.listRiffs(), this.store.listSongs()]);
+    return JSON.stringify({ version: 1, exportedAt: Date.now(), riffs, songs }, null, 2);
+  }
+
+  /**
+   * Merge an exported library in. Anything already here wins: importing is
+   * additive, and never silently replaces work with an older copy of itself.
+   */
+  async import(json: string): Promise<{ riffs: number; songs: number; skipped: number }> {
+    let parsed: { riffs?: Riff[]; songs?: SongSeed[] };
+    try {
+      parsed = JSON.parse(json) as { riffs?: Riff[]; songs?: SongSeed[] };
+    } catch {
+      throw new Error('That file is not a riff library export.');
+    }
+    if (!Array.isArray(parsed.riffs)) throw new Error('That file is not a riff library export.');
+
+    const existing = new Set((await this.store.listRiffs()).map((r) => r.id));
+    const existingSongs = new Set((await this.store.listSongs()).map((s) => s.id));
+    let riffs = 0;
+    let songs = 0;
+    let skipped = 0;
+
+    for (const riff of parsed.riffs) {
+      if (!riff?.id || !Array.isArray(riff.versions) || riff.versions.length === 0) { skipped++; continue; }
+      if (existing.has(riff.id)) { skipped++; continue; }
+      await this.store.putRiff(riff);
+      riffs++;
+    }
+    for (const song of parsed.songs ?? []) {
+      if (!song?.id || existingSongs.has(song.id)) continue;
+      await this.store.putSong(song);
+      songs++;
+    }
+    return { riffs, songs, skipped };
+  }
+
   // --- Song seeds -----------------------------------------------------------
 
   async createSong(name: string, sections: SongSeed['sections'] = []): Promise<SongSeed> {
@@ -265,16 +309,83 @@ export class RiffLibrary {
     return this.store.listSongs();
   }
 
-  async addToSong(songId: string, role: string, riffId: string, versionId?: string): Promise<SongSeed> {
-    const songs = await this.store.listSongs();
-    const song = songs.find((s) => s.id === songId);
+  private async mustGetSong(songId: string): Promise<SongSeed> {
+    const song = (await this.store.listSongs()).find((s) => s.id === songId);
     if (!song) throw new Error(`No song with id ${songId}`);
+    return song;
+  }
+
+  async getSong(songId: string): Promise<SongSeed | null> {
+    return (await this.store.listSongs()).find((s) => s.id === songId) ?? null;
+  }
+
+  async addToSong(songId: string, role: string, riffId: string, versionId?: string): Promise<SongSeed> {
+    const song = await this.mustGetSong(songId);
     const updated: SongSeed = {
       ...song,
       sections: [...song.sections, { role, riffId, ...(versionId ? { versionId } : {}) }],
     };
     await this.store.putSong(updated);
     return updated;
+  }
+
+  async removeFromSong(songId: string, index: number): Promise<SongSeed> {
+    const song = await this.mustGetSong(songId);
+    const updated: SongSeed = { ...song, sections: song.sections.filter((_, i) => i !== index) };
+    await this.store.putSong(updated);
+    return updated;
+  }
+
+  /** Reorder a section. Arranging is the whole point of a song workspace. */
+  async moveSection(songId: string, from: number, to: number): Promise<SongSeed> {
+    const song = await this.mustGetSong(songId);
+    if (from < 0 || from >= song.sections.length) throw new Error(`No section at ${from}`);
+    const sections = [...song.sections];
+    const [moved] = sections.splice(from, 1);
+    sections.splice(Math.max(0, Math.min(sections.length, to)), 0, moved!);
+    const updated: SongSeed = { ...song, sections };
+    await this.store.putSong(updated);
+    return updated;
+  }
+
+  async setSectionRole(songId: string, index: number, role: string): Promise<SongSeed> {
+    const song = await this.mustGetSong(songId);
+    const sections = song.sections.map((section, i) => (i === index ? { ...section, role } : section));
+    const updated: SongSeed = { ...song, sections };
+    await this.store.putSong(updated);
+    return updated;
+  }
+
+  async renameSong(songId: string, name: string): Promise<SongSeed> {
+    const song = await this.mustGetSong(songId);
+    const updated: SongSeed = { ...song, name };
+    await this.store.putSong(updated);
+    return updated;
+  }
+
+  async deleteSong(songId: string): Promise<void> {
+    await this.store.deleteSong(songId);
+  }
+
+  /**
+   * The notes of a song's sections, laid end to end. Used to play an
+   * arrangement through — it does not write anything, it just puts the
+   * player's own riffs in the order the player put them in.
+   */
+  async songNotes(songId: string): Promise<NoteEvent[]> {
+    const song = await this.mustGetSong(songId);
+    let out: NoteEvent[] = [];
+    for (const section of song.sections) {
+      const riff = await this.store.getRiff(section.riffId);
+      if (!riff) continue;
+      const version = riff.versions.find((v) => v.id === (section.versionId ?? riff.currentVersionId))
+        ?? riff.versions[0];
+      // Each riff carries the timestamps of the day it was played, so they
+      // have to be laid end to end. Concatenating them raw leaves a later
+      // section starting before an earlier one.
+      if (version) out = spliceNotes(out, version.notes);
+    }
+    return out;
   }
 
   /**

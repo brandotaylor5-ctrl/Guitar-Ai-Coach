@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { detectPitch, rmsOf } from '../src/audio/pitchDetect.ts';
 import { NoteTracker } from '../src/audio/noteTracker.ts';
 import { FrameStreamer } from '../src/audio/stream.ts';
+import { timeStretch } from '../src/audio/timeStretch.ts';
 import { frequencyToMidi, midiToFrequency, midiToName, nameToMidi } from '../src/music/notes.ts';
 import { PLUCK_HARMONICS, pluck, synthesize } from './helpers.ts';
 
@@ -162,5 +163,73 @@ describe('end-to-end: audio in, notes out', () => {
       ragged.push(new Float32Array(Math.min(333, SR - offset)));
     }
     assert.ok(Math.abs(ragged.currentTimeMs - 1000) < 1e-9, `got ${ragged.currentTimeMs}`);
+  });
+});
+
+describe('slowing audio down without moving the pitch', () => {
+  /** A steady tone, long enough that stretching has something to work with. */
+  function steadyTone(name: string, seconds = 1): Float32Array {
+    const length = Math.floor(SR * seconds);
+    const hz = midiToFrequency(nameToMidi(name));
+    const out = new Float32Array(length);
+    for (let i = 0; i < length; i++) {
+      let value = 0;
+      for (let k = 0; k < PLUCK_HARMONICS.length; k++) {
+        value += PLUCK_HARMONICS[k]! * Math.sin(2 * Math.PI * hz * (k + 1) * (i / SR));
+      }
+      out[i] = value * 0.3;
+    }
+    return out;
+  }
+
+  test('half speed takes about twice as long', () => {
+    const stretched = timeStretch(steadyTone('A2'), 2);
+    const ratio = stretched.length / (SR * 1);
+    assert.ok(Math.abs(ratio - 2) < 0.1, `expected about 2x, got ${ratio.toFixed(2)}x`);
+  });
+
+  test('the note is still the same note afterwards', () => {
+    for (const name of ['E2', 'A2', 'D3', 'G3']) {
+      for (const factor of [2, 1.5, 0.75]) {
+        const stretched = timeStretch(steadyTone(name), factor);
+        // Analyse the middle, away from the windowed edges.
+        const middle = stretched.subarray(Math.floor(stretched.length / 2), Math.floor(stretched.length / 2) + WINDOW);
+        const { hz } = detectPitch(middle, { sampleRate: SR });
+        const cents = Math.abs(frequencyToMidi(hz) - nameToMidi(name)) * 100;
+        assert.ok(cents < 25, `${name} at ${factor}x drifted ${cents.toFixed(0)} cents`);
+      }
+    }
+  });
+
+  test('speeding up shortens it and still keeps the pitch', () => {
+    const stretched = timeStretch(steadyTone('A2'), 0.5);
+    assert.ok(Math.abs(stretched.length / (SR * 0.5) - 1) < 0.15);
+    const middle = stretched.subarray(Math.floor(stretched.length / 2), Math.floor(stretched.length / 2) + WINDOW);
+    assert.equal(midiToName(Math.round(frequencyToMidi(detectPitch(middle, { sampleRate: SR }).hz))), 'A2');
+  });
+
+  test('does not introduce clicks or blow up the level', () => {
+    const source = steadyTone('A2');
+    const stretched = timeStretch(source, 2);
+    const peakIn = Math.max(...Array.from(source).map(Math.abs));
+    const peakOut = Math.max(...Array.from(stretched).map(Math.abs));
+    assert.ok(peakOut <= peakIn * 1.35, `peak grew from ${peakIn.toFixed(2)} to ${peakOut.toFixed(2)}`);
+    // A click shows up as a big jump between neighbouring samples.
+    let biggestJump = 0;
+    for (let i = 1; i < stretched.length; i++) {
+      biggestJump = Math.max(biggestJump, Math.abs(stretched[i]! - stretched[i - 1]!));
+    }
+    assert.ok(biggestJump < peakIn * 0.6, `sample-to-sample jump of ${biggestJump.toFixed(3)} suggests a click`);
+  });
+
+  test('a factor of one gives the audio back unchanged', () => {
+    const source = steadyTone('A2', 0.2);
+    assert.deepEqual(Array.from(timeStretch(source, 1)), Array.from(source));
+  });
+
+  test('refuses a nonsensical factor and copes with a tiny clip', () => {
+    assert.throws(() => timeStretch(new Float32Array(4096), 0));
+    assert.throws(() => timeStretch(new Float32Array(4096), -1));
+    assert.equal(timeStretch(new Float32Array(64), 2).length, 64, 'too short to stretch is returned as-is');
   });
 });

@@ -14,6 +14,7 @@ import { ClipStore } from './audio/clipStore.ts';
 import { h, clear, qs, replace } from './ui/dom.ts';
 import { sessionView } from './views/session.ts';
 import { libraryView } from './views/library.ts';
+import { songsView } from './views/songs.ts';
 import { fingerprintView } from './views/fingerprint.ts';
 import type { AppContext, View, ViewName } from './views/context.ts';
 
@@ -144,6 +145,7 @@ const context: AppContext = {
 function buildView(): View {
   switch (state.view) {
     case 'library': return libraryView(context, state.params);
+    case 'songs': return songsView(context);
     case 'fingerprint': return fingerprintView(context);
     default: return sessionView(context);
   }
@@ -166,7 +168,7 @@ function render(): void {
 function mountChrome(): void {
   const nav = qs('#nav');
   const tabs: Array<[ViewName, string]> = [
-    ['session', 'Session'], ['library', 'Riff Library'], ['fingerprint', 'Fingerprint'],
+    ['session', 'Session'], ['library', 'Riff Library'], ['songs', 'Songs'], ['fingerprint', 'Fingerprint'],
   ];
   for (const [view, label] of tabs) {
     nav.appendChild(h('button', {
@@ -193,7 +195,7 @@ function mountChrome(): void {
 
   window.addEventListener('hashchange', () => {
     const view = window.location.hash.replace('#', '') as ViewName;
-    state.view = ['library', 'fingerprint'].includes(view) ? view : 'session';
+    state.view = ['library', 'songs', 'fingerprint'].includes(view) ? view : 'session';
     render();
   });
 
@@ -208,7 +210,7 @@ function start(): void {
 
   mountChrome();
   const hash = window.location.hash.replace('#', '') as ViewName;
-  if (['library', 'fingerprint'].includes(hash)) state.view = hash;
+  if (['library', 'songs', 'fingerprint'].includes(hash)) state.view = hash;
   render();
 
   if (!store) {

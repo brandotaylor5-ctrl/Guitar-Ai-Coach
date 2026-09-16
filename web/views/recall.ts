@@ -81,13 +81,22 @@ function takeCard(context: AppContext, take: RecallTake, index: number, recall: 
   return card;
 }
 
-function suggestionCard(context: AppContext, suggestion: Suggestion): HTMLElement {
+function suggestionCard(context: AppContext, suggestion: Suggestion, hearLabel: string): HTMLElement {
   return h('article', { class: 'suggestion' },
     h('h4', { text: suggestion.label }),
-    playable(context, suggestion.notes, 'Hear the ending'),
+    playable(context, suggestion.notes, hearLabel),
     h('p', { class: 'muted', text: suggestion.description }),
     button('Hear it on the end of the riff', async () => {
       await context.player.play(suggestion.full);
+    }, 'btn-quiet'),
+    // Auditioning is only half of it. If one of these is the one, it has to be
+    // possible to keep it — as the player's own riff, not the app's suggestion.
+    button('Keep this one', async () => {
+      const riff = await context.library.saveRiff(suggestion.full, {
+        comment: `your phrase with the ${suggestion.label.toLowerCase()} ending`,
+      });
+      context.say('Kept as a riff of your own. The original is untouched.');
+      context.navigate('library', { riff: riff.id });
     }, 'btn-quiet'),
   );
 }
@@ -140,7 +149,7 @@ export function recallPanel(context: AppContext, recall: Recall): HTMLElement {
     panel.appendChild(h('details', { class: 'section' },
       h('summary', { text: 'Three ways to finish this' }),
       h('p', { class: 'muted', text: 'None of these is the right one. Listen and see which you like.' }),
-      h('div', { class: 'suggestions' }, ...endings.map((e) => suggestionCard(context, e))),
+      h('div', { class: 'suggestions' }, ...endings.map((e) => suggestionCard(context, e, 'Hear the ending'))),
     ));
   }
 
@@ -150,8 +159,8 @@ export function recallPanel(context: AppContext, recall: Recall): HTMLElement {
     const more = h('details', { class: 'section' }, h('summary', { text: 'Ideas that go with this' }));
     if (answer) {
       more.appendChild(h('h4', { text: 'A phrase that answers it' }));
-      more.appendChild(playable(context, answer.notes, 'Hear the answer'));
-      more.appendChild(h('p', { class: 'muted', text: answer.description }));
+      more.appendChild(h('div', { class: 'suggestions' },
+        suggestionCard(context, answer, 'Hear the answer')));
     }
     if (chords.length) {
       more.appendChild(h('h4', { text: 'Chords that could sit underneath' }));

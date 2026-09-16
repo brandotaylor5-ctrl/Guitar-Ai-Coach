@@ -45,6 +45,25 @@ export function practicePanel(context: AppContext, riff: Riff, version: RiffVers
     }),
   );
 
+  // If there is a recording of this version, offer the real thing too —
+  // slowed properly, so the pitch does not sag when you take it down to 50%.
+  const recordingRow = h('div', { class: 'practice-actions' });
+  void (async () => {
+    if (!version.audioRef) return;
+    const live = context.session.getClip(version.audioRef);
+    const stored = live ? null : await context.clips.get(version.audioRef);
+    const samples = live ?? stored?.samples;
+    if (!samples || samples.length === 0) return;
+    const rate = live ? context.sampleRate : stored?.sampleRate ?? context.sampleRate;
+
+    recordingRow.appendChild(button('Play my actual recording', async () => {
+      status.textContent = speed === 1
+        ? 'This is you, the day you played it.'
+        : `This is your own recording at ${Math.round(speed * 100)}% — same pitch, just slower.`;
+      await context.player.playSamples(samples, rate, speed);
+    }, 'btn-quiet'));
+  })();
+
   const hearButton = button('Play it to me', async () => {
     const plan = buildPracticePlan(version, target, speed);
     status.textContent = `Playing ${plan.label}. Listen, then try it.`;
@@ -134,6 +153,7 @@ export function practicePanel(context: AppContext, riff: Riff, version: RiffVers
       h('label', { class: 'field' }, 'Speed ', speedButtons),
     ),
     h('p', { class: 'muted', text: 'Slowing down changes the timing only — the pitch stays where it is.' }),
+    recordingRow,
     h('div', { class: 'practice-actions' }, tryButton),
     status,
     result,

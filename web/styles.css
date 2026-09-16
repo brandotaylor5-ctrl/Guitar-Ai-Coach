@@ -365,3 +365,44 @@ code { font-family: var(--mono); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* ---- recognising an old idea ---- */
+
+.echo-host:not(:empty) { margin: .8rem 0; display: grid; gap: .5rem; }
+.echo {
+  background: var(--bg-sunken); border-left: 3px solid var(--warm);
+  border-radius: 0 8px 8px 0; padding: .7rem .9rem;
+}
+.echo p { margin: 0 0 .4rem; }
+.echo-actions { display: flex; gap: .5rem; }
+
+/* ---- song seed ---- */
+
+.song-sections { list-style: none; padding: 0; margin: .8rem 0; display: grid; gap: .4rem; }
+.song-section {
+  display: grid; align-items: center; gap: .7rem;
+  grid-template-columns: 1.6rem auto 1fr auto auto;
+  background: var(--bg-sunken); border-radius: 8px; padding: .5rem .7rem;
+}
+.section-index { color: var(--text-dim); font-family: var(--mono); font-size: .8rem; }
+.section-riff { font-weight: 600; }
+.section-notes { font-family: var(--mono); font-size: .8rem; color: var(--text-dim); text-align: right; }
+.section-actions { display: flex; gap: .3rem; }
+.add-section {
+  display: flex; gap: .8rem; align-items: center; flex-wrap: wrap;
+  margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line);
+}
+
+@media (max-width: 620px) {
+  .song-section { grid-template-columns: 1.4rem 1fr; }
+  .section-notes, .section-actions { grid-column: 1 / -1; text-align: left; }
+}
+
+/* ---- your data ---- */
+
+.data-row {
+  display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
+  margin-top: 1.1rem; padding-top: .9rem; border-top: 1px solid var(--line);
+}
+.data-row .muted { flex: 1 1 100%; margin: 0; font-size: .8rem; }
+.hidden-file { display: none; }

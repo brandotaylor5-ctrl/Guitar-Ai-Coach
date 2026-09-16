@@ -11,7 +11,8 @@ import type { NoteEvent, PhraseAnalysis } from '../types.ts';
 import { intervalName, midiToName, pcToName, pitchClass } from '../music/notes.ts';
 import { positionsFor, STANDARD_TUNING } from '../music/fretboard.ts';
 import type { Tuning } from '../music/fretboard.ts';
-import { thirdQuality } from '../music/key.ts';
+import { homePitchClass, thirdQuality } from '../music/key.ts';
+import { compareNotes } from '../phrase/similarity.ts';
 
 export interface Explanation {
   /** The one-sentence version. */
@@ -139,6 +140,84 @@ export function explainMood(analysis: PhraseAnalysis, tuning: Tuning = STANDARD_
   if (analysis.resolution === 'up') plain.push("Ending on a note that's still reaching upward leaves it unresolved, which adds to the feeling.");
 
   return { headline: `Why ${home} sounds the way it does here`, plain, theory };
+}
+
+/**
+ * Why two ideas sound like they belong together.
+ *
+ * The vision's own example: "Riff 9 sounds related to Riff 4 because they share
+ * several notes and the same tonal centre." The app offers the observation and
+ * stops there — grouping riffs into a song is the musician's call, not its own.
+ */
+export function explainRelation(a: NoteEvent[], b: NoteEvent[]): Explanation | null {
+  if (a.length === 0 || b.length === 0) return null;
+
+  const homeA = homePitchClass(a);
+  const homeB = homePitchClass(b);
+  const sameHome = homeA === homeB;
+
+  const setA = new Set(a.map((n) => pitchClass(n.midi)));
+  const setB = new Set(b.map((n) => pitchClass(n.midi)));
+  const shared = [...setA].filter((pc) => setB.has(pc));
+  const union = new Set([...setA, ...setB]);
+  const shape = compareNotes(a, b);
+
+  // How much of the two riffs' combined vocabulary they hold in common. This
+  // is a far steadier signal than comparing home notes: a riff and its own
+  // variation often rest on different notes while using the same five.
+  const overlap = shared.length / union.size;
+  const sameMaterial = overlap >= 0.6;
+  const closeShape = shape.overall >= 0.75;
+
+  const plain: string[] = [];
+  const theory: string[] = [];
+
+  if (sameMaterial) {
+    plain.push(
+      `They are built out of the same handful of notes — ${shared.map((pc) => pcToName(pc)).join(', ')}. ` +
+      'That is why they sound like they come from the same place.',
+    );
+    if (sameHome) plain.push(`Both come home to ${pcToName(homeA)}, so they sit on the same ground.`);
+  } else {
+    plain.push(
+      `One comes home to ${pcToName(homeA)} and the other to ${pcToName(homeB)} — different ground, ` +
+      'which is part of why moving between them feels like a change.',
+    );
+    if (shared.length > 0) {
+      plain.push(`They only really share ${shared.map((pc) => pcToName(pc)).join(' and ')}, so putting them together will feel like a bigger move.`);
+    } else {
+      plain.push('They have no notes in common at all, which will make the join between them very abrupt.');
+    }
+  }
+
+  // "Nearly the same idea" and "they hardly share any notes" cannot both be
+  // true. Similarity is deliberately blind to key, so a high score with little
+  // overlap means the same shape somewhere else — worth saying, because that
+  // is a real songwriting move rather than a coincidence.
+  if (closeShape && sameMaterial) {
+    plain.push('The shapes line up too — these are nearly the same idea rather than two that go together.');
+  } else if (closeShape) {
+    plain.push(
+      'The shape is the same, just started somewhere else. Playing one idea again from a ' +
+      'different note is a real songwriting move, and you have done it without planning to.',
+    );
+  } else if (shape.contour >= 0.7) {
+    plain.push('They rise and fall in similar ways, even though the notes themselves differ.');
+  }
+
+  if (!sameHome) {
+    const interval = ((homeB - homeA) % 12 + 12) % 12;
+    theory.push(`${pcToName(homeA)} to ${pcToName(homeB)} is a ${intervalName(interval)}.`);
+  }
+  theory.push(`They share ${shared.length} of the ${union.size} notes the two of them use between them.`);
+
+  const headline = sameMaterial
+    ? (sameHome ? `Both centred on ${pcToName(homeA)}` : 'Built from the same notes')
+    : closeShape
+      ? `The same shape, from ${pcToName(homeA)} and from ${pcToName(homeB)}`
+      : `One centred on ${pcToName(homeA)}, the other on ${pcToName(homeB)}`;
+
+  return { headline, plain, theory };
 }
 
 /** Flatten an explanation to text, plain part first, theory clearly separated. */

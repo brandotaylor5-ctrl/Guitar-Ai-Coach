@@ -40,14 +40,17 @@ through the actual pipeline.
 
 ## Try it
 
-Requires **Node 22.6+** (it strips TypeScript natively, so there is no build
-step to configure and nothing to install).
+Requires **Node 22.6+**, which strips TypeScript natively — so the app runs,
+the tests run and the demo runs with nothing installed at all.
 
 ```bash
 npm start       # build and serve the app → http://localhost:4173
 npm run demo    # the whole vision in the terminal, from synthesised audio
-npm test        # 183 tests, no network and no audio hardware needed
+npm test        # 214 tests, no network and no audio hardware needed
 ```
+
+Ships with **no runtime dependencies**. `npm install` fetches only TypeScript
+and Node's type definitions, for `npm run typecheck`.
 
 `npm start` opens the browser app: plug in, press **Start listening**, play for
 a while, then press **What did I just play?**
@@ -56,11 +59,17 @@ a while, then press **What did I just play?**
 
 - **Session** — a live note readout, the ideas it has picked out drawn on a
   minute-long timeline, and the one button that matters. Click any idea on the
-  timeline to ask about that one instead of the last thing you played.
+  timeline to ask about that one instead of the last thing you played. If you
+  wander back into an old riff, it says so, once, without interrupting.
 - **Riff Library** — your riffs, each with its version tree, tab, fretboard
-  diagram, original recording, and a plain-language read of what it is.
+  diagram, original recording, and a plain-language read of what it is. Export
+  the lot to a file you own whenever you like.
+- **Songs** — group riffs into an arrangement, reorder the sections, play the
+  whole thing through. It will tell you what two riffs have in common; it will
+  not write the song.
 - **Practice** — pick a version, hear it, play it back, get coached. Slow it to
-  75% or 50% without the pitch moving.
+  75% or 50% — the synthesised playback *and* your own recording, both without
+  the pitch dropping.
 - **Fingerprint** — what your habits look like once there are enough ideas to
   say anything honest.
 

@@ -22,5 +22,9 @@
     "pitch-detection"
   ],
   "license": "MIT",
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "@types/node": "^22.20.3",
+    "typescript": "5.8"
+  }
 }

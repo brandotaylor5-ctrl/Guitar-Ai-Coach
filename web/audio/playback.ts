@@ -9,6 +9,7 @@
 
 import type { NoteEvent } from '../../src/types.ts';
 import { midiToFrequency } from '../../src/music/notes.ts';
+import { timeStretch } from '../../src/audio/timeStretch.ts';
 
 /** Relative amplitude of each partial, and how fast each one dies away. */
 const PARTIALS = [
@@ -64,7 +65,9 @@ export class RiffPlayer {
     let finishesAt = 0;
 
     notes.forEach((note, index) => {
-      const offset = ((note.startMs - origin) / 1000) / speed;
+      // Notes handed in from several riffs may not be in ascending time order;
+      // a negative offset would schedule in the past and throw.
+      const offset = Math.max(0, ((note.startMs - origin) / 1000) / speed);
       const duration = Math.max(0.12, (note.durationMs / 1000) / speed);
       this.scheduleNote(context, master, note, startAt + offset, duration);
       finishesAt = Math.max(finishesAt, offset + duration);
@@ -115,6 +118,38 @@ export class RiffPlayer {
       oscillator.start(at);
       oscillator.stop(at + duration * partial.decay + 0.25);
     }
+  }
+
+  /**
+   * Play recorded audio, optionally slowed. Slowing uses time-stretching
+   * rather than a lower sample rate, so the pitch stays where the player
+   * left it — the whole point of practising something slowly.
+   */
+  async playSamples(samples: Float32Array, sampleRate: number, speed = 1): Promise<void> {
+    this.stop();
+    if (samples.length === 0) return;
+
+    const context = this.ensureContext();
+    if (context.state === 'suspended') await context.resume();
+
+    const audio = speed === 1 ? samples : timeStretch(samples, 1 / speed);
+    const buffer = context.createBuffer(1, audio.length, sampleRate);
+    buffer.copyToChannel(audio instanceof Float32Array ? audio : new Float32Array(audio), 0);
+
+    const master = context.createGain();
+    master.gain.value = 1;
+    master.connect(context.destination);
+    this.master = master;
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(master);
+    this.playing = true;
+    source.start();
+
+    await new Promise<void>((resolve) => {
+      source.onended = () => { this.playing = false; resolve(); };
+    });
   }
 
   /** Play a single note, for auditioning one change. */

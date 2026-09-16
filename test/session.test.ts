@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { SketchbookSession, describeAgo } from '../src/session/session.ts';
 import { RiffLibrary } from '../src/library/riffLibrary.ts';
+import type { NoteEvent } from '../src/types.ts';
 import { midiToName } from '../src/music/notes.ts';
 import { pluck, seqAt, synthesize } from './helpers.ts';
 
@@ -306,5 +307,83 @@ describe('asking while still playing', () => {
     assert.equal(describeAgo(0), 'a moment ago');
     assert.equal(describeAgo(1), 'a moment ago');
     assert.equal(describeAgo(12), 'about 12 seconds ago');
+  });
+});
+
+describe('recognising an old idea unprompted', () => {
+  async function libraryWith(name: string, notes: NoteEvent[], createdAt: number) {
+    const library = new RiffLibrary();
+    await library.saveRiff(notes, { name, createdAt });
+    return library;
+  }
+
+  test('notices when you wander back into an old riff', async () => {
+    const library = await libraryWith('Weird E Minor Thing', seqAt(RIFF, 0, 300), Date.now() - 21 * 86_400_000);
+    const session = new SketchbookSession({ library });
+    session.addNotes(seqAt(RIFF, 0, 300));
+    session.memory.tick(3000);
+
+    const echoes = await session.newEchoes();
+    assert.equal(echoes.length, 1);
+    assert.equal(echoes[0]!.riffName, 'Weird E Minor Thing');
+  });
+
+  test('says it once, then lets it go', async () => {
+    const library = await libraryWith('Late Night Thing', seqAt(RIFF, 0, 300), Date.now());
+    const session = new SketchbookSession({ library });
+    session.addNotes(seqAt(RIFF, 0, 300));
+    session.memory.tick(3000);
+
+    assert.equal((await session.newEchoes()).length, 1);
+    assert.equal((await session.newEchoes()).length, 0, 'nagging is worse than silence');
+
+    session.addNotes(seqAt(RIFF, 6000, 300));
+    session.memory.tick(9000);
+    assert.equal((await session.newEchoes()).length, 0, 'still the same riff, still said once');
+  });
+
+  test('stays quiet about something you have not played before', async () => {
+    const library = await libraryWith('Late Night Thing', seqAt(RIFF, 0, 300), Date.now());
+    const session = new SketchbookSession({ library });
+    session.addNotes(seqAt(['C3', 'C3', 'F3', 'A3', 'D3', 'F2'], 0, 300));
+    session.memory.tick(3000);
+    assert.deepEqual(await session.newEchoes(), []);
+  });
+
+  test('never interrupts over an idea still being played', async () => {
+    const library = await libraryWith('Late Night Thing', seqAt(RIFF, 0, 300), Date.now());
+    const session = new SketchbookSession({ library });
+    session.addNotes(seqAt(RIFF, 0, 300));
+    // Mid-riff again, with no breath since the last note.
+    session.addNotes(seqAt(['E2', 'G2', 'A2'], 3000, 300));
+    session.memory.tick(3700);
+
+    const echoes = await session.newEchoes();
+    assert.equal(echoes.length, 1, 'it should match the finished take, not the fragment');
+  });
+
+  test('holds a higher bar than an answer the player asked for', async () => {
+    const library = await libraryWith('Late Night Thing', seqAt(RIFF, 0, 300), Date.now());
+    const session = new SketchbookSession({ library });
+    // A loose relative: close enough to report when asked, not close enough
+    // to be worth talking over someone.
+    session.addNotes(seqAt(['E2', 'G2', 'B2', 'C3', 'G2', 'E2'], 0, 300));
+    session.memory.tick(3000);
+
+    const asked = await session.library.findSimilar(session.memory.all(), { threshold: 0.8 });
+    const volunteered = await session.newEchoes(0.95);
+    assert.ok(asked.length >= volunteered.length);
+    assert.equal(volunteered.length, 0);
+  });
+
+  test('forgetting lets it be mentioned again', async () => {
+    const library = await libraryWith('Late Night Thing', seqAt(RIFF, 0, 300), Date.now());
+    const session = new SketchbookSession({ library });
+    session.addNotes(seqAt(RIFF, 0, 300));
+    session.memory.tick(3000);
+
+    const first = await session.newEchoes();
+    session.forgetAnnouncement(first[0]!.riffId);
+    assert.equal((await session.newEchoes()).length, 1);
   });
 });
