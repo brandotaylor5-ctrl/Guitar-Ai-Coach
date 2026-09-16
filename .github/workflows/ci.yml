@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, finish-mvp]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -23,3 +23,9 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
+      - name: Keep deployable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: guitar-ai-coach-dist
+          path: dist
+          if-no-files-found: error
