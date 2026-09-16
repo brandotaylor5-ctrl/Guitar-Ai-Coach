@@ -1,88 +1,92 @@
-/* MVP additions: riff conversation + phone-friendly installable app. */
+/* MVP additions: live coach, riff conversation + phone-friendly installable app. */
 
-.riff-chat-examples {
-  display: flex;
-  gap: .45rem;
-  flex-wrap: wrap;
-  margin: .65rem 0 .9rem;
-}
+.riff-chat-examples { display:flex; gap:.45rem; flex-wrap:wrap; margin:.65rem 0 .9rem; }
+.riff-chat-history { display:grid; gap:.7rem; margin:.7rem 0; max-height:520px; overflow-y:auto; padding-right:.15rem; }
+.riff-chat-turn { border:1px solid var(--line); border-radius:var(--radius); padding:.75rem .85rem; background:var(--bg-sunken); }
+.riff-chat-turn.is-you { border-color:var(--accent-dim); margin-left:min(12%,5rem); }
+.riff-chat-turn.is-coach { margin-right:min(7%,3rem); }
+.riff-chat-turn > strong { display:block; margin-bottom:.25rem; color:var(--text-dim); font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; }
+.riff-chat-body > :last-child { margin-bottom:0; }
+.riff-chat-suggestion { margin-top:.55rem; }
+.riff-chat-compose { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.5rem; position:sticky; bottom:0; padding-top:.6rem; background:var(--bg-raised); }
+.riff-chat-input { width:100%; min-width:0; background:var(--bg-sunken); color:var(--text); border:1px solid var(--line); border-radius:var(--radius); padding:.65rem .75rem; font:inherit; }
+.riff-chat-input:focus { outline:2px solid var(--accent-dim); outline-offset:1px; }
 
-.riff-chat-history {
-  display: grid;
-  gap: .7rem;
-  margin: .7rem 0;
-  max-height: 520px;
-  overflow-y: auto;
-  padding-right: .15rem;
-}
+/* ---- Live Coach ---- */
+.live-coach-hero { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; background:linear-gradient(135deg,var(--bg-raised),color-mix(in srgb,var(--accent-dim) 13%,var(--bg-raised))); }
+.live-coach-copy { max-width:58ch; }
+.live-coach-actions { display:flex; gap:.5rem; flex-wrap:wrap; justify-content:flex-end; }
+.lab-kicker { margin:0 0 .2rem; color:var(--accent); font-size:.72rem; font-weight:800; letter-spacing:.14em; }
+.live-hearing-grid { display:grid; grid-template-columns:1fr 1fr 1.35fr; gap:.8rem; margin-bottom:1.25rem; }
+.live-hearing-card { margin:0; min-height:150px; display:flex; flex-direction:column; justify-content:center; }
+.live-hearing-label { color:var(--text-dim); font-size:.7rem; font-weight:800; letter-spacing:.12em; margin-bottom:.45rem; }
+.live-chord-value { font:700 clamp(2.8rem,7vw,4.8rem)/1 var(--mono); color:var(--warm); letter-spacing:-.06em; margin:.15rem 0 .35rem; }
+.live-progression { font:700 clamp(1.15rem,2.6vw,1.8rem)/1.45 var(--mono); color:var(--text); word-break:break-word; }
+.live-coach-panel { border-color:color-mix(in srgb,var(--accent-dim) 55%,var(--line)); }
+.live-coach-panel-head { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
+.live-coach-feed { display:grid; gap:.65rem; margin:.8rem 0; max-height:430px; overflow:auto; padding-right:.15rem; }
+.live-coach-turn { display:grid; grid-template-columns:30px minmax(0,1fr); gap:.65rem; align-items:start; background:var(--bg-sunken); border:1px solid var(--line); border-radius:12px; padding:.75rem; }
+.live-coach-turn.is-chord { border-left:3px solid var(--warm); }
+.live-coach-turn.is-phrase { border-left:3px solid var(--accent); }
+.live-coach-turn.is-memory { border-left:3px solid #9b8cff; }
+.live-coach-turn.is-hello { opacity:.9; }
+.live-coach-avatar { width:28px; height:28px; border-radius:50%; display:grid; place-items:center; background:var(--bg-raised); color:var(--accent); border:1px solid var(--line); }
+.live-coach-turn-body p { margin:0; max-width:67ch; }
+.live-coach-inline-action { margin-top:.55rem; display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+.live-details { margin-top:.75rem; }
 
-.riff-chat-turn {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: .75rem .85rem;
-  background: var(--bg-sunken);
-}
+/* ---- Riff Lab ---- */
+.lab-hero { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; }
+.lab-controls { display:flex; gap:.65rem; flex-wrap:wrap; }
+.lab-controls label { display:flex; align-items:center; gap:.35rem; color:var(--text-dim); font-size:.85rem; }
+.lab-note-buttons { display:flex; gap:.45rem; flex-wrap:wrap; margin:.8rem 0; }
+.lab-section-head { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; }
+.lab-riff-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.65rem; margin:.85rem 0 1rem; }
+.lab-riff-card { text-align:left; min-height:104px; border:1px solid var(--line); background:var(--bg-sunken); color:var(--text); border-radius:12px; padding:.75rem; cursor:pointer; font:inherit; }
+.lab-riff-card strong { display:block; margin-bottom:.35rem; color:var(--text); }
+.lab-riff-card span { display:block; color:var(--text-dim); font-size:.78rem; line-height:1.35; }
+.lab-riff-card:hover,.lab-riff-card.is-active { border-color:var(--accent-dim); background:color-mix(in srgb,var(--accent-dim) 10%,var(--bg-sunken)); }
+.lab-selected-riff { border-top:1px solid var(--line); padding-top:1rem; }
+.lab-selected-copy { margin-bottom:.6rem; }
+.lab-riff-actions { display:flex; gap:.45rem; flex-wrap:wrap; margin:.7rem 0; }
+.lab-practice-box { margin-top:1rem; border-radius:12px; padding:.8rem; background:var(--bg-sunken); border:1px dashed var(--line); }
+.lab-practice-feedback { min-height:1.5rem; }
+.lab-progression-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.7rem; margin-top:.8rem; }
+.lab-progression-card { background:var(--bg-sunken); border:1px solid var(--line); border-radius:12px; padding:.8rem; }
+.lab-progression-card > strong { display:block; font:700 1rem/1.5 var(--mono); color:var(--warm); margin:.35rem 0; }
 
-.riff-chat-turn.is-you {
-  border-color: var(--accent-dim);
-  margin-left: min(12%, 5rem);
-}
-
-.riff-chat-turn.is-coach {
-  margin-right: min(7%, 3rem);
-}
-
-.riff-chat-turn > strong {
-  display: block;
-  margin-bottom: .25rem;
-  color: var(--text-dim);
-  font-size: .75rem;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-}
-
-.riff-chat-body > :last-child { margin-bottom: 0; }
-.riff-chat-suggestion { margin-top: .55rem; }
-
-.riff-chat-compose {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: .5rem;
-  position: sticky;
-  bottom: 0;
-  padding-top: .6rem;
-  background: var(--bg-raised);
-}
-
-.riff-chat-input {
-  width: 100%;
-  min-width: 0;
-  background: var(--bg-sunken);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: .65rem .75rem;
-  font: inherit;
-}
-
-.riff-chat-input:focus {
-  outline: 2px solid var(--accent-dim);
-  outline-offset: 1px;
+@media (max-width: 900px) {
+  .live-hearing-grid { grid-template-columns:1fr 1fr; }
+  .progression-card { grid-column:1/-1; }
+  .lab-riff-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .lab-progression-grid { grid-template-columns:1fr; }
 }
 
 @media (max-width: 700px) {
-  .app-header { padding: .7rem .8rem; gap: .55rem; }
-  .brand { width: 100%; }
-  .tagline { display: none; }
-  .nav { width: 100%; margin: 0; overflow-x: auto; padding-bottom: .1rem; }
-  .nav-tab { flex: 0 0 auto; }
-  .main { padding: 1rem .75rem 3rem; }
-  .panel { padding: 1rem; }
-  .listen-bar { gap: .7rem; padding: .8rem; }
-  .btn-ask, .btn-listen { width: 100%; }
-  .riff-chat-compose { grid-template-columns: 1fr; }
-  .riff-chat-compose .btn { width: 100%; }
-  .riff-chat-turn.is-you { margin-left: 1.5rem; }
-  .riff-chat-turn.is-coach { margin-right: 0; }
-  .suggestions { grid-template-columns: 1fr; }
+  .app-header { padding:.7rem .8rem; gap:.55rem; }
+  .brand { width:100%; }
+  .tagline { display:none; }
+  .nav { width:100%; margin:0; overflow-x:auto; padding-bottom:.1rem; }
+  .nav-tab { flex:0 0 auto; }
+  .main { padding:1rem .75rem 3rem; }
+  .panel { padding:1rem; }
+  .listen-bar { gap:.7rem; padding:.8rem; }
+  .btn-ask,.btn-listen { width:100%; }
+  .riff-chat-compose { grid-template-columns:1fr; }
+  .riff-chat-compose .btn { width:100%; }
+  .riff-chat-turn.is-you { margin-left:1.5rem; }
+  .riff-chat-turn.is-coach { margin-right:0; }
+  .suggestions { grid-template-columns:1fr; }
+  .live-coach-hero,.lab-hero { align-items:flex-start; flex-direction:column; }
+  .live-coach-actions { width:100%; justify-content:stretch; }
+  .live-coach-actions .btn { flex:1 1 130px; }
+  .live-hearing-grid { grid-template-columns:1fr; }
+  .progression-card { grid-column:auto; }
+  .live-hearing-card { min-height:125px; }
+  .live-coach-panel-head { flex-direction:column; }
+  .live-coach-panel-head .btn-ask { width:100%; }
+  .lab-controls { width:100%; }
+  .lab-controls label { flex:1 1 140px; }
+  .lab-controls .select { flex:1; }
+  .lab-riff-grid { grid-template-columns:1fr; }
 }
