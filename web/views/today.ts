@@ -12,9 +12,11 @@ import { CurriculumStore, declareKnownChords } from '../../src/curriculum/watch.
 import { masteryMap, levelOf, WORKABLE } from '../../src/curriculum/mastery.ts';
 import { planLessons } from '../../src/curriculum/plan.ts';
 import { SKILLS } from '../../src/curriculum/skills.ts';
+import { chordShape } from '../../src/music/chordShapes.ts';
 import { describeRepertoire, mostValuableNextChord, repertoireFor } from '../../src/curriculum/repertoire.ts';
 import { h, clear } from '../ui/dom.ts';
 import { button, empty } from '../ui/render.ts';
+import { chordTeachingCard } from '../ui/chordCard.ts';
 import type { AppContext, View } from './context.ts';
 
 /** The chords worth asking about — the ones a self-taught player tends to have. */
@@ -60,21 +62,51 @@ export function todayView(context: AppContext): View {
     );
 
     return h('section', { class: 'panel panel-hero' },
-      h('h2', { text: 'Before we start — what can you already play?' }),
-      h('p', { class: 'muted', text: 'Tap any chord you can get through without stopping. Rough is fine. This just saves me waiting to overhear them, and you can change it later by playing.' }),
+      h('h2', { text: 'Before we start — what can you already put your fingers on?' }),
+      h('p', { class: 'muted', text: 'Tap a chord only if you know where your fingers go without looking it up. It does not need to sound perfect. If you only recognize the name, leave it off — I will teach it before I ever test you on it.' }),
       grid,
       h('div', { class: 'practice-actions' },
         button('That is me', () => {
           store.record(declareKnownChords([...chosen]));
           context.say(chosen.size
             ? `Good — ${chosen.size} chord${chosen.size === 1 ? '' : 's'} to build on.`
-            : 'No problem. Play anything and I will work it out.');
+            : 'No problem. We can start from the beginning and build this properly.');
           render();
         }, 'btn-primary'),
         button('I am starting from nothing', () => {
           store.record(declareKnownChords([]));
           render();
         }, 'btn-quiet'),
+      ),
+    );
+  }
+
+  function todayLessonCard(lesson: ReturnType<typeof planLessons>[number], payoff: string | null): HTMLElement {
+    const chord = lesson.skill.chord;
+    if (lesson.skill.kind === 'chord' && chord && chordShape(chord)) {
+      const card = chordTeachingCard(chord, context.player, {
+        heading: `Today: ${lesson.skill.name}`,
+        onReady: () => context.navigate('lessons'),
+      });
+      const why = h('div', { class: 'teach-first-callout' },
+        h('strong', { text: 'Why this is next' }),
+        h('span', { text: payoff ?? lesson.because }),
+      );
+      const actions = card.querySelector('.chord-sound-actions');
+      if (actions) card.insertBefore(why, actions);
+      return card;
+    }
+
+    return h('section', { class: 'panel panel-hero' },
+      h('p', { class: 'eyebrow', text: 'Today' }),
+      h('div', {},
+        h('h2', { text: lesson.skill.name }),
+        h('p', { class: 'lede', text: lesson.skill.goal }),
+        h('p', { class: 'muted', text: payoff ?? lesson.because }),
+        h('div', { class: 'practice-actions' },
+          button('Start this', () => context.navigate('lessons'), 'btn-primary'),
+          button('Just let me play', () => context.navigate('session'), 'btn-quiet'),
+        ),
       ),
     );
   }
@@ -101,24 +133,21 @@ export function todayView(context: AppContext): View {
       ? `Learning it adds ${worthMost.unlocks} more progressions you can play — more than any other chord from where you are.`
       : null;
 
-    // The one thing to do now.
-    element.appendChild(h('section', { class: 'panel panel-hero' },
-      h('p', { class: 'eyebrow', text: 'Today' }),
-      lesson
-        ? h('div', {},
-          h('h2', { text: lesson.skill.name }),
-          h('p', { class: 'lede', text: lesson.skill.goal }),
-          h('p', { class: 'muted', text: payoff ?? lesson.because }),
-          h('div', { class: 'practice-actions' },
-            button('Start this', () => context.navigate('lessons'), 'btn-primary'),
-            button('Just let me play', () => context.navigate('session'), 'btn-quiet'),
-          ),
-        )
-        : h('div', {},
-          h('h2', { text: 'Play something' }),
-          h('p', { class: 'lede', text: 'Nothing is queued. Play for a few minutes and I will find the next thing worth working on.' }),
-          h('div', { class: 'practice-actions' }, button('Start playing', () => context.navigate('session'), 'btn-primary')),
-        ),
+    // The one thing to do now. A new chord is taught physically before there is
+    // any button that can grade it. "Next" and "known" are not the same state.
+    if (lesson) element.appendChild(todayLessonCard(lesson, payoff));
+    else {
+      element.appendChild(h('section', { class: 'panel panel-hero' },
+        h('p', { class: 'eyebrow', text: 'Today' }),
+        h('h2', { text: 'Play something' }),
+        h('p', { class: 'lede', text: 'Nothing is queued. Play for a few minutes and I will find the next thing worth working on.' }),
+        h('div', { class: 'practice-actions' }, button('Start playing', () => context.navigate('session'), 'btn-primary')),
+      ));
+    }
+
+    element.appendChild(h('div', { class: 'teacher-rule' },
+      h('strong', { text: 'Teacher rule: ' }),
+      'I do not get to say “play this” until I have shown you where your fingers go, what strings to hit, and what it should sound like.',
     ));
 
     // What those chords are already enough for.
@@ -126,10 +155,13 @@ export function todayView(context: AppContext): View {
     const repertoire = h('section', { class: 'panel' },
       h('h2', { text: 'What you can already play' }),
       h('p', { class: 'lede', text: describeRepertoire(known) }),
+      known.length
+        ? h('div', { class: 'known-skill-strip' }, ...known.map((chord) => h('span', { class: 'badge', text: chord })))
+        : null,
     );
 
     if (playable.length === 0) {
-      repertoire.appendChild(empty('Once you have three chords that fit together, whole songs open up. That is closer than it sounds.'));
+      repertoire.appendChild(empty('Once you have a few chords that fit together, whole songs open up. I will teach the shapes before expecting the progression.'));
     } else {
       repertoire.appendChild(h('div', { class: 'prog-list' },
         ...playable.slice(0, 6).map((entry) => h('article', { class: 'prog-card' },
@@ -150,11 +182,18 @@ export function todayView(context: AppContext): View {
       ));
 
       const next = mostValuableNextChord(known);
-      if (next) {
-        repertoire.appendChild(h('div', { class: 'departure' },
-          h('h3', { text: `The chord worth learning next is ${next.chord}` }),
-          h('p', { text: `It would add ${next.unlocks} more progressions to what you can play — more than any other single chord from where you are.` }),
-        ));
+      if (next && next.chord !== lesson?.skill.chord) {
+        const departure = h('div', { class: 'departure next-chord-preview' },
+          h('h3', { text: `${next.chord} would unlock more music next` }),
+          h('p', { text: `It would add ${next.unlocks} more progressions. That does not mean you are supposed to know it already.` }),
+        );
+        const shape = chordShape(next.chord);
+        if (shape) {
+          const details = h('details', { class: 'theory' }, h('summary', { text: `Show me how to play ${next.chord}` }));
+          details.appendChild(chordTeachingCard(next.chord, context.player, { compact: true }));
+          departure.appendChild(details);
+        }
+        repertoire.appendChild(departure);
       }
     }
     element.appendChild(repertoire);
