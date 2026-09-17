@@ -15,6 +15,7 @@ import { ClipStore } from './audio/clipStore.ts';
 import { h, clear, qs, replace } from './ui/dom.ts';
 import { sessionView } from './views/session.ts';
 import { labView } from './views/lab.ts';
+import { todayView } from './views/today.ts';
 import { lessonsView } from './views/lessons.ts';
 import { libraryView } from './views/library.ts';
 import { songsView } from './views/songs.ts';
@@ -27,7 +28,7 @@ const state = {
   session: new SketchbookSession(),
   library: new RiffLibrary(),
   listening: false,
-  view: 'session' as ViewName,
+  view: 'today' as ViewName,
   params: {} as Record<string, string>,
   tuning: STANDARD_TUNING,
   sampleRate: 0,
@@ -154,7 +155,7 @@ const context: AppContext = {
   navigate(view, params = {}) {
     state.view = view;
     state.params = params;
-    window.location.hash = view === 'session' ? '' : `#${view}`;
+    window.location.hash = view === 'today' ? '' : `#${view}`;
     render();
   },
 
@@ -165,10 +166,11 @@ function buildView(): View {
   switch (state.view) {
     case 'lab': return labView(context, state.params);
     case 'lessons': return lessonsView(context);
+    case 'session': return sessionView(context);
     case 'library': return libraryView(context, state.params);
     case 'songs': return songsView(context);
     case 'fingerprint': return fingerprintView(context);
-    default: return sessionView(context);
+    default: return todayView(context);
   }
 }
 
@@ -213,7 +215,8 @@ function mountChrome(): void {
 
   const nav = qs('#nav');
   const tabs: Array<[ViewName, string]> = [
-    ['session', 'Live Coach'],
+    ['today', 'Today'],
+    ['session', 'Play'],
     ['lessons', 'Lessons'],
     ['lab', 'Riff Lab'],
     ['library', 'My Riffs'],
@@ -249,7 +252,7 @@ function mountChrome(): void {
 
   window.addEventListener('hashchange', () => {
     const view = window.location.hash.replace('#', '') as ViewName;
-    state.view = ['lessons', 'lab', 'library', 'songs', 'fingerprint'].includes(view) ? view : 'session';
+    state.view = ['session', 'lessons', 'lab', 'library', 'songs', 'fingerprint'].includes(view) ? view : 'today';
     render();
   });
   window.addEventListener('beforeunload', () => { void capture.stop(); });
@@ -273,7 +276,7 @@ function start(): void {
 
   mountChrome();
   const hash = window.location.hash.replace('#', '') as ViewName;
-  if (['lessons', 'lab', 'library', 'songs', 'fingerprint'].includes(hash)) state.view = hash;
+  if (['session', 'lessons', 'lab', 'library', 'songs', 'fingerprint'].includes(hash)) state.view = hash;
   render();
 
   window.setInterval(() => {
