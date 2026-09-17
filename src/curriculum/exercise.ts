@@ -97,6 +97,36 @@ export function buildExercise(skill: Skill, bpm = 70): Exercise {
 }
 
 /**
+ * A drill for a progression the player can already play, in their own key.
+ *
+ * Separate from `buildExercise` because this comes from the repertoire rather
+ * than the skill graph: it is not a lesson in something new, it is a chance to
+ * play something they are already capable of and hear it hold together.
+ */
+export function exerciseFromProgression(
+  templateId: string,
+  name: string,
+  key: string,
+  chords: string[],
+  bpm = 70,
+): Exercise {
+  const barMs = 4 * (60_000 / bpm);
+  return {
+    // Kept apart from the skill graph's ids so practising a progression never
+    // masquerades as having mastered a lesson.
+    skillId: `repertoire.${templateId}.${key}`,
+    kind: 'play-progression',
+    title: `${name} in ${key}`,
+    bpm,
+    // Twice round, so there is a second time through to settle into.
+    durationMs: chords.length * barMs * 2,
+    instructions: `${chords.join(' → ')}, one bar each, round and round. If you lose it, come back in at the top rather than stopping.`,
+    chords,
+    target: 'Two times round without losing your place.',
+  };
+}
+
+/**
  * Grade a change drill the way a teacher counts it: clean changes per minute.
  *
  * The standard measure, and the one that actually predicts whether somebody
