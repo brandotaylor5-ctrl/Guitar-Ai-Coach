@@ -75,6 +75,8 @@ export function sessionView(context: AppContext): View {
   let recallHost = h('div', { class: 'recall-host' });
   let lastPhraseSignature = '';
   let lastCoachedPhraseId = '';
+  /** When a note was last heard, so the coach can tell playing from pausing. */
+  let lastNoteAt = 0;
   let voiceEnabled = false;
   let lastSpokenAt = 0;
   let disposed = false;
@@ -105,7 +107,14 @@ export function sessionView(context: AppContext): View {
     voiceEnabled = !voiceEnabled;
     voiceButton.textContent = `Voice feedback: ${voiceEnabled ? 'on' : 'off'}`;
     voiceButton.classList.toggle('is-live', voiceEnabled);
-    if (voiceEnabled) speak('Voice coach is on. Play naturally and leave a little space between ideas.');
+    // Spoken directly rather than through the gate: this one is a reply to a
+    // button press, so it should be immediate and is not an interruption.
+    if (voiceEnabled && 'speechSynthesis' in window) {
+      lastSpokenAt = Date.now();
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(
+        'Voice coach on. I will listen while you play and speak when you pause.',
+      ));
+    }
     else if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   }, 'btn-quiet');
 
@@ -162,12 +171,34 @@ export function sessionView(context: AppContext): View {
 
   addCoach('I’m ready. Start Live Coach and play normally. I’ll listen more than I talk.', 'hello');
 
-  function speak(text: string): void {
+  /**
+   * How long the coach stays quiet after speaking, by what it has to say.
+   * A remark worth interrupting for is rare; most of what it notices is not.
+   */
+  const COOLDOWN_MS: Record<string, number> = {
+    memory: 25_000,
+    variation: 30_000,
+    phrase: 45_000,
+  };
+  /** Kinds that are never spoken aloud. They still appear in the feed. */
+  const SILENT_KINDS = new Set(['chord', 'hello', 'observation']);
+  /** A pause this long means the player has stopped, rather than drawn breath. */
+  const PAUSE_BEFORE_SPEAKING_MS = 1_800;
+
+  function speak(text: string, kind: string): void {
     if (!voiceEnabled || !('speechSynthesis' in window)) return;
+    if (SILENT_KINDS.has(kind)) return;
+
     const now = Date.now();
-    if (now - lastSpokenAt < 2200) return;
+    // Never talk over playing. The whole point is that it listens while you
+    // play and speaks when you stop — a coach in the room would not narrate
+    // your chord changes back to you while your hands are moving.
+    if (now - lastNoteAt < PAUSE_BEFORE_SPEAKING_MS) return;
+    if (now - lastSpokenAt < (COOLDOWN_MS[kind] ?? 45_000)) return;
+    // Already mid-sentence: let it finish rather than stacking up.
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) return;
+
     lastSpokenAt = now;
-    window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 1.02; u.pitch = .96; u.volume = .9;
     window.speechSynthesis.speak(u);
@@ -180,7 +211,7 @@ export function sessionView(context: AppContext): View {
     );
     coachFeed.appendChild(turn);
     while (coachFeed.children.length > 7) coachFeed.firstElementChild?.remove();
-    if (kind !== 'hello') speak(text);
+    speak(text, kind);
   }
 
   function renderNoteStream(): void {
@@ -345,6 +376,9 @@ export function sessionView(context: AppContext): View {
   }
 
   function onFrame(frame: Frame): void {
+    // Any sound at all counts as still playing, not just clean notes — a
+    // muted strum or a scrape means their hands are moving.
+    if (frame.rms > 0.02) lastNoteAt = Date.now();
     if (frame.hz > 0 && frame.clarity > .7) {
       const midi = frequencyToMidi(frame.hz), cents = Math.round((midi - Math.round(midi))*100);
       noteReadout.textContent = midiToName(Math.round(midi));
@@ -364,8 +398,8 @@ export function sessionView(context: AppContext): View {
     const heard: HeardChord = { ...chord, heardAt: Date.now() };
     chordHistory.push(heard); while (chordHistory.length > 8) chordHistory.shift();
     refreshHarmony();
-    if (!previous) addCoach(`That sounds like ${chord.label}. I’m listening for where you take it.`, 'chord');
-    else if (Date.now() - previous.heardAt > 450) addCoach(`${previous.label} → ${chord.label}. Got it. I’m treating that as part of the progression now.`, 'chord');
+    if (!previous) addCoach(`That sounds like ${chord.label}.`, 'chord');
+    else if (Date.now() - previous.heardAt > 450) addCoach(`${previous.label} → ${chord.label}.`, 'chord');
   }
 
   const timer = window.setInterval(async () => {
