@@ -111,6 +111,19 @@ function say(message: string, kind: 'info' | 'error' = 'info'): void {
   }, kind === 'error' ? 9000 : 5000));
 }
 
+/**
+ * Starting/stopping the mic used to call render(), which destroys the current
+ * view. That is disastrous inside a drill or Riff Lab attempt: the very act of
+ * turning listening on erased the exercise that needed the microphone.
+ *
+ * Listening is transport state, not navigation. Keep the mounted view alive
+ * and only refresh the tiny pieces that actually depend on that state.
+ */
+function syncListeningUi(): void {
+  qs('#live-dot').classList.toggle('is-live', state.listening);
+  if (state.view === 'session') current?.update?.();
+}
+
 const context: AppContext = {
   get session() { return state.session; },
   get library() { return state.library; },
@@ -137,34 +150,37 @@ const context: AppContext = {
       state.listening = true;
       qs<HTMLSelectElement>('#microphone').disabled = true;
       await listMicrophones();
-      say('Live Coach is listening. Play naturally — notes and chord guesses stay on this device.');
+      say('I am listening. Play naturally — notes and chord guesses stay on this device.');
     } catch (err) {
       const error = err as Error;
       say(
         error.name === 'NotAllowedError'
-          ? 'Microphone access was declined. Live Coach cannot hear the guitar without it.'
+          ? 'Microphone access was declined. I cannot hear the guitar without it.'
           : `Could not start listening: ${error.message}`,
         'error',
       );
       state.listening = false;
     } finally {
       changingCapture = false;
+      syncListeningUi();
     }
-    render();
   },
 
   async stopListening() {
     if (changingCapture || !state.listening) return;
     changingCapture = true;
-    await capture.stop();
-    state.listening = false;
-    qs<HTMLSelectElement>('#microphone').disabled = false;
-    changingCapture = false;
-    stoppedAt = performance.now();
-    stoppedClock = state.session.currentTimeMs;
-    pausedElapsed = 0;
-    say('Stopped. Your recent playing is still in memory for a minute.');
-    render();
+    try {
+      await capture.stop();
+      state.listening = false;
+      qs<HTMLSelectElement>('#microphone').disabled = false;
+      stoppedAt = performance.now();
+      stoppedClock = state.session.currentTimeMs;
+      pausedElapsed = 0;
+      say('Stopped. Your recent playing is still in memory for a minute.');
+    } finally {
+      changingCapture = false;
+      syncListeningUi();
+    }
   },
 
   refresh() { render(); },
@@ -341,7 +357,8 @@ function start(): void {
       state.session = new SketchbookSession({ library: state.library, tuning: state.tuning });
       state.sampleRate = 0;
       stoppedAt = null;
-      render();
+      // Expiring old unsaved memory should not destroy an active screen either.
+      current?.onNotes?.();
     } else {
       if (state.sampleRate) {
         state.session.feedAudio(new Float32Array(
