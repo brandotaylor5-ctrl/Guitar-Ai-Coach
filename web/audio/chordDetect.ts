@@ -43,11 +43,31 @@ function midiFrequency(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
+export interface ChordEvidence {
+  /** Per-pitch-class fundamental strength, 0..1. */
+  chroma: number[];
+  /**
+   * Pitch class of the lowest note that is really sounding, or -1.
+   *
+   * Folding straight to chroma throws this away, and it is the single most
+   * useful thing in the signal: guitarists play chords in root position almost
+   * all the time, so the bass note names the chord. Without it, a template
+   * built on two loudly doubled notes can outscore the right chord whose third
+   * is fretted on one string — which is how an open E comes back as Bsus4.
+   */
+  bassPc: number;
+  /** MIDI note of that bass, or -1. */
+  bassMidi: number;
+  /** Strength at each MIDI pitch, 0..1, so callers can ask about one note. */
+  perMidi: number[];
+}
+
 /** Estimate how strongly each pitch class exists as a *fundamental*.
  * Harmonics help its own fundamental score but do not directly vote as notes.
  */
-export function guitarChroma(db: Float32Array, sampleRate: number, fftSize: number): number[] {
+export function guitarEvidence(db: Float32Array, sampleRate: number, fftSize: number): ChordEvidence {
   const chroma = Array(12).fill(0) as number[];
+  const perMidi = Array(89).fill(0) as number[];
   for (let midi = 40; midi <= 88; midi++) {
     const f = midiFrequency(midi);
     const fundamental = binEnergy(db, f, sampleRate, fftSize);
@@ -56,17 +76,91 @@ export function guitarChroma(db: Float32Array, sampleRate: number, fftSize: numb
       + binEnergy(db, f * 2, sampleRate, fftSize) * 0.34
       + binEnergy(db, f * 3, sampleRate, fftSize) * 0.18
       + binEnergy(db, f * 4, sampleRate, fftSize) * 0.10;
+    perMidi[midi] = score;
     const pc = ((midi % 12) + 12) % 12;
     chroma[pc] = Math.max(chroma[pc]!, score);
   }
+
   const max = Math.max(...chroma, 1e-9);
-  return chroma.map((x) => x / max);
+
+  // The lowest note carrying real energy. Scanning upward from the bottom of
+  // the guitar's range finds the bass string rather than the loudest partial.
+  //
+  // It has to be the top of a hump, not the near side of one: bin smoothing
+  // lifts the semitone below every strong note over any threshold, and a bass
+  // read one semitone flat shifts every partial offset with it, so nothing
+  // downstream can tell a harmonic from a fretted note any more.
+  let bassMidi = -1;
+  for (let midi = 40; midi <= 88; midi++) {
+    const energy = perMidi[midi]! / max;
+    if (energy < 0.45) continue;
+    if (perMidi[midi]! < (perMidi[midi - 1] ?? 0) || perMidi[midi]! < (perMidi[midi + 1] ?? 0)) continue;
+    bassMidi = midi;
+    break;
+  }
+
+  return {
+    chroma: chroma.map((x) => x / max),
+    bassPc: bassMidi < 0 ? -1 : ((bassMidi % 12) + 12) % 12,
+    bassMidi,
+    perMidi: perMidi.map((x) => x / max),
+  };
 }
 
+/** Chroma alone, for callers that do not care where the bass is. */
+export function guitarChroma(db: Float32Array, sampleRate: number, fftSize: number): number[] {
+  return guitarEvidence(db, sampleRate, fftSize).chroma;
+}
+
+/** Below this a template note is not really sounding, whatever the noise floor says. */
+const PRESENT = 0.3;
+
 export function detectChord(db: Float32Array, sampleRate: number, fftSize: number): ChordDetection | null {
-  const chroma = guitarChroma(db, sampleRate, fftSize);
+  const { chroma, bassPc, bassMidi, perMidi } = guitarEvidence(db, sampleRate, fftSize);
   const audible = chroma.map((v, pc) => ({ v, pc })).filter((x) => x.v >= 0.28).sort((a, b) => b.v - a.v);
   if (audible.length < 2) return null;
+
+  /**
+   * Which pitch classes were actually fretted, rather than rung as partials of
+   * the bass note?
+   *
+   * A plucked low E puts energy an octave up, a twelfth up, two octaves up and
+   * onwards. The twelfth is a perfect fifth and the fifteenth a major second,
+   * so one open E string supplies, for free, most of what E5 and Esus2 ask
+   * for — and gets reported as one, confidently. Strength cannot settle it: a
+   * guitar's third partial is routinely louder than its fundamental. Position
+   * can. A fretted note sounds where no partial of the bass lands.
+   */
+  const PARTIAL_OFFSETS = [12, 19.02, 24, 27.86, 31.02, 34, 36];
+  const fretted = new Set<number>();
+  if (bassMidi >= 0) {
+    for (let midi = 40; midi <= 88; midi++) {
+      const energy = perMidi[midi] ?? 0;
+      if (energy < 0.3) continue;
+      // A real note is a peak. Every strong partial drags its neighbours up
+      // with it — window spread either side of the bin — so the semitone above
+      // a loud string clears any threshold you pick while being nothing but
+      // the skirt of it. Only the top of a hump is a note.
+      if (energy < (perMidi[midi - 1] ?? 0) || energy < (perMidi[midi + 1] ?? 0)) continue;
+      const isPartialOfBass = midi > bassMidi
+        && PARTIAL_OFFSETS.some((offset) => Math.abs(midi - bassMidi - offset) <= 0.5);
+      if (!isPartialOfBass) fretted.add(((midi % 12) + 12) % 12);
+    }
+  }
+
+  // One note, however rich, is not a chord. Two distinct fretted pitch classes
+  // is the least that can be.
+  if (fretted.size < 2) return null;
+
+  // Noise spreads itself evenly; a chord concentrates. Counting how many pitch
+  // classes are lit does not separate them — a six-string chord rings eight or
+  // more through sheer harmonic bleed — but how much of the total sits in the
+  // strongest few does: chords hold better than half there, noise barely a
+  // third.
+  const ranked = [...chroma].sort((a, b) => b - a);
+  const total = chroma.reduce((a, b) => a + b, 0);
+  const concentration = total > 0 ? ranked.slice(0, 4).reduce((a, b) => a + b, 0) / total : 0;
+  if (concentration < 0.45) return null;
 
   let best: { score: number; rootPc: number; template: typeof TEMPLATES[number] } | null = null;
   let second = -Infinity;
@@ -77,8 +171,21 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
       const outsideValues = chroma.filter((_, p) => !wanted.includes(p));
       const outside = outsideValues.reduce((a, b) => a + b, 0) / outsideValues.length;
       const rootBonus = chroma[rootPc]! * 0.18;
-      const present = wanted.filter((p) => chroma[p]! >= 0.22).length;
+      const present = wanted.filter((p) => chroma[p]! >= PRESENT).length;
       const coverage = present / wanted.length;
+
+      // The bass note names the chord. This is what stops a template made of
+      // two loudly doubled notes from beating the chord actually being played.
+      const bassBonus = bassPc < 0 ? 0 : rootPc === bassPc ? 0.22 : -0.16;
+
+      // Averaging over template notes quietly rewards templates that ask for
+      // less. Charging for each note a template claims but cannot show makes
+      // the comparison honest between a triad and a two-note shape.
+      const missingPenalty = (wanted.length - present) * 0.14;
+
+      // Charge for template notes that only exist as partials of the bass.
+      const unfretted = wanted.filter((p) => !fretted.has(p)).length;
+      const phantomPenalty = unfretted * 0.12;
 
       // A two-note power chord naturally gets a higher arithmetic average than
       // a full triad. If the third is genuinely audible, prefer the chord that
@@ -89,6 +196,9 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
       if (template.quality === '5') {
         const thirdEvidence = Math.max(chroma[(rootPc + 3) % 12]!, chroma[(rootPc + 4) % 12]!);
         powerChordPenalty = Math.max(0, thirdEvidence - 0.20) * 0.22;
+        // The fifth has to have been played, not merely rung as the root's
+        // twelfth — otherwise every single note becomes a power chord.
+        if (!fretted.has((rootPc + 7) % 12)) powerChordPenalty += 0.6;
       }
 
       // Reward templates whose defining color note is actually present. This
@@ -101,7 +211,7 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
       }
 
       const score = inside - outside * 0.34 + rootBonus + fullChordBonus + coverage * 0.04
-        + qualityEvidence - powerChordPenalty;
+        + qualityEvidence - powerChordPenalty + bassBonus - missingPenalty - phantomPenalty;
       if (!best || score > best.score) {
         if (best) second = best.score;
         best = { score, rootPc, template };
@@ -111,7 +221,7 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
   if (!best) return null;
 
   const wanted = best.template.pcs.map((d) => (best.rootPc + d) % 12);
-  const present = wanted.filter((p) => chroma[p]! >= 0.22).length;
+  const present = wanted.filter((p) => chroma[p]! >= PRESENT).length;
   const required = best.template.quality === '5' ? 2 : Math.min(3, wanted.length);
   if (present < required || best.score < 0.44) return null;
 

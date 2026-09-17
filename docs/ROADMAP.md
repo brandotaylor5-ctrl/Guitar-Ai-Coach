@@ -54,10 +54,26 @@ the change to your actual phrase is the missing piece, and it is where an LLM
 belongs. The musical operations it would call are written and tested; what is
 missing is the parsing and a place to put an API key.
 
-**Polyphony.** Pitch detection is monophonic. Chords are currently only
-*suggested*, not *detected*. Polyphonic transcription is a substantially harder
-problem and should be treated as its own project, not a patch to
-`pitchDetect.ts`.
+**Full polyphony.** Melodic pitch detection is monophonic, and note-level
+transcription of a chord — naming every string in it — is still not attempted.
+What does exist is *chord recognition*: `web/audio/chordDetect.ts` matches a
+harmonic-weighted chroma against common guitar shapes and names the chord.
+
+Its limits are measured rather than assumed, in `test/chordDetect.test.ts`:
+
+- Open shapes, which is most of what a beginner plays, are reliable — including
+  in a noisy room and on a guitar that is out of tune.
+- Sevenths come back as their triad. The seventh is one quiet string among five
+  and does not survive the harmonic clutter.
+- Barre chords find the root but can mislabel the quality, and B minor is
+  missed outright.
+- A strum spread over ~40ms reads as a power chord until it finishes, because
+  the analysis window is only about 190ms. `ChordTracker` waits for three
+  agreeing frames, so the full chord wins once the strum completes.
+
+Two things it deliberately refuses to do: name a chord from a single note
+(a plucked string's own twelfth is a perfect fifth, which used to produce
+confident phantom power chords), and name one from room noise.
 
 **Nothing syncs.** Riffs live in one browser on one machine. Export and import
 are the manual version of an answer, and recordings in IndexedDB are not

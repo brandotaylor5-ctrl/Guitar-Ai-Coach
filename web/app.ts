@@ -15,6 +15,7 @@ import { ClipStore } from './audio/clipStore.ts';
 import { h, clear, qs, replace } from './ui/dom.ts';
 import { sessionView } from './views/session.ts';
 import { labView } from './views/lab.ts';
+import { lessonsView } from './views/lessons.ts';
 import { libraryView } from './views/library.ts';
 import { songsView } from './views/songs.ts';
 import { fingerprintView } from './views/fingerprint.ts';
@@ -163,6 +164,7 @@ const context: AppContext = {
 function buildView(): View {
   switch (state.view) {
     case 'lab': return labView(context, state.params);
+    case 'lessons': return lessonsView(context);
     case 'library': return libraryView(context, state.params);
     case 'songs': return songsView(context);
     case 'fingerprint': return fingerprintView(context);
@@ -212,6 +214,7 @@ function mountChrome(): void {
   const nav = qs('#nav');
   const tabs: Array<[ViewName, string]> = [
     ['session', 'Live Coach'],
+    ['lessons', 'Lessons'],
     ['lab', 'Riff Lab'],
     ['library', 'My Riffs'],
     ['songs', 'Songs'],
@@ -246,7 +249,7 @@ function mountChrome(): void {
 
   window.addEventListener('hashchange', () => {
     const view = window.location.hash.replace('#', '') as ViewName;
-    state.view = ['lab', 'library', 'songs', 'fingerprint'].includes(view) ? view : 'session';
+    state.view = ['lessons', 'lab', 'library', 'songs', 'fingerprint'].includes(view) ? view : 'session';
     render();
   });
   window.addEventListener('beforeunload', () => { void capture.stop(); });
@@ -270,7 +273,7 @@ function start(): void {
 
   mountChrome();
   const hash = window.location.hash.replace('#', '') as ViewName;
-  if (['lab', 'library', 'songs', 'fingerprint'].includes(hash)) state.view = hash;
+  if (['lessons', 'lab', 'library', 'songs', 'fingerprint'].includes(hash)) state.view = hash;
   render();
 
   window.setInterval(() => {

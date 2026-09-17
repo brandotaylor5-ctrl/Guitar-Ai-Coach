@@ -67,6 +67,20 @@ async function build() {
     }
   }
 
+  // A root page, so a static host serving dist/ directly still lands somewhere.
+  // The dev server redirects instead; a plain file host has no way to.
+  await emit(join(OUT, 'index.html'), `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Guitar AI Coach</title>
+<meta http-equiv="refresh" content="0; url=./web/index.html">
+<link rel="canonical" href="./web/index.html">
+</head>
+<body><p><a href="./web/index.html">Open Guitar AI Coach</a></p></body>
+</html>
+`);
+
   console.log(`Built ${compiled} modules, copied ${copied} files → dist/`);
 }
 
