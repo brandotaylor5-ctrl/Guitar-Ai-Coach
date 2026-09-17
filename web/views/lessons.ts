@@ -2,10 +2,9 @@
  * The lesson screen — a teacher choosing one thing and then sitting with you
  * while you do it.
  *
- * Two halves. Above, where you are and what is worth working on, taken from
- * what the app has heard you play rather than from a fixed order. Below, the
- * drill itself: a count-in, a click, the bar you are supposed to be on, and a
- * read on how it went the moment you stop.
+ * A beginner must never be tested on a physical shape they have not first
+ * been shown. New chord lessons therefore have two distinct states:
+ * teach the hand, then listen to the attempt.
  */
 
 import type { ChordDetection } from '../audio/chordDetect.ts';
@@ -19,9 +18,11 @@ import {
 } from '../../src/curriculum/exercise.ts';
 import { repertoireFor } from '../../src/curriculum/repertoire.ts';
 import { SKILLS } from '../../src/curriculum/skills.ts';
+import { chordShape } from '../../src/music/chordShapes.ts';
 import { levelOf, WORKABLE } from '../../src/curriculum/mastery.ts';
 import type { Exercise, Grade, HeardChord } from '../../src/curriculum/exercise.ts';
 import { audioContext, unlockAudio } from '../audio/context.ts';
+import { chordTeachingCard } from '../ui/chordCard.ts';
 import { h, clear, replace } from '../ui/dom.ts';
 import { button, empty } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
@@ -32,7 +33,6 @@ function storage() {
     window.localStorage.removeItem('__probe__');
     return window.localStorage;
   } catch {
-    // Private browsing. Progress lasts the session and no longer.
     const memory = new Map<string, string>();
     return { getItem: (k: string) => memory.get(k) ?? null, setItem: (k: string, v: string) => { memory.set(k, v); } };
   }
@@ -52,16 +52,53 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
   } | null = null;
 
   function lessonCard(lesson: Lesson): HTMLElement {
+    const skill = lesson.skill;
+
+    // Teach-before-test invariant: if this is a concrete chord shape, the
+    // physical lesson itself is the card. There is no generic "Work on this"
+    // button that can skip straight to the microphone test.
+    if (skill.kind === 'chord' && skill.chord && chordShape(skill.chord)) {
+      const card = chordTeachingCard(skill.chord, context.player, {
+        heading: skill.name,
+        onReady: () => { void startLesson(lesson); },
+      });
+      card.classList.add(`is-${lesson.reason}`);
+      const head = card.querySelector('.chord-teach-head');
+      if (head) {
+        head.appendChild(h('span', { class: 'badge', text: lesson.reason.replace('-', ' ') }));
+      }
+      const why = h('div', { class: 'teach-first-callout' },
+        h('strong', { text: 'Why I picked this' }),
+        h('span', { text: lesson.because }),
+      );
+      const actions = card.querySelector('.chord-sound-actions');
+      if (actions) card.insertBefore(why, actions);
+      return card;
+    }
+
+    // If a chord somehow reaches the curriculum without a physical map, fail
+    // safe: explain the data gap and never test the learner on it.
+    if (skill.kind === 'chord' && skill.chord) {
+      return h('article', { class: `lesson-card is-${lesson.reason}` },
+        h('header', { class: 'lesson-head' },
+          h('h3', { text: skill.name }),
+          h('span', { class: 'badge', text: 'not ready to teach' }),
+        ),
+        h('p', { class: 'new-skill-warning', text: `I have not built a safe finger map for ${skill.name} yet, so I am not going to ask you to play it.` }),
+        h('p', { class: 'muted', text: 'Pick another lesson for now. The coach should never turn missing teaching content into your problem.' }),
+      );
+    }
+
     return h('article', { class: `lesson-card is-${lesson.reason}` },
       h('header', { class: 'lesson-head' },
-        h('h3', { text: lesson.skill.name }),
+        h('h3', { text: skill.name }),
         h('span', { class: 'badge', text: lesson.reason.replace('-', ' ') }),
       ),
       h('p', { class: 'lesson-because', text: lesson.because }),
-      h('p', { class: 'lesson-goal', text: lesson.skill.goal }),
+      h('p', { class: 'lesson-goal', text: skill.goal }),
       h('details', { class: 'theory' },
         h('summary', { text: 'Why this is worth your time' }),
-        h('p', { text: lesson.skill.why }),
+        h('p', { text: skill.why }),
       ),
       button('Work on this', () => { void startLesson(lesson); }, 'btn-primary'),
     );
@@ -71,7 +108,6 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     await startDrill(buildExercise(lesson.skill), () => { void startLesson(lesson); });
   }
 
-  /** Chords the player has, for turning a repertoire entry into a drill. */
   function knownChords(): string[] {
     const mastery = masteryMap(store.load());
     return SKILLS
@@ -79,10 +115,6 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       .map((s) => s.chord!);
   }
 
-  /**
-   * Run the progression Today handed over, rather than dropping the player on
-   * a list and making them find it again.
-   */
   function startRequestedProgression(): boolean {
     const wanted = params.progression;
     const key = params.key;
@@ -100,12 +132,6 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     return true;
   }
 
-  /**
-   * A drill owns the whole loop: get the microphone ready, count in, listen,
-   * grade, and leave the feedback on screen. The old flow started the timer
-   * even when the microphone was off, then immediately erased the grade by
-   * re-rendering the page. Both make a working detector feel broken.
-   */
   async function startDrill(exercise: Exercise, again: () => void): Promise<void> {
     stopDrill();
 
@@ -130,22 +156,25 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     }
 
     const heard: HeardChord[] = [];
-
-    // Show the opening chord through the count-in, so the hand is already in
-    // place on beat one rather than scrambling after it.
     const barLabel = h('div', { class: 'drill-bar', text: exercise.chords?.[0] ?? '—' });
     const nextLabel = h('div', { class: 'drill-next muted', text: '' });
     const countLabel = h('div', { class: 'drill-count', text: 'Get ready' });
     const heardFeed = h('div', { class: 'drill-heard' });
     const resultHost = h('div', { class: 'drill-result' });
 
+    const reminderChord = exercise.kind === 'hold-chord' ? exercise.chords?.[0] : undefined;
+    const reminder = reminderChord && chordShape(reminderChord)
+      ? h('details', { class: 'theory drill-shape-reminder' },
+        h('summary', { text: 'Need the finger shape again?' }),
+        chordTeachingCard(reminderChord, context.player, { compact: true }),
+      )
+      : null;
+
     const beatMs = 60_000 / exercise.bpm;
     const barMs = beatMs * 4;
     let beat = 0;
     let startedAt = 0;
     let finished = false;
-
-    // A count-in, because nobody can start on beat one from silence.
     let countIn = 4;
     const ctx = audioContext();
     const click = (strong: boolean) => {
@@ -158,8 +187,6 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       osc.start(); osc.stop(ctx.currentTime + 0.06);
     };
 
-    // The page-level gesture unlock normally gets here first. Calling again is
-    // harmless and catches browsers that suspended audio after a permission UI.
     await unlockAudio();
 
     let tick = 0;
@@ -207,8 +234,6 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       );
       running = null;
       countLabel.textContent = 'Done';
-      // Deliberately do NOT render() here. The result the player just earned is
-      // the most important thing on the screen; leave it there until they act.
     }
 
     running = {
@@ -220,9 +245,11 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     };
 
     replace(drillHost, h('section', { class: 'panel drill' },
+      h('p', { class: 'eyebrow', text: 'NOW I LISTEN' }),
       h('h3', { text: exercise.title }),
       h('p', { class: 'lede', text: exercise.instructions }),
       h('p', { class: 'muted', text: `Target: ${exercise.target}` }),
+      reminder,
       h('div', { class: 'drill-stage' }, countLabel, barLabel, nextLabel),
       heardFeed,
       h('div', { class: 'practice-actions' },
@@ -268,7 +295,6 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
   }
 
   function onChord(chord: ChordDetection): void {
-    // Do not count the chord the player is quietly forming during the count-in.
     if (!running || running.startedAt === 0) return;
     running.heard.push({ label: chord.label.replace('♯', '#'), at: Date.now() });
     const feed = running.feed;
@@ -293,8 +319,16 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       h('p', { class: 'muted', text: 'I work this out from what I hear you play, not from a test. Play normally and it keeps up.' }),
     ));
 
+    element.appendChild(h('div', { class: 'learn-sequence', 'aria-label': 'How a new skill is learned' },
+      h('span', { class: 'is-current', text: '1 · See it' }),
+      h('span', { text: '2 · Hear it' }),
+      h('span', { text: '3 · Try it' }),
+      h('span', { text: '4 · Use it' }),
+    ));
+
     element.appendChild(h('section', { class: 'panel' },
       h('h2', { text: 'What I would work on' }),
+      h('p', { class: 'muted', text: 'If something here is new, I teach the physical move before the microphone gets to grade you.' }),
       lessons.length === 0
         ? empty('Nothing queued — play something and I will find the next thing.')
         : h('div', { class: 'lesson-list' }, ...lessons.map(lessonCard)),
@@ -304,16 +338,11 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
   }
 
   render();
-  // A progression arriving from Today starts straight away; landing on the
-  // list and having to find it again is the thing that made "play it with me"
-  // feel like it did nothing.
   startRequestedProgression();
 
   return {
     element,
     onChord,
-    // Do not erase an active drill just because some unrelated global state
-    // asked the view to refresh.
     update: () => { if (!running) render(); },
     dispose: stopDrill,
   };
