@@ -21,6 +21,7 @@ import { repertoireFor } from '../../src/curriculum/repertoire.ts';
 import { SKILLS } from '../../src/curriculum/skills.ts';
 import { levelOf, WORKABLE } from '../../src/curriculum/mastery.ts';
 import type { Exercise, Grade, HeardChord } from '../../src/curriculum/exercise.ts';
+import { audioContext, unlockAudio } from '../audio/context.ts';
 import { h, clear, replace } from '../ui/dom.ts';
 import { button, empty } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
@@ -116,7 +117,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
 
     // A count-in, because nobody can start on beat one from silence.
     let countIn = 4;
-    const ctx = new AudioContext();
+    const ctx = audioContext();
     const click = (strong: boolean) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -127,6 +128,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       osc.start(); osc.stop(ctx.currentTime + 0.06);
     };
 
+    void unlockAudio();
     const tick = window.setInterval(() => {
       if (countIn > 0) {
         click(countIn === 4);
@@ -157,7 +159,8 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
 
     function stopAudio(): void {
       window.clearInterval(tick);
-      void ctx.close().catch(() => {});
+      // Deliberately not closed: the context is shared, and closing it here
+      // would silence playback everywhere else in the app.
     }
 
     function finish(): void {

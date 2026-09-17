@@ -55,7 +55,19 @@ describe('chord recognition, on realistic playing', () => {
     assert.deepEqual(wrong, [], 'these came back wrong');
   });
 
-  test('the bass note decides the chord', () => {
+  test('a missed low string does not rename the chord', () => {
+    // The commonest thing that actually happens on a downstroke. Charging too
+    // much for the root not being the lowest note renamed every chord to
+    // whatever was left at the bottom: a strummed E came back as Bsus4.
+    assert.equal(detect([47, 52, 56, 59, 64]), 'E', 'E without its low string');
+    assert.equal(detect([47, 52, 55, 59, 64]), 'Em', 'Em without its low string');
+    assert.equal(detect([52, 57, 60, 64]), 'Am', 'Am without its low string');
+    assert.equal(detect([47, 50, 55, 59, 67]), 'G', 'G without its low string');
+    assert.equal(detect([52, 55, 60, 64]), 'C', 'C without its bass note');
+    assert.equal(detect([57, 62, 66]), 'D', 'D without its bass note');
+  });
+
+  test('the bass note guides the chord', () => {
     // The failure this guards: an open E is mostly doubled E and B, so a
     // template of just those two notes used to outscore E major and the
     // detector confidently reported Bsus4.

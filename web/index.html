@@ -42,6 +42,11 @@
     <p class="muted">Start listening to list microphones. Stop listening before switching inputs. Lower the noise gate for quiet notes; raise it if background noise creates notes. Calibration needs two seconds with strings muted.</p>
   </details>
 
+  <div id="sound-blocked" class="sound-blocked" role="alert" hidden>
+    <span>This browser is holding back sound.</span>
+    <button id="sound-enable" class="btn-quiet" type="button">Turn sound on</button>
+  </div>
+
   <div id="status" class="status" role="status" aria-live="polite"></div>
 
   <main id="view" class="main"></main>

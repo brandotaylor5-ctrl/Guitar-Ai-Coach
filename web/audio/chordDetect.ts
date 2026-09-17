@@ -176,16 +176,18 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
 
       // The bass note names the chord. This is what stops a template made of
       // two loudly doubled notes from beating the chord actually being played.
-      const bassBonus = bassPc < 0 ? 0 : rootPc === bassPc ? 0.22 : -0.16;
+      const bassBonus = bassPc < 0 ? 0 : rootPc === bassPc ? 0.22 : -0.05;
 
       // Averaging over template notes quietly rewards templates that ask for
       // less. Charging for each note a template claims but cannot show makes
       // the comparison honest between a triad and a two-note shape.
       const missingPenalty = (wanted.length - present) * 0.14;
 
-      // Charge for template notes that only exist as partials of the bass.
+      // Charge properly for template notes that only exist as partials of
+      // something else. This, rather than the bass, is what should rule a
+      // chord out: Bsus4 needs an F# nobody played.
       const unfretted = wanted.filter((p) => !fretted.has(p)).length;
-      const phantomPenalty = unfretted * 0.12;
+      const phantomPenalty = unfretted * 0.3;
 
       // A two-note power chord naturally gets a higher arithmetic average than
       // a full triad. If the third is genuinely audible, prefer the chord that
