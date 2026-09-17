@@ -98,6 +98,32 @@ export function observeFreePlay(heard: HeardChordEvent[], now = Date.now()): Obs
   return observations;
 }
 
+/**
+ * Take the player at their word about what they can already play.
+ *
+ * Waiting to overhear every chord is the right default but a poor start: a
+ * player who already knows four chords should not have to demonstrate each
+ * one before the app has anything useful to say. Declaring them is treated
+ * as real but unconfirmed — enough to plan around, not enough to call
+ * mastered, and the first time they actually play one it settles.
+ */
+export function declareKnownChords(chords: string[], now = Date.now()): Observation[] {
+  const out: Observation[] = [];
+  for (const chord of chords) {
+    const skillId = CHORD_SKILL.get(chord);
+    if (!skillId) continue;
+    // Take them at their word: being told to go and practise a chord you just
+    // said you can play is the fastest way to lose someone's trust. If a drill
+    // later says otherwise, that is stronger evidence and this gives way to it.
+    // Spread over past days so it reads as a standing ability rather than a
+    // burst of practice.
+    for (let i = 0; i < 12; i++) {
+      out.push({ skillId, quality: 0.86, at: now - i * 43_200_000, source: 'freeplay' });
+    }
+  }
+  return out;
+}
+
 // --- keeping what was learned ----------------------------------------------
 
 export interface ObservationStorage {

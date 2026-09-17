@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 
 import { SKILLS, getSkill, prerequisitesOf } from '../src/curriculum/skills.ts';
 import { MASTERED, WORKABLE, masteryMap, levelOf } from '../src/curriculum/mastery.ts';
+import { describeRepertoire, mostValuableNextChord, repertoireFor } from '../src/curriculum/repertoire.ts';
 import type { Observation } from '../src/curriculum/mastery.ts';
 import { describeProgress, planLessons, progressOf } from '../src/curriculum/plan.ts';
 import { buildExercise, gradeChangeDrill, gradeHoldChord, gradeProgression, observationFrom } from '../src/curriculum/exercise.ts';
-import { CurriculumStore, observeFreePlay } from '../src/curriculum/watch.ts';
+import { CurriculumStore, declareKnownChords, observeFreePlay } from '../src/curriculum/watch.ts';
 
 const DAY = 86_400_000;
 const NOW = 1_700_000_000_000;
@@ -316,5 +317,80 @@ describe('holding a single chord', () => {
 
   test('silence asks them to try again rather than failing them', () => {
     assert.match(gradeHoldChord(exercise, [], 5000).feedback.join(' '), /did not hear Em/);
+  });
+});
+
+describe('what the chords you have are already enough for', () => {
+  test('four common chords already carry real progressions', () => {
+    const playable = repertoireFor(['E', 'G', 'D', 'C']);
+    assert.ok(playable.length >= 3, `expected several, got ${playable.length}`);
+    assert.ok(playable.every((p) => p.playableNow));
+    // Nothing offered should need a chord they have not got.
+    const known = new Set(['E', 'G', 'D', 'C']);
+    for (const entry of playable) {
+      for (const chord of entry.chords) assert.ok(known.has(chord), `${entry.template.name} needs ${chord}`);
+    }
+  });
+
+  test('the classic three-chord trick shows up in the right key', () => {
+    const three = repertoireFor(['G', 'C', 'D']).find((p) => p.template.id === 'I-IV-V');
+    assert.ok(three);
+    assert.equal(three.key, 'G');
+    assert.deepEqual(three.chords, ['G', 'C', 'D', 'D']);
+  });
+
+  test('minor progressions come out minor', () => {
+    const four = repertoireFor(['G', 'D', 'Em', 'C']).find((p) => p.template.id === 'I-V-vi-IV' && p.key === 'G');
+    assert.ok(four);
+    assert.deepEqual(four.chords, ['G', 'D', 'Em', 'C']);
+  });
+
+  test('knowing nothing offers nothing rather than pretending', () => {
+    assert.deepEqual(repertoireFor([]), []);
+    assert.match(describeRepertoire([]), /once i know/i);
+  });
+
+  test('names the one chord that would unlock the most', () => {
+    const next = mostValuableNextChord(['G', 'C', 'D']);
+    assert.ok(next);
+    assert.ok(next.unlocks > 0);
+    // And it must actually deliver what it promised.
+    const before = repertoireFor(['G', 'C', 'D']).length;
+    const after = repertoireFor(['G', 'C', 'D', next.chord]).length;
+    assert.equal(after - before, next.unlocks);
+  });
+
+  test('says nothing about a next chord when it would not help', () => {
+    assert.equal(mostValuableNextChord([]), null);
+  });
+
+  test('talks in songs rather than scores', () => {
+    const text = describeRepertoire(['E', 'G', 'D', 'C']);
+    assert.ok(!/%|score|level \d/i.test(text), text);
+    assert.match(text, /progression/i);
+  });
+
+  test('a player is taken at their word about what they can play', () => {
+    const mastery = masteryMap(declareKnownChords(['E', 'G', 'D', 'C'], NOW), NOW);
+    for (const id of ['chord.E', 'chord.G', 'chord.D', 'chord.C']) {
+      assert.ok(levelOf(mastery, id) >= MASTERED, `${id} should be taken on trust`);
+    }
+    // And is then offered something they did not say they had.
+    const offered = planLessons(mastery, { now: NOW, count: 3 }).map((l) => l.skill.id);
+    assert.ok(!offered.includes('chord.G'), 'nobody should be told to practise what they just said they can play');
+    assert.ok(offered.length > 0, 'and there should still be something to do');
+  });
+
+  test('but a bad drill still overrides what they claimed', () => {
+    const claimed = declareKnownChords(['G'], NOW);
+    const struggled = Array.from({ length: 6 }, (_, i) => ({
+      skillId: 'chord.G', quality: 0.1, at: NOW + i * 60_000, source: 'drill' as const,
+    }));
+    const mastery = masteryMap([...claimed, ...struggled], NOW + 400_000);
+    assert.ok(levelOf(mastery, 'chord.G') < MASTERED, 'hearing them struggle is stronger evidence');
+  });
+
+  test('a chord nobody teaches here is ignored rather than invented', () => {
+    assert.deepEqual(declareKnownChords(['Xb9']), []);
   });
 });
