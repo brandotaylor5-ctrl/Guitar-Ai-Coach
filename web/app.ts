@@ -162,7 +162,7 @@ const context: AppContext = {
 
 function buildView(): View {
   switch (state.view) {
-    case 'lab': return labView(context);
+    case 'lab': return labView(context, state.params);
     case 'library': return libraryView(context, state.params);
     case 'songs': return songsView(context);
     case 'fingerprint': return fingerprintView(context);
