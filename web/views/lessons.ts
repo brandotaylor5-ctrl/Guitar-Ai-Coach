@@ -54,9 +54,6 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
   function lessonCard(lesson: Lesson): HTMLElement {
     const skill = lesson.skill;
 
-    // Teach-before-test invariant: if this is a concrete chord shape, the
-    // physical lesson itself is the card. There is no generic "Work on this"
-    // button that can skip straight to the microphone test.
     if (skill.kind === 'chord' && skill.chord && chordShape(skill.chord)) {
       const card = chordTeachingCard(skill.chord, context.player, {
         heading: skill.name,
@@ -64,9 +61,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       });
       card.classList.add(`is-${lesson.reason}`);
       const head = card.querySelector('.chord-teach-head');
-      if (head) {
-        head.appendChild(h('span', { class: 'badge', text: lesson.reason.replace('-', ' ') }));
-      }
+      if (head) head.appendChild(h('span', { class: 'badge', text: lesson.reason.replace('-', ' ') }));
       const why = h('div', { class: 'teach-first-callout' },
         h('strong', { text: 'Why I picked this' }),
         h('span', { text: lesson.because }),
@@ -76,30 +71,44 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       return card;
     }
 
-    // If a chord somehow reaches the curriculum without a physical map, fail
-    // safe: explain the data gap and never test the learner on it.
     if (skill.kind === 'chord' && skill.chord) {
       return h('article', { class: `lesson-card is-${lesson.reason}` },
-        h('header', { class: 'lesson-head' },
-          h('h3', { text: skill.name }),
-          h('span', { class: 'badge', text: 'not ready to teach' }),
-        ),
+        h('header', { class: 'lesson-head' }, h('h3', { text: skill.name }), h('span', { class: 'badge', text: 'not ready to teach' })),
         h('p', { class: 'new-skill-warning', text: `I have not built a safe finger map for ${skill.name} yet, so I am not going to ask you to play it.` }),
-        h('p', { class: 'muted', text: 'Pick another lesson for now. The coach should never turn missing teaching content into your problem.' }),
+      );
+    }
+
+    // Scale practice needs note-by-note listening, not the chord grader. Riff
+    // Lab already owns that loop, so scale lessons go there deliberately.
+    if (skill.kind === 'scale' && skill.scale) {
+      const mode = skill.scale.name.toLowerCase().includes('minor') ? 'minor' : 'major';
+      return h('article', { class: `lesson-card is-${lesson.reason}` },
+        h('header', { class: 'lesson-head' }, h('h3', { text: skill.name }), h('span', { class: 'badge', text: 'riff + scale lesson' })),
+        h('p', { class: 'lesson-because', text: lesson.because }),
+        h('p', { class: 'lesson-goal', text: skill.goal }),
+        h('p', { class: 'muted', text: 'I will show the fretboard, play the notes, give you small riffs made from the scale, then listen to your attempt.' }),
+        button('Open this in Riff Lab', () => context.navigate('lab', { root: String(skill.scale!.tonicPc), mode }), 'btn-primary'),
+      );
+    }
+
+    // Do not fake-score techniques that the current detector cannot honestly
+    // measure yet. Let Live Coach observe while the learner practises instead.
+    if (skill.kind === 'technique') {
+      return h('article', { class: `lesson-card is-${lesson.reason}` },
+        h('header', { class: 'lesson-head' }, h('h3', { text: skill.name }), h('span', { class: 'badge', text: 'guided practice' })),
+        h('p', { class: 'lesson-because', text: lesson.because }),
+        h('p', { class: 'lesson-goal', text: skill.goal }),
+        h('details', { class: 'theory' }, h('summary', { text: 'Why this is worth your time' }), h('p', { text: skill.why })),
+        h('p', { class: 'muted', text: 'I can listen while you work on this, but I will not give you a fake pass/fail score for something I cannot measure reliably yet.' }),
+        button('Practice it with Live Coach', () => context.navigate('session'), 'btn-primary'),
       );
     }
 
     return h('article', { class: `lesson-card is-${lesson.reason}` },
-      h('header', { class: 'lesson-head' },
-        h('h3', { text: skill.name }),
-        h('span', { class: 'badge', text: lesson.reason.replace('-', ' ') }),
-      ),
+      h('header', { class: 'lesson-head' }, h('h3', { text: skill.name }), h('span', { class: 'badge', text: lesson.reason.replace('-', ' ') })),
       h('p', { class: 'lesson-because', text: lesson.because }),
       h('p', { class: 'lesson-goal', text: skill.goal }),
-      h('details', { class: 'theory' },
-        h('summary', { text: 'Why this is worth your time' }),
-        h('p', { text: skill.why }),
-      ),
+      h('details', { class: 'theory' }, h('summary', { text: 'Why this is worth your time' }), h('p', { text: skill.why })),
       button('Work on this', () => { void startLesson(lesson); }, 'btn-primary'),
     );
   }
@@ -110,35 +119,23 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
 
   function knownChords(): string[] {
     const mastery = masteryMap(store.load());
-    return SKILLS
-      .filter((s) => s.kind === 'chord' && s.chord && levelOf(mastery, s.id) >= WORKABLE)
-      .map((s) => s.chord!);
+    return SKILLS.filter((s) => s.kind === 'chord' && s.chord && levelOf(mastery, s.id) >= WORKABLE).map((s) => s.chord!);
   }
 
   function startRequestedProgression(): boolean {
     const wanted = params.progression;
     const key = params.key;
     if (!wanted || !key) return false;
-    const entry = repertoireFor(knownChords())
-      .find((p) => p.template.id === wanted && p.key === key);
+    const entry = repertoireFor(knownChords()).find((p) => p.template.id === wanted && p.key === key);
     if (!entry) return false;
-    const run = () => {
-      void startDrill(
-        exerciseFromProgression(entry.template.id, entry.template.name, entry.key, entry.chords),
-        run,
-      );
-    };
+    const run = () => { void startDrill(exerciseFromProgression(entry.template.id, entry.template.name, entry.key, entry.chords), run); };
     run();
     return true;
   }
 
   async function startDrill(exercise: Exercise, again: () => void): Promise<void> {
     stopDrill();
-
-    replace(drillHost, h('section', { class: 'panel drill' },
-      h('h3', { text: exercise.title }),
-      h('p', { class: 'lede', text: 'Getting the microphone ready…' }),
-    ));
+    replace(drillHost, h('section', { class: 'panel drill' }, h('h3', { text: exercise.title }), h('p', { class: 'lede', text: 'Getting the microphone ready…' })));
     drillHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     if (!context.listening) {
@@ -164,10 +161,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
 
     const reminderChord = exercise.kind === 'hold-chord' ? exercise.chords?.[0] : undefined;
     const reminder = reminderChord && chordShape(reminderChord)
-      ? h('details', { class: 'theory drill-shape-reminder' },
-        h('summary', { text: 'Need the finger shape again?' }),
-        chordTeachingCard(reminderChord, context.player, { compact: true }),
-      )
+      ? h('details', { class: 'theory drill-shape-reminder' }, h('summary', { text: 'Need the finger shape again?' }), chordTeachingCard(reminderChord, context.player, { compact: true }))
       : null;
 
     const beatMs = 60_000 / exercise.bpm;
@@ -183,24 +177,17 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       osc.frequency.value = strong ? 1600 : 1000;
       gain.gain.setValueAtTime(strong ? 0.25 : 0.12, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.05);
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(); osc.stop(ctx.currentTime + 0.06);
+      osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 0.06);
     };
 
     await unlockAudio();
-
     let tick = 0;
     const stopAudio = () => { if (tick) window.clearInterval(tick); tick = 0; };
 
     function showStoppedBeforeStart(): void {
       replace(resultHost,
-        h('div', { class: 'coaching' },
-          h('p', { text: 'Stopped before the count-in finished. Nothing was scored.' }),
-        ),
-        h('div', { class: 'practice-actions' },
-          button('Again', again, 'btn-primary'),
-          button('Something else', () => { stopDrill(); render(); }, 'btn-quiet'),
-        ),
+        h('div', { class: 'coaching' }, h('p', { text: 'Stopped before the count-in finished. Nothing was scored.' })),
+        h('div', { class: 'practice-actions' }, button('Again', again, 'btn-primary'), button('Back to lessons', () => { stopDrill(); render(); }, 'btn-quiet')),
       );
       running = null;
       countLabel.textContent = 'Stopped';
@@ -210,10 +197,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       if (finished) return;
       finished = true;
       stopAudio();
-      if (startedAt === 0) {
-        showStoppedBeforeStart();
-        return;
-      }
+      if (startedAt === 0) { showStoppedBeforeStart(); return; }
 
       const elapsed = Math.max(1, Date.now() - startedAt);
       const grade: Grade = exercise.kind === 'play-progression'
@@ -223,26 +207,33 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
           : gradeHoldChord(exercise, heard, elapsed);
 
       store.record([observationFrom(exercise, grade)]);
+      const actions = h('div', { class: 'practice-actions' });
+      if (grade.passed) {
+        actions.append(
+          button('Show me what this unlocked', () => {
+            stopDrill();
+            render();
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 'btn-primary'),
+          button('Do it again', again, 'btn-quiet'),
+          button('Make music with it', () => context.navigate('lab'), 'btn-quiet'),
+        );
+      } else {
+        actions.append(button('Try it again', again, 'btn-primary'), button('Back to lessons', () => { stopDrill(); render(); }, 'btn-quiet'));
+      }
+
       replace(resultHost,
         h('div', { class: `coaching${grade.passed ? ' is-nailed' : ''}` },
           ...grade.feedback.map((line) => h('p', { text: line })),
+          grade.passed ? h('p', { class: 'muted', text: 'Good. That is enough to build on. You can keep learning now and let repetition turn it into mastery over time.' }) : null,
         ),
-        h('div', { class: 'practice-actions' },
-          button('Again', again, 'btn-primary'),
-          button('Something else', () => { stopDrill(); render(); }, 'btn-quiet'),
-        ),
+        actions,
       );
       running = null;
       countLabel.textContent = 'Done';
     }
 
-    running = {
-      exercise,
-      startedAt: 0,
-      heard,
-      feed: heardFeed,
-      stop: () => { stopAudio(); running = null; },
-    };
+    running = { exercise, startedAt: 0, heard, feed: heardFeed, stop: () => { stopAudio(); running = null; } };
 
     replace(drillHost, h('section', { class: 'panel drill' },
       h('p', { class: 'eyebrow', text: 'NOW I LISTEN' }),
@@ -252,9 +243,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       reminder,
       h('div', { class: 'drill-stage' }, countLabel, barLabel, nextLabel),
       heardFeed,
-      h('div', { class: 'practice-actions' },
-        button('Stop', finish, 'btn-quiet'),
-      ),
+      h('div', { class: 'practice-actions' }, button('Stop', finish, 'btn-quiet')),
       resultHost,
     ));
 
@@ -279,20 +268,14 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       if (exercise.chords?.length) {
         const index = Math.floor(elapsed / barMs) % exercise.chords.length;
         barLabel.textContent = exercise.chords[index]!;
-        nextLabel.textContent = exercise.chords.length > 1
-          ? `next: ${exercise.chords[(index + 1) % exercise.chords.length]}`
-          : '';
+        nextLabel.textContent = exercise.chords.length > 1 ? `next: ${exercise.chords[(index + 1) % exercise.chords.length]}` : '';
       }
       beat++;
       if (elapsed >= exercise.durationMs) finish();
     }, beatMs);
   }
 
-  function stopDrill(): void {
-    running?.stop();
-    running = null;
-    clear(drillHost);
-  }
+  function stopDrill(): void { running?.stop(); running = null; clear(drillHost); }
 
   function onChord(chord: ChordDetection): void {
     if (!running || running.startedAt === 0) return;
@@ -307,30 +290,31 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
   function render(): void {
     const mastery = masteryMap(store.load());
     const progress = progressOf(mastery);
-    const lessons = planLessons(mastery, { count: 3 });
+    const lessons = planLessons(mastery, { count: 6 });
 
     clear(element);
     element.appendChild(h('section', { class: 'panel' },
       h('h2', { text: 'Where you are' }),
       h('p', { class: 'lede', text: describeProgress(mastery) }),
-      h('div', { class: 'progress-bar' },
-        h('span', { class: 'progress-fill', style: `width:${Math.round(progress.fraction * 100)}%` })),
+      h('div', { class: 'progress-bar' }, h('span', { class: 'progress-fill', style: `width:${Math.round(progress.fraction * 100)}%` })),
       h('p', { class: 'muted', text: `${progress.mastered} solid · ${progress.inProgress} under way · ${progress.total} in the whole course` }),
-      h('p', { class: 'muted', text: 'I work this out from what I hear you play, not from a test. Play normally and it keeps up.' }),
+      h('p', { class: 'muted', text: 'Passing one lesson unlocks the next useful branches immediately. Mastery comes from returning to things over time, not being trapped on one card.' }),
     ));
 
     element.appendChild(h('div', { class: 'learn-sequence', 'aria-label': 'How a new skill is learned' },
-      h('span', { class: 'is-current', text: '1 · See it' }),
-      h('span', { text: '2 · Hear it' }),
-      h('span', { text: '3 · Try it' }),
-      h('span', { text: '4 · Use it' }),
+      h('span', { class: 'is-current', text: '1 · See it' }), h('span', { text: '2 · Hear it' }), h('span', { text: '3 · Try it' }), h('span', { text: '4 · Use it' }),
     ));
 
     element.appendChild(h('section', { class: 'panel' },
-      h('h2', { text: 'What I would work on' }),
-      h('p', { class: 'muted', text: 'If something here is new, I teach the physical move before the microphone gets to grade you.' }),
+      h('h2', { text: 'What I would work on next' }),
+      h('p', { class: 'muted', text: 'The first few are the most useful from what I know about your playing. You are also allowed to wander — guitar is not a checklist.' }),
       lessons.length === 0
-        ? empty('Nothing queued — play something and I will find the next thing.')
+        ? h('div', {}, empty('Nothing is queued from the curriculum right now — that should not leave you stranded.'),
+          h('div', { class: 'practice-actions' },
+            button('Explore Riff Lab', () => context.navigate('lab'), 'btn-primary'),
+            button('Create a song idea', () => context.navigate('songs'), 'btn-quiet'),
+            button('Just play and let me listen', () => context.navigate('session'), 'btn-quiet'),
+          ))
         : h('div', { class: 'lesson-list' }, ...lessons.map(lessonCard)),
     ));
 
@@ -340,10 +324,5 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
   render();
   startRequestedProgression();
 
-  return {
-    element,
-    onChord,
-    update: () => { if (!running) render(); },
-    dispose: stopDrill,
-  };
+  return { element, onChord, update: () => { if (!running) render(); }, dispose: stopDrill };
 }
