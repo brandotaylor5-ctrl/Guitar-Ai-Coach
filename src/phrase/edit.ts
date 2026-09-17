@@ -48,6 +48,28 @@ export function spliceNotes(head: NoteEvent[], tail: NoteEvent[]): NoteEvent[] {
   return [...head, ...rebase(tail, resumeAt)];
 }
 
+/**
+ * Change one note, leaving everything else exactly as played.
+ *
+ * "Try changing the final A to G" is the smallest useful edit there is, and the
+ * one a conversation reaches for most.
+ */
+export function setNoteAt(notes: NoteEvent[], index: number, midi: number): NoteEvent[] {
+  const at = index < 0 ? notes.length + index : index;
+  if (at < 0 || at >= notes.length) {
+    throw new Error(`There is no note ${index + 1} — this phrase has ${notes.length}.`);
+  }
+  return notes.map((note, i) => (i === at ? { ...note, midi } : note));
+}
+
+/** Move one note by an interval rather than to an absolute pitch. */
+export function nudgeNoteAt(notes: NoteEvent[], index: number, semitones: number): NoteEvent[] {
+  const at = index < 0 ? notes.length + index : index;
+  const note = notes[at];
+  if (!note) throw new Error(`There is no note ${index + 1} — this phrase has ${notes.length}.`);
+  return setNoteAt(notes, at, note.midi + semitones);
+}
+
 /** "Keep everything except the last three notes." */
 export function dropTail(notes: NoteEvent[], count: number): NoteEvent[] {
   return notes.slice(0, Math.max(0, notes.length - count));

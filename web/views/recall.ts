@@ -15,6 +15,7 @@ import { h, relativeTime } from '../ui/dom.ts';
 import {
   analysisFacts, button, explanationBlock, fretboardDiagram, highlightNote, noteRow, tabBlock,
 } from '../ui/render.ts';
+import { conversationPanel } from './converse.ts';
 import type { AppContext } from './context.ts';
 import { riffConversation } from './conversation.ts';
 
@@ -174,7 +175,26 @@ export function recallPanel(context: AppContext, recall: Recall): HTMLElement {
     panel.appendChild(more);
   }
 
-  panel.appendChild(riffConversation(context, analysis));
+  // Two conversations, one slot. The local router needs no key and works
+  // offline; the model-backed one understands anything phrased differently.
+  // Use the better one when it is available and the other when it is not,
+  // rather than making the player choose between them.
+  const conversationHost = h('div', { class: 'converse-host' });
+  panel.appendChild(h('details', { class: 'section' },
+    h('summary', { text: 'Talk to me about this idea' }),
+    h('p', { class: 'muted', text: 'Ask questions about this phrase, change it, and hear what changed.' }),
+    conversationHost,
+  ));
+  // Built only when the disclosure is first opened, so nothing is checked or
+  // sent for players who never use it.
+  const disclosure = panel.lastElementChild as HTMLDetailsElement;
+  disclosure.addEventListener('toggle', () => {
+    if (disclosure.open && conversationHost.childElementCount === 0) {
+      conversationHost.appendChild(conversationPanel(context, recall.phrase, {
+        fallback: () => riffConversation(context, analysis),
+      }));
+    }
+  })
 
   return panel;
 }
