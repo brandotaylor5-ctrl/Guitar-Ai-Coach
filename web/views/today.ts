@@ -143,9 +143,8 @@ export function todayView(context: AppContext): View {
             h('summary', { text: 'Why this one matters' }),
             h('p', { text: entry.template.note }),
           ),
-          button('Play it with me', async () => {
-            context.say(`${entry.chords.join(' → ')} — one bar each, round and round.`);
-            context.navigate('lessons');
+          button('Play it with me', () => {
+            context.navigate('lessons', { progression: entry.template.id, key: entry.key });
           }, 'btn-quiet'),
         )),
       ));

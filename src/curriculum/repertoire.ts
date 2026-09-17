@@ -92,6 +92,41 @@ export const PROGRESSIONS: ProgressionTemplate[] = [
     character: 'Plain and steady. It leaves a lot of room for singing.',
     note: 'Traditional songs live here. It is the easiest of all of these to keep going while you do something else, like sing.',
   },
+  {
+    id: 'I-V-IV-V', name: 'The two-chord pivot', numerals: ['I', 'V', 'IV', 'V'], difficulty: 1,
+    character: 'Restless in a good way. It keeps tipping forward instead of landing.',
+    note: 'Three chords arranged so the ear never quite settles. Good for a chorus that has to keep lifting.',
+  },
+  {
+    id: 'I-iii-IV-V', name: 'The rising line', numerals: ['I', 'iii', 'IV', 'V'], difficulty: 2,
+    character: 'Climbs. Each chord sits a little higher than the last, so it feels like it is going somewhere.',
+    note: 'The minor third chord in the middle is what makes this sound more sophisticated than the effort it takes.',
+  },
+  {
+    id: 'vi-iii-IV-I', name: 'The drifting one', numerals: ['vi', 'iii', 'IV', 'I'], difficulty: 2,
+    character: 'Wistful and unhurried. It sounds like looking out of a window.',
+    note: 'Two minor chords in a row is unusual in simple songs, and it is exactly why this one has a mood the others do not.',
+  },
+  {
+    id: 'IV-I-V-vi', name: 'The delayed home', numerals: ['IV', 'I', 'V', 'vi'], difficulty: 2,
+    character: 'Starts away from home and keeps not arriving. Unsettled the whole way round.',
+    note: 'Starting on the fourth rather than the root is one of the cheapest ways to make four ordinary chords sound unfamiliar.',
+  },
+  {
+    id: 'I-iv', name: 'The borrowed minor', numerals: ['I', 'I', 'iv', 'I'], difficulty: 3,
+    character: 'One chord turns unexpectedly sad, then it rights itself.',
+    note: 'The fourth played minor when it should be major. A single borrowed chord, and the most emotional trick on this list.',
+  },
+  {
+    id: 'i-bVII-bVI-V', name: 'The descending minor', numerals: ['vi', 'V', 'IV', 'iii'], difficulty: 3,
+    character: 'Walks steadily downwards. Grave, and slightly Spanish.',
+    note: 'A descending bass line under a minor key. Flamenco, film scores and a great deal of metal all lean on this shape.',
+  },
+  {
+    id: 'ii-IV-I', name: 'The soft landing', numerals: ['ii', 'IV', 'I', 'I'], difficulty: 2,
+    character: 'Arrives gently rather than decisively.',
+    note: 'A quieter way home than the usual fifth. Worth knowing when a song needs to end without making a fuss about it.',
+  },
 ];
 
 export interface PlayableProgression {

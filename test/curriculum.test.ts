@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 
 import { SKILLS, getSkill, prerequisitesOf } from '../src/curriculum/skills.ts';
 import { MASTERED, WORKABLE, masteryMap, levelOf } from '../src/curriculum/mastery.ts';
-import { describeRepertoire, mostValuableNextChord, repertoireFor } from '../src/curriculum/repertoire.ts';
+import { PROGRESSIONS, describeRepertoire, mostValuableNextChord, repertoireFor } from '../src/curriculum/repertoire.ts';
 import type { Observation } from '../src/curriculum/mastery.ts';
 import { describeProgress, planLessons, progressOf } from '../src/curriculum/plan.ts';
-import { buildExercise, gradeChangeDrill, gradeHoldChord, gradeProgression, observationFrom } from '../src/curriculum/exercise.ts';
+import { buildExercise, exerciseFromProgression, gradeChangeDrill, gradeHoldChord, gradeProgression, observationFrom } from '../src/curriculum/exercise.ts';
 import { CurriculumStore, declareKnownChords, observeFreePlay } from '../src/curriculum/watch.ts';
 
 const DAY = 86_400_000;
@@ -392,5 +392,51 @@ describe('what the chords you have are already enough for', () => {
 
   test('a chord nobody teaches here is ignored rather than invented', () => {
     assert.deepEqual(declareKnownChords(['Xb9']), []);
+  });
+});
+
+describe('playing a progression you already know', () => {
+  test('builds a drill in the player\'s own key', () => {
+    const exercise = exerciseFromProgression('I-IV-V', 'Three chords', 'G', ['G', 'C', 'D', 'D'], 70);
+    assert.equal(exercise.kind, 'play-progression');
+    assert.match(exercise.title, /Three chords in G/);
+    assert.deepEqual(exercise.chords, ['G', 'C', 'D', 'D']);
+    assert.match(exercise.instructions, /G → C → D → D/);
+    // Twice round, so there is a second pass to settle into.
+    assert.equal(exercise.durationMs, 4 * (4 * (60_000 / 70)) * 2);
+  });
+
+  test('practising a progression never counts as mastering a lesson', () => {
+    const exercise = exerciseFromProgression('I-IV-V', 'Three chords', 'G', ['G', 'C', 'D', 'D']);
+    assert.ok(exercise.skillId.startsWith('repertoire.'));
+    assert.ok(!SKILLS.some((s) => s.id === exercise.skillId), 'it must not collide with a real skill');
+  });
+
+  test('the drill it builds can actually be graded', () => {
+    const exercise = exerciseFromProgression('I-IV-V', 'Three chords', 'G', ['G', 'C', 'D', 'D'], 60);
+    const barMs = 4 * (60_000 / 60);
+    const played = ['G', 'C', 'D', 'D', 'G', 'C', 'D', 'D']
+      .map((label, i) => ({ label, at: NOW + i * barMs + 100 }));
+    const grade = gradeProgression(exercise, played, NOW);
+    assert.ok(grade.passed, grade.feedback.join(' '));
+  });
+
+  test('there is enough here to keep someone going', () => {
+    // Four common chords should offer real variety, not one or two things.
+    assert.ok(repertoireFor(['G', 'C', 'D', 'Em']).length >= 8);
+    assert.ok(PROGRESSIONS.length >= 15);
+  });
+
+  test('every progression is playable and explains itself', () => {
+    for (const template of PROGRESSIONS) {
+      assert.ok(template.numerals.length >= 3, `${template.id} is too short to loop`);
+      assert.ok(template.character.length > 25, `${template.id} does not say what it sounds like`);
+      assert.ok(template.note.length > 40, `${template.id} does not say why it matters`);
+    }
+    // And every numeral used must resolve to a real chord.
+    for (const entry of repertoireFor(['C', 'G', 'D', 'A', 'E', 'F', 'Am', 'Em', 'Dm'])) {
+      assert.equal(entry.chords.length, entry.template.numerals.length, entry.template.id);
+      for (const chord of entry.chords) assert.match(chord, /^[A-G]#?m?$/, `${entry.template.id} produced ${chord}`);
+    }
   });
 });

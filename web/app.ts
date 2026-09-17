@@ -165,7 +165,7 @@ const context: AppContext = {
 function buildView(): View {
   switch (state.view) {
     case 'lab': return labView(context, state.params);
-    case 'lessons': return lessonsView(context);
+    case 'lessons': return lessonsView(context, state.params);
     case 'session': return sessionView(context);
     case 'library': return libraryView(context, state.params);
     case 'songs': return songsView(context);

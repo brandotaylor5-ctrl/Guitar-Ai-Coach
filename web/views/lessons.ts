@@ -13,7 +13,13 @@ import type { Lesson } from '../../src/curriculum/plan.ts';
 import { describeProgress, planLessons, progressOf } from '../../src/curriculum/plan.ts';
 import { masteryMap } from '../../src/curriculum/mastery.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
-import { buildExercise, gradeChangeDrill, gradeHoldChord, gradeProgression, observationFrom } from '../../src/curriculum/exercise.ts';
+import {
+  buildExercise, exerciseFromProgression, gradeChangeDrill, gradeHoldChord,
+  gradeProgression, observationFrom,
+} from '../../src/curriculum/exercise.ts';
+import { repertoireFor } from '../../src/curriculum/repertoire.ts';
+import { SKILLS } from '../../src/curriculum/skills.ts';
+import { levelOf, WORKABLE } from '../../src/curriculum/mastery.ts';
 import type { Exercise, Grade, HeardChord } from '../../src/curriculum/exercise.ts';
 import { h, clear, replace } from '../ui/dom.ts';
 import { button, empty } from '../ui/render.ts';
@@ -31,7 +37,7 @@ function storage() {
   }
 }
 
-export function lessonsView(context: AppContext): View {
+export function lessonsView(context: AppContext, params: Record<string, string> = {}): View {
   const store = new CurriculumStore(storage());
   const element = h('div', { class: 'view view-lessons' });
   const drillHost = h('div', { class: 'drill-host' });
@@ -55,18 +61,51 @@ export function lessonsView(context: AppContext): View {
         h('summary', { text: 'Why this is worth your time' }),
         h('p', { text: lesson.skill.why }),
       ),
-      button('Work on this', () => startDrill(lesson), 'btn-primary'),
+      button('Work on this', () => startLesson(lesson), 'btn-primary'),
     );
   }
 
-  function startDrill(lesson: Lesson): void {
+  function startLesson(lesson: Lesson): void {
+    startDrill(buildExercise(lesson.skill), () => startLesson(lesson));
+  }
+
+  /** Chords the player has, for turning a repertoire entry into a drill. */
+  function knownChords(): string[] {
+    const mastery = masteryMap(store.load());
+    return SKILLS
+      .filter((s) => s.kind === 'chord' && s.chord && levelOf(mastery, s.id) >= WORKABLE)
+      .map((s) => s.chord!);
+  }
+
+  /**
+   * Run the progression Today handed over, rather than dropping the player on
+   * a list and making them find it again.
+   */
+  function startRequestedProgression(): boolean {
+    const wanted = params.progression;
+    const key = params.key;
+    if (!wanted || !key) return false;
+    const entry = repertoireFor(knownChords())
+      .find((p) => p.template.id === wanted && p.key === key);
+    if (!entry) return false;
+    const run = () => startDrill(
+      exerciseFromProgression(entry.template.id, entry.template.name, entry.key, entry.chords),
+      run,
+    );
+    run();
+    return true;
+  }
+
+  /** Run a drill built anywhere — a lesson, or a progression from Today. */
+  function startDrill(exercise: Exercise, again: () => void): void {
     stopDrill();
-    const exercise = buildExercise(lesson.skill);
     const heard: HeardChord[] = [];
 
-    const barLabel = h('div', { class: 'drill-bar', text: '—' });
+    // Show the opening chord through the count-in, so the hand is already in
+    // place on beat one rather than scrambling after it.
+    const barLabel = h('div', { class: 'drill-bar', text: exercise.chords?.[0] ?? '—' });
     const nextLabel = h('div', { class: 'drill-next muted', text: '' });
-    const countLabel = h('div', { class: 'drill-count', text: 'Ready…' });
+    const countLabel = h('div', { class: 'drill-count', text: 'Get ready' });
     const heardFeed = h('div', { class: 'drill-heard' });
     const resultHost = h('div', { class: 'drill-result' });
 
@@ -91,9 +130,16 @@ export function lessonsView(context: AppContext): View {
     const tick = window.setInterval(() => {
       if (countIn > 0) {
         click(countIn === 4);
-        countLabel.textContent = `${countIn}…`;
+        countLabel.textContent = `${countIn}`;
         countIn--;
-        if (countIn === 0) { startedAt = Date.now(); countLabel.textContent = 'Go'; }
+        if (countIn === 0) {
+          startedAt = Date.now();
+          countLabel.textContent = 'Go';
+          if (exercise.chords?.length) {
+            barLabel.textContent = exercise.chords[0]!;
+            nextLabel.textContent = exercise.chords.length > 1 ? `next: ${exercise.chords[1]}` : '';
+          }
+        }
         return;
       }
       click(beat % 4 === 0);
@@ -129,7 +175,7 @@ export function lessonsView(context: AppContext): View {
           ...grade.feedback.map((line) => h('p', { text: line })),
         ),
         h('div', { class: 'practice-actions' },
-          button('Again', () => startDrill(lesson), 'btn-primary'),
+          button('Again', again, 'btn-primary'),
           button('Something else', () => { stopDrill(); render(); }, 'btn-quiet'),
         ),
       );
@@ -207,5 +253,10 @@ export function lessonsView(context: AppContext): View {
   }
 
   render();
+  // A progression arriving from Today starts straight away; landing on the
+  // list and having to find it again is the thing that made "play it with me"
+  // feel like it did nothing.
+  startRequestedProgression();
+
   return { element, onChord, update: () => render(), dispose: stopDrill };
 }
