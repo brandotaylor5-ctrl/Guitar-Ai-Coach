@@ -10,6 +10,7 @@ import { suggestEndings } from '../../src/create/suggest.ts';
 import { diffTakes } from '../../src/phrase/diff.ts';
 import { motifContaining } from '../../src/phrase/motif.ts';
 import type { ChordDetection } from '../audio/chordDetect.ts';
+import { observeFreePlay, CurriculumStore } from '../../src/curriculum/watch.ts';
 import { h, clear, relativeTime, replace } from '../ui/dom.ts';
 import { button, empty, noteRow, highlightNote } from '../ui/render.ts';
 import { recallPanel } from './recall.ts';
@@ -77,6 +78,8 @@ export function sessionView(context: AppContext): View {
   let lastCoachedPhraseId = '';
   /** When a note was last heard, so the coach can tell playing from pausing. */
   let lastNoteAt = 0;
+  /** Chords heard while simply playing, waiting to be read for evidence. */
+  let freeplay: Array<{ label: string; confidence: number; at: number }> = [];
   let voiceEnabled = false;
   let lastSpokenAt = 0;
   let disposed = false;
@@ -124,6 +127,19 @@ export function sessionView(context: AppContext): View {
     replace(recallHost, recallPanel(context, recall));
     recallHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 'btn-primary btn-ask');
+
+  const curriculum = new CurriculumStore(
+    (() => {
+      try {
+        window.localStorage.setItem('__probe__', '1');
+        window.localStorage.removeItem('__probe__');
+        return window.localStorage;
+      } catch {
+        const memory = new Map<string, string>();
+        return { getItem: (k: string) => memory.get(k) ?? null, setItem: (k: string, v: string) => { memory.set(k, v); } };
+      }
+    })(),
+  );
 
   const element = h('div', { class: 'view view-session live-coach-view' },
     h('section', { class: 'panel live-coach-hero' },
@@ -390,6 +406,18 @@ export function sessionView(context: AppContext): View {
     levelFill.style.width = `${Math.min(100, frame.rms*320)}%`;
   }
 
+  /**
+   * Ordinary playing teaches the curriculum what this player can do, so the
+   * lesson plan is already right the first time they open it. Batched rather
+   * than written per chord: this runs while they are playing.
+   */
+  function learnFromPlaying(): void {
+    if (freeplay.length < 4) return;
+    const observations = observeFreePlay(freeplay);
+    freeplay = [];
+    if (observations.length) curriculum.record(observations);
+  }
+
   function onChord(chord: ChordDetection): void {
     chordReadout.textContent = chord.label;
     chordConfidence.textContent = `${Math.round(chord.confidence*100)}% · likely chord`;
@@ -398,6 +426,8 @@ export function sessionView(context: AppContext): View {
     const heard: HeardChord = { ...chord, heardAt: Date.now() };
     chordHistory.push(heard); while (chordHistory.length > 8) chordHistory.shift();
     refreshHarmony();
+    freeplay.push({ label: chord.label.replace('♯', '#'), confidence: chord.confidence, at: heard.heardAt });
+    if (freeplay.length >= 12) learnFromPlaying();
     if (!previous) addCoach(`That sounds like ${chord.label}.`, 'chord');
     else if (Date.now() - previous.heardAt > 450) addCoach(`${previous.label} → ${chord.label}.`, 'chord');
   }
@@ -410,5 +440,5 @@ export function sessionView(context: AppContext): View {
   }, 650);
 
   update(); refreshHarmony();
-  return { element, update, onNotes:update, onFrame, onChord, dispose(){ disposed=true; window.clearInterval(timer); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } };
+  return { element, update, onNotes:update, onFrame, onChord, dispose(){ learnFromPlaying(); disposed=true; window.clearInterval(timer); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } };
 }

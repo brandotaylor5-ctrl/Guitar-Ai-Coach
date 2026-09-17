@@ -453,3 +453,33 @@ code { font-family: var(--mono); }
 }
 .ask-input:focus { outline: 2px solid var(--accent-dim); outline-offset: 1px; }
 .converse .ask-row { display: flex; gap: .5rem; align-items: flex-start; margin-bottom: 0; }
+
+/* ---- lessons ---- */
+
+.lesson-list { display: grid; gap: .8rem; }
+.lesson-card {
+  background: var(--bg-sunken); border: 1px solid var(--line);
+  border-left: 3px solid var(--line); border-radius: var(--radius); padding: 1rem;
+}
+.lesson-card.is-needs-work { border-left-color: var(--warm); }
+.lesson-card.is-review { border-left-color: var(--accent-dim); }
+.lesson-card.is-foundation, .lesson-card.is-next-step { border-left-color: var(--accent); }
+.lesson-head { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.lesson-head h3 { margin: 0; }
+.lesson-because { color: var(--text-dim); }
+.lesson-goal { font-size: 1.02rem; }
+
+.progress-bar { height: 8px; background: var(--bg-sunken); border-radius: 4px; overflow: hidden; margin: .6rem 0; }
+.progress-fill { display: block; height: 100%; background: var(--accent-dim); }
+
+.drill-stage {
+  display: grid; justify-items: center; gap: .3rem;
+  background: var(--bg-sunken); border-radius: var(--radius);
+  padding: 1.6rem 1rem; margin: .8rem 0;
+}
+.drill-count { font-size: .8rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; }
+.drill-bar { font-family: var(--mono); font-size: 3.4rem; font-weight: 700; line-height: 1; }
+.drill-next { font-size: .9rem; }
+.drill-heard { display: flex; gap: .3rem; flex-wrap: wrap; min-height: 1.6rem; }
+
+@media (max-width: 620px) { .drill-bar { font-size: 2.6rem; } }
