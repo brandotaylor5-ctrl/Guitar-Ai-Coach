@@ -10,6 +10,7 @@ import { LocalStorageRiffStore } from '../src/library/localStorageStore.ts';
 import { STANDARD_TUNING, DROP_D_TUNING, HALF_STEP_DOWN, DADGAD_TUNING, customTuning, withCapo } from '../src/music/fretboard.ts';
 import type { Tuning } from '../src/music/fretboard.ts';
 import { MicCapture } from './audio/capture.ts';
+import { armAudioUnlock, audioBlocked, onAudioStateChange, unlockAudio } from './audio/context.ts';
 import { RiffPlayer } from './audio/playback.ts';
 import { ClipStore } from './audio/clipStore.ts';
 import { h, clear, qs, replace } from './ui/dom.ts';
@@ -34,6 +35,22 @@ const state = {
   sampleRate: 0,
 };
 
+const PRIMARY_TABS: Array<[ViewName, string]> = [
+  ['today', 'Today'],
+  ['session', 'Play'],
+  ['lessons', 'Learn'],
+  ['library', 'My Riffs'],
+];
+
+const MORE_TABS: Array<[ViewName, string]> = [
+  ['lab', 'Riff Lab'],
+  ['songs', 'Songs'],
+  ['fingerprint', 'Fingerprint'],
+];
+
+const VIEW_NAMES = [...PRIMARY_TABS, ...MORE_TABS].map(([view]) => view as string);
+
+let moreOpen = false;
 let current: View | null = null;
 let stoppedAt: number | null = null;
 let stoppedClock = 0;
@@ -185,7 +202,36 @@ function render(): void {
     tab.classList.toggle('is-active', tab.dataset.view === state.view);
     tab.setAttribute('aria-current', tab.dataset.view === state.view ? 'page' : 'false');
   }
+  // Never hide the section someone is standing in.
+  if (MORE_TABS.some(([view]) => view === state.view)) setMoreOpen(true);
   qs('#live-dot').classList.toggle('is-live', state.listening);
+}
+
+function setMoreOpen(open: boolean): void {
+  moreOpen = open;
+  const more = document.getElementById('nav-more');
+  const toggle = document.querySelector<HTMLButtonElement>('.nav-more-toggle');
+  if (more) more.classList.toggle('is-open', open);
+  toggle?.setAttribute('aria-expanded', String(open));
+}
+
+/**
+ * Silence is the worst failure a music app can have, because it looks like
+ * nothing happened. If the browser is holding the audio back, say so and give
+ * them the tap that fixes it.
+ */
+function watchSound(): void {
+  const banner = qs('#sound-blocked');
+  const button = qs<HTMLButtonElement>('#sound-enable');
+  button.addEventListener('click', async () => {
+    const ready = await unlockAudio();
+    if (!ready) say('This browser is still blocking sound. Check the silent switch or volume, then tap again.', 'error');
+  });
+  const update = () => { banner.hidden = !audioBlocked(); };
+  onAudioStateChange(update);
+  update();
+  // A context can be suspended again by the browser without telling anyone.
+  window.setInterval(update, 2000);
 }
 
 function mountChrome(): void {
@@ -214,21 +260,27 @@ function mountChrome(): void {
   });
 
   const nav = qs('#nav');
-  const tabs: Array<[ViewName, string]> = [
-    ['today', 'Today'],
-    ['session', 'Play'],
-    ['lessons', 'Lessons'],
-    ['lab', 'Riff Lab'],
-    ['library', 'My Riffs'],
-    ['songs', 'Songs'],
-    ['fingerprint', 'Fingerprint'],
-  ];
-  for (const [view, label] of tabs) {
+  for (const [view, label] of PRIMARY_TABS) {
     nav.appendChild(h('button', {
       class: 'nav-tab', type: 'button', text: label, dataset: { view },
       onClick: () => context.navigate(view),
     }));
   }
+  // The other three are real places, but nobody needs them on the way in.
+  const more = h('div', { class: 'nav-more', id: 'nav-more' });
+  for (const [view, label] of MORE_TABS) {
+    more.appendChild(h('button', {
+      class: 'nav-tab', type: 'button', text: label, dataset: { view },
+      onClick: () => context.navigate(view),
+    }));
+  }
+  const moreToggle = h('button', {
+    class: 'nav-tab nav-more-toggle', type: 'button', text: 'More',
+    onClick: () => setMoreOpen(!moreOpen),
+  });
+  moreToggle.setAttribute('aria-controls', 'nav-more');
+  nav.append(moreToggle, more);
+  setMoreOpen(false);
 
   const select = qs<HTMLSelectElement>('#tuning');
   for (const tuning of TUNINGS) select.appendChild(h('option', { value: tuning.name, text: tuning.name }));
@@ -252,7 +304,7 @@ function mountChrome(): void {
 
   window.addEventListener('hashchange', () => {
     const view = window.location.hash.replace('#', '') as ViewName;
-    state.view = ['session', 'lessons', 'lab', 'library', 'songs', 'fingerprint'].includes(view) ? view : 'today';
+    state.view = VIEW_NAMES.includes(view) ? view : 'today';
     render();
   });
   window.addEventListener('beforeunload', () => { void capture.stop(); });
@@ -275,8 +327,10 @@ function start(): void {
   state.session = new SketchbookSession({ library: state.library, tuning: state.tuning });
 
   mountChrome();
+  armAudioUnlock();
+  watchSound();
   const hash = window.location.hash.replace('#', '') as ViewName;
-  if (['session', 'lessons', 'lab', 'library', 'songs', 'fingerprint'].includes(hash)) state.view = hash;
+  if (VIEW_NAMES.includes(hash)) state.view = hash;
   render();
 
   window.setInterval(() => {

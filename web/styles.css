@@ -82,6 +82,17 @@ code { font-family: var(--mono); }
 .nav-tab:hover { color: var(--text); background: var(--bg-sunken); }
 .nav-tab.is-active { color: var(--text); background: var(--bg-sunken); border-color: var(--line); }
 
+.nav-more { display: none; gap: .25rem; }
+.nav-more.is-open { display: flex; }
+.nav-more-toggle::after { content: ' \25be'; }
+
+.sound-blocked {
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+  padding: .7rem 1.5rem; font-size: .9rem;
+  background: var(--accent-dim); color: #fff;
+}
+.sound-blocked[hidden] { display: none; }
+
 .tuning-field { display: flex; align-items: center; gap: .5rem; font-size: .85rem; color: var(--text-dim); }
 .select {
   background: var(--bg-sunken); color: var(--text); border: 1px solid var(--line);
@@ -357,7 +368,8 @@ code { font-family: var(--mono); }
 
 @media (max-width: 620px) {
   .app-header { gap: .7rem; padding: .7rem 1rem; }
-  .nav { width: 100%; margin-left: 0; }
+  .nav { width: 100%; margin-left: 0; flex-wrap: wrap; }
+  .sound-blocked { padding: .7rem 1rem; }
   .readout-note { font-size: 1.8rem; }
   .main { padding: 1rem .75rem 3rem; }
 }

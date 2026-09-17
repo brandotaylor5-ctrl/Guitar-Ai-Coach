@@ -10,6 +10,7 @@
 import type { NoteEvent } from '../../src/types.ts';
 import { midiToFrequency } from '../../src/music/notes.ts';
 import { timeStretch } from '../../src/audio/timeStretch.ts';
+import { audioContext, unlockAudio } from './context.ts';
 
 /** Relative amplitude of each partial, and how fast each one dies away. */
 const PARTIALS = [
@@ -41,7 +42,10 @@ export class RiffPlayer {
   }
 
   private ensureContext(): AudioContext {
-    if (!this.context) this.context = new AudioContext();
+    // Shared, so playback, the metronome and anything else all run through one
+    // context. Browsers cap how many a page may hold, and a page that quietly
+    // runs out simply stops making sound.
+    if (!this.context) this.context = audioContext();
     return this.context;
   }
 
@@ -52,7 +56,7 @@ export class RiffPlayer {
 
     const speed = options.speed ?? 1;
     const context = this.ensureContext();
-    if (context.state === 'suspended') await context.resume();
+    if (context.state !== 'running') await unlockAudio();
 
     const master = context.createGain();
     master.gain.value = 0.9;
@@ -130,7 +134,7 @@ export class RiffPlayer {
     if (samples.length === 0) return;
 
     const context = this.ensureContext();
-    if (context.state === 'suspended') await context.resume();
+    if (context.state !== 'running') await unlockAudio();
 
     const audio = speed === 1 ? samples : timeStretch(samples, 1 / speed);
     const buffer = context.createBuffer(1, audio.length, sampleRate);
