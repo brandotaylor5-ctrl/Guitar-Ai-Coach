@@ -1,4 +1,4 @@
-const CACHE = 'guitar-ai-coach-v1';
+const CACHE = 'guitar-ai-coach-v12';
 const SHELL = [
   './index.html',
   './styles.css',
@@ -25,10 +25,22 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        // Do not preserve a transient 404/500 as though it were a good app file.
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        }
         return response;
       })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html'))),
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        // Only navigations get the app shell. Returning index.html for a missing
+        // JavaScript module makes Safari report an opaque module/MIME failure.
+        if (event.request.mode === 'navigate') {
+          return (await caches.match('./index.html')) ?? Response.error();
+        }
+        return Response.error();
+      }),
   );
 });
