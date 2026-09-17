@@ -14,23 +14,15 @@ export interface Skill {
   id: string;
   name: string;
   kind: SkillKind;
-  /** Skills that should be reasonably solid before this one is worth trying. */
   requires: string[];
-  /** What the player is actually trying to do, in their words not a syllabus's. */
   goal: string;
-  /** Why it is worth the time — a teacher always answers this. */
   why: string;
-  /** Chord label, for chord skills. */
   chord?: string;
-  /** The two chords, for a change. */
   between?: [string, string];
-  /** Chord sequence, for a progression. */
   sequence?: string[];
-  /** Scale root pitch class and degrees, for a scale. */
   scale?: { tonicPc: number; name: string };
 }
 
-/** Changes-per-minute a teacher would call fluent for a two-chord change. */
 export const FLUENT_CHANGES_PER_MINUTE = 60;
 
 export const SKILLS: Skill[] = [
@@ -75,6 +67,16 @@ export const SKILLS: Skill[] = [
     goal: 'Hold D minor cleanly on the top four strings.',
     why: 'The saddest of the easy chords, and the one that makes a progression sound like it means something.',
   },
+  {
+    id: 'chord.F', name: 'F major', kind: 'chord', requires: ['chord.C', 'chord.Am'], chord: 'F',
+    goal: 'Play the small four-string F cleanly before worrying about a full barre chord.',
+    why: 'F unlocks an enormous amount of music, but beginners are often thrown at the full barre version too early. Start with the real four-string voicing and earn the barre later.',
+  },
+  {
+    id: 'chord.B7', name: 'B7', kind: 'chord', requires: ['chord.E', 'chord.A'], chord: 'B7',
+    goal: 'Hold B7 with the open B string ringing clearly.',
+    why: 'B7 is the tension chord that makes blues and songs in E want to come home. It is worth learning before a twelve-bar blues asks for it.',
+  },
 
   // --- changes ------------------------------------------------------------
   {
@@ -117,13 +119,13 @@ export const SKILLS: Skill[] = [
   },
   {
     id: 'prog.Am-F-C-G', name: 'The sad four chords', kind: 'progression',
-    requires: ['prog.Em-C-G-D'], sequence: ['Am', 'F', 'C', 'G'],
+    requires: ['prog.Em-C-G-D', 'chord.F'], sequence: ['Am', 'F', 'C', 'G'],
     goal: 'Keep the loop going through the F.',
     why: 'Same four chords, started somewhere else, and it changes the whole mood. It is theory you can hear rather than read.',
   },
   {
     id: 'prog.12bar.E', name: 'Twelve-bar blues in E', kind: 'progression',
-    requires: ['chord.E', 'chord.A'], sequence: ['E', 'E', 'E', 'E', 'A', 'A', 'E', 'E', 'B7', 'A', 'E', 'E'],
+    requires: ['chord.E', 'chord.A', 'chord.B7'], sequence: ['E', 'E', 'E', 'E', 'A', 'A', 'E', 'E', 'B7', 'A', 'E', 'E'],
     goal: 'Keep your place through all twelve bars.',
     why: 'The form most improvising sits on top of. Knowing where you are in it is what lets you solo without getting lost.',
   },
@@ -159,7 +161,6 @@ export function getSkill(id: string): Skill | null {
   return BY_ID.get(id) ?? null;
 }
 
-/** Every skill that must come before this one, transitively. */
 export function prerequisitesOf(id: string, seen = new Set<string>()): string[] {
   const skill = BY_ID.get(id);
   if (!skill) return [];
