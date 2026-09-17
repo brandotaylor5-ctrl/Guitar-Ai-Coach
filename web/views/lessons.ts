@@ -47,6 +47,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     exercise: Exercise;
     startedAt: number;
     heard: HeardChord[];
+    feed?: HTMLElement;
     stop: () => void;
   } | null = null;
 
@@ -62,12 +63,12 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
         h('summary', { text: 'Why this is worth your time' }),
         h('p', { text: lesson.skill.why }),
       ),
-      button('Work on this', () => startLesson(lesson), 'btn-primary'),
+      button('Work on this', () => { void startLesson(lesson); }, 'btn-primary'),
     );
   }
 
-  function startLesson(lesson: Lesson): void {
-    startDrill(buildExercise(lesson.skill), () => startLesson(lesson));
+  async function startLesson(lesson: Lesson): Promise<void> {
+    await startDrill(buildExercise(lesson.skill), () => { void startLesson(lesson); });
   }
 
   /** Chords the player has, for turning a repertoire entry into a drill. */
@@ -89,17 +90,45 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     const entry = repertoireFor(knownChords())
       .find((p) => p.template.id === wanted && p.key === key);
     if (!entry) return false;
-    const run = () => startDrill(
-      exerciseFromProgression(entry.template.id, entry.template.name, entry.key, entry.chords),
-      run,
-    );
+    const run = () => {
+      void startDrill(
+        exerciseFromProgression(entry.template.id, entry.template.name, entry.key, entry.chords),
+        run,
+      );
+    };
     run();
     return true;
   }
 
-  /** Run a drill built anywhere — a lesson, or a progression from Today. */
-  function startDrill(exercise: Exercise, again: () => void): void {
+  /**
+   * A drill owns the whole loop: get the microphone ready, count in, listen,
+   * grade, and leave the feedback on screen. The old flow started the timer
+   * even when the microphone was off, then immediately erased the grade by
+   * re-rendering the page. Both make a working detector feel broken.
+   */
+  async function startDrill(exercise: Exercise, again: () => void): Promise<void> {
     stopDrill();
+
+    replace(drillHost, h('section', { class: 'panel drill' },
+      h('h3', { text: exercise.title }),
+      h('p', { class: 'lede', text: 'Getting the microphone ready…' }),
+    ));
+    drillHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    if (!context.listening) {
+      context.say('Turning on the microphone so I can hear this attempt.');
+      await context.startListening();
+    }
+    if (!context.listening) {
+      replace(drillHost, h('section', { class: 'panel drill' },
+        h('h3', { text: exercise.title }),
+        h('p', { class: 'lede', text: 'I still cannot hear the guitar.' }),
+        h('p', { class: 'muted', text: 'Allow microphone access, then try the drill again. Nothing was scored.' }),
+        button('Try again', again, 'btn-primary'),
+      ));
+      return;
+    }
+
     const heard: HeardChord[] = [];
 
     // Show the opening chord through the count-in, so the hand is already in
@@ -114,6 +143,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     const barMs = beatMs * 4;
     let beat = 0;
     let startedAt = 0;
+    let finished = false;
 
     // A count-in, because nobody can start on beat one from silence.
     let countIn = 4;
@@ -128,14 +158,87 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       osc.start(); osc.stop(ctx.currentTime + 0.06);
     };
 
-    void unlockAudio();
-    const tick = window.setInterval(() => {
+    // The page-level gesture unlock normally gets here first. Calling again is
+    // harmless and catches browsers that suspended audio after a permission UI.
+    await unlockAudio();
+
+    let tick = 0;
+    const stopAudio = () => { if (tick) window.clearInterval(tick); tick = 0; };
+
+    function showStoppedBeforeStart(): void {
+      replace(resultHost,
+        h('div', { class: 'coaching' },
+          h('p', { text: 'Stopped before the count-in finished. Nothing was scored.' }),
+        ),
+        h('div', { class: 'practice-actions' },
+          button('Again', again, 'btn-primary'),
+          button('Something else', () => { stopDrill(); render(); }, 'btn-quiet'),
+        ),
+      );
+      running = null;
+      countLabel.textContent = 'Stopped';
+    }
+
+    function finish(): void {
+      if (finished) return;
+      finished = true;
+      stopAudio();
+      if (startedAt === 0) {
+        showStoppedBeforeStart();
+        return;
+      }
+
+      const elapsed = Math.max(1, Date.now() - startedAt);
+      const grade: Grade = exercise.kind === 'play-progression'
+        ? gradeProgression(exercise, heard, startedAt)
+        : exercise.kind === 'change-drill'
+          ? gradeChangeDrill(exercise, heard, elapsed)
+          : gradeHoldChord(exercise, heard, elapsed);
+
+      store.record([observationFrom(exercise, grade)]);
+      replace(resultHost,
+        h('div', { class: `coaching${grade.passed ? ' is-nailed' : ''}` },
+          ...grade.feedback.map((line) => h('p', { text: line })),
+        ),
+        h('div', { class: 'practice-actions' },
+          button('Again', again, 'btn-primary'),
+          button('Something else', () => { stopDrill(); render(); }, 'btn-quiet'),
+        ),
+      );
+      running = null;
+      countLabel.textContent = 'Done';
+      // Deliberately do NOT render() here. The result the player just earned is
+      // the most important thing on the screen; leave it there until they act.
+    }
+
+    running = {
+      exercise,
+      startedAt: 0,
+      heard,
+      feed: heardFeed,
+      stop: () => { stopAudio(); running = null; },
+    };
+
+    replace(drillHost, h('section', { class: 'panel drill' },
+      h('h3', { text: exercise.title }),
+      h('p', { class: 'lede', text: exercise.instructions }),
+      h('p', { class: 'muted', text: `Target: ${exercise.target}` }),
+      h('div', { class: 'drill-stage' }, countLabel, barLabel, nextLabel),
+      heardFeed,
+      h('div', { class: 'practice-actions' },
+        button('Stop', finish, 'btn-quiet'),
+      ),
+      resultHost,
+    ));
+
+    tick = window.setInterval(() => {
       if (countIn > 0) {
         click(countIn === 4);
         countLabel.textContent = `${countIn}`;
         countIn--;
         if (countIn === 0) {
           startedAt = Date.now();
+          if (running) running.startedAt = startedAt;
           countLabel.textContent = 'Go';
           if (exercise.chords?.length) {
             barLabel.textContent = exercise.chords[0]!;
@@ -156,62 +259,6 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       beat++;
       if (elapsed >= exercise.durationMs) finish();
     }, beatMs);
-
-    function stopAudio(): void {
-      window.clearInterval(tick);
-      // Deliberately not closed: the context is shared, and closing it here
-      // would silence playback everywhere else in the app.
-    }
-
-    function finish(): void {
-      stopAudio();
-      const elapsed = Math.max(1, Date.now() - startedAt);
-      const grade: Grade = exercise.kind === 'play-progression'
-        ? gradeProgression(exercise, heard, startedAt)
-        : exercise.kind === 'change-drill'
-          ? gradeChangeDrill(exercise, heard, elapsed)
-          : gradeHoldChord(exercise, heard, elapsed);
-
-      store.record([observationFrom(exercise, grade)]);
-      replace(resultHost,
-        h('div', { class: `coaching${grade.passed ? ' is-nailed' : ''}` },
-          ...grade.feedback.map((line) => h('p', { text: line })),
-        ),
-        h('div', { class: 'practice-actions' },
-          button('Again', again, 'btn-primary'),
-          button('Something else', () => { stopDrill(); render(); }, 'btn-quiet'),
-        ),
-      );
-      running = null;
-      countLabel.textContent = 'Done';
-      render();
-    }
-
-    running = {
-      exercise, startedAt: Date.now(), heard,
-      stop: () => { stopAudio(); running = null; },
-    };
-
-    replace(drillHost, h('section', { class: 'panel drill' },
-      h('h3', { text: exercise.title }),
-      h('p', { class: 'lede', text: exercise.instructions }),
-      h('p', { class: 'muted', text: `Target: ${exercise.target}` }),
-      h('div', { class: 'drill-stage' }, countLabel, barLabel, nextLabel),
-      heardFeed,
-      h('div', { class: 'practice-actions' },
-        button('Stop', () => { finish(); }, 'btn-quiet'),
-      ),
-      resultHost,
-    ));
-
-    if (!context.listening) {
-      context.say('Start listening first — I need to hear you to grade this.');
-    }
-    drillHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    // Keep the chord feed visible so it is obvious what is being heard.
-    running.heard = heard;
-    (running as { feed?: HTMLElement }).feed = heardFeed;
   }
 
   function stopDrill(): void {
@@ -221,9 +268,10 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
   }
 
   function onChord(chord: ChordDetection): void {
-    if (!running) return;
+    // Do not count the chord the player is quietly forming during the count-in.
+    if (!running || running.startedAt === 0) return;
     running.heard.push({ label: chord.label.replace('♯', '#'), at: Date.now() });
-    const feed = (running as { feed?: HTMLElement }).feed;
+    const feed = running.feed;
     if (feed) {
       feed.appendChild(h('span', { class: 'chip', text: chord.label }));
       while (feed.children.length > 16) feed.firstElementChild?.remove();
@@ -261,5 +309,12 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
   // feel like it did nothing.
   startRequestedProgression();
 
-  return { element, onChord, update: () => render(), dispose: stopDrill };
+  return {
+    element,
+    onChord,
+    // Do not erase an active drill just because some unrelated global state
+    // asked the view to refresh.
+    update: () => { if (!running) render(); },
+    dispose: stopDrill,
+  };
 }
