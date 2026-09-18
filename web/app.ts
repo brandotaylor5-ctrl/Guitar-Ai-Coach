@@ -53,9 +53,18 @@ const PRIMARY_TABS: Array<[ViewName, string]> = [
   ['library', 'You'],
 ];
 
+/**
+ * Riff Lab is gone from here on purpose.
+ *
+ * It was five thousand pixels of sandbox on a phone — a scale explorer that
+ * Learn now does properly, riff shapes, and a lead generator over abstract
+ * chord loops — and a player called it what it was: generic. Improvising over
+ * changes was the one thing in it worth keeping, and it is worth far more
+ * attached to a song you have just played than stranded in a workshop, so
+ * that is where it lives now.
+ */
 const MORE_TABS: Array<[ViewName, string]> = [
   ['today', 'Start here'],
-  ['lab', 'Riff Lab'],
   ['seeds', 'Song Workshop'],
   ['fingerprint', 'Fingerprint'],
 ];

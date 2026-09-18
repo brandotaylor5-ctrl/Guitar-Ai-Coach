@@ -260,7 +260,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
             element.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }, 'btn-primary'),
           button('Do it again', again, 'btn-quiet'),
-          button('Make music with it', () => context.navigate('lab'), 'btn-quiet'),
+          button('Use it in a song', () => context.navigate('songs'), 'btn-quiet'),
         );
       } else {
         actions.append(button('Try it again', again, 'btn-primary'), button('Back to lessons', () => { stopDrill(); render(); }, 'btn-quiet'));
@@ -430,7 +430,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       lessons.length === 0
         ? h('div', {}, empty('Nothing is queued from the curriculum right now — that should not leave you stranded.'),
           h('div', { class: 'practice-actions' },
-            button('Explore Riff Lab', () => context.navigate('lab'), 'btn-primary'),
+            button('Play a song', () => context.navigate('songs'), 'btn-primary'),
             button('Create a song idea', () => context.navigate('songs'), 'btn-quiet'),
             button('Just play and let me listen', () => context.navigate('session'), 'btn-quiet'),
           ))

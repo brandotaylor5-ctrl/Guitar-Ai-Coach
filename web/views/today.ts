@@ -202,7 +202,7 @@ export function todayView(context: AppContext): View {
       h('h2', { text: 'Or do your own thing' }),
       h('div', { class: 'today-links' },
         button('Play and be listened to', () => context.navigate('session'), 'btn-quiet'),
-        button('Riff Lab', () => context.navigate('lab'), 'btn-quiet'),
+        button('Songs', () => context.navigate('songs'), 'btn-quiet'),
         button('My riffs', () => context.navigate('library'), 'btn-quiet'),
         button('Start over', () => {
           if (!window.confirm('Forget everything I have learned about your playing and ask again?')) return;
