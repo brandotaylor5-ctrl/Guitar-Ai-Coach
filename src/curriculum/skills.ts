@@ -78,6 +78,53 @@ export const SKILLS: Skill[] = [
     why: 'B7 is the tension chord that makes blues and songs in E want to come home. It is worth learning before a twelve-bar blues asks for it.',
   },
 
+  // --- colour chords: familiar shapes with one small change --------------
+  {
+    id: 'chord.Em7', name: 'E minor 7', kind: 'chord', requires: ['chord.Em'], chord: 'Em7',
+    goal: 'Turn E minor into E minor 7 with one extra finger while keeping every open string ringing.',
+    why: 'This is the first lesson in changing the colour of a chord without abandoning the shape you already know.',
+  },
+  {
+    id: 'chord.Am7', name: 'A minor 7', kind: 'chord', requires: ['chord.Am'], chord: 'Am7',
+    goal: 'Turn A minor into A minor 7 by lifting one finger and keeping the open G string clear.',
+    why: 'It teaches that making a chord richer can actually mean using fewer fingers, and the sound is immediately useful in songs.',
+  },
+  {
+    id: 'chord.E7', name: 'E7', kind: 'chord', requires: ['chord.E'], chord: 'E7',
+    goal: 'Turn E major into E7 cleanly and hear the extra tension.',
+    why: 'E7 is a tiny physical change with a huge musical effect: it teaches your ear what a chord that wants to move sounds like.',
+  },
+  {
+    id: 'chord.A7', name: 'A7', kind: 'chord', requires: ['chord.A'], chord: 'A7',
+    goal: 'Hold A7 with the open G string ringing between the two fretted notes.',
+    why: 'A7 is easy under the fingers and makes blues, folk and country progressions start sounding like real music instead of exercises.',
+  },
+  {
+    id: 'chord.D7', name: 'D7', kind: 'chord', requires: ['chord.D'], chord: 'D7',
+    goal: 'Hold D7 cleanly on the top four strings without catching the low strings.',
+    why: 'D7 gives you another tension sound and makes the I-IV-V family in G much more expressive.',
+  },
+  {
+    id: 'chord.G7', name: 'G7', kind: 'chord', requires: ['chord.G'], chord: 'G7',
+    goal: 'Move from G to G7 while keeping the bass side of the chord steady.',
+    why: 'G7 shows how changing one note can completely redirect where a progression wants to go.',
+  },
+  {
+    id: 'chord.Asus2', name: 'A suspended 2', kind: 'chord', requires: ['chord.A'], chord: 'Asus2',
+    goal: 'Open the B string inside your A shape and let the suspended sound ring.',
+    why: 'Suspended chords are one of the easiest ways to make simple open-chord playing sound spacious and less predictable.',
+  },
+  {
+    id: 'chord.Dsus2', name: 'D suspended 2', kind: 'chord', requires: ['chord.D'], chord: 'Dsus2',
+    goal: 'Lift one finger from D major and keep the thin E string ringing open.',
+    why: 'It turns a chord you already know into a moving texture you can use inside strumming patterns and intros.',
+  },
+  {
+    id: 'chord.Cmaj7', name: 'C major 7', kind: 'chord', requires: ['chord.C'], chord: 'Cmaj7',
+    goal: 'Turn C major into C major 7 by lifting your index finger and keeping the top strings open.',
+    why: 'One lifted finger makes C much more spacious, teaching you to hear chord colour instead of only memorizing names.',
+  },
+
   // --- changes ------------------------------------------------------------
   {
     id: 'change.Em-Am', name: 'E minor to A minor', kind: 'change',
@@ -109,6 +156,42 @@ export const SKILLS: Skill[] = [
     goal: 'Change between A minor and C smoothly.',
     why: 'Two fingers never move. It is the clearest example of why chord shapes are worth seeing as families.',
   },
+  {
+    id: 'change.Em-Em7', name: 'E minor to E minor 7', kind: 'change',
+    requires: ['chord.Em', 'chord.Em7'], between: ['Em', 'Em7'],
+    goal: 'Move between E minor and E minor 7 without rebuilding the whole hand.',
+    why: 'This is chord decoration: the harmony stays related while one note changes the colour.',
+  },
+  {
+    id: 'change.Am-Am7', name: 'A minor to A minor 7', kind: 'change',
+    requires: ['chord.Am', 'chord.Am7'], between: ['Am', 'Am7'],
+    goal: 'Move between A minor and A minor 7 by lifting and replacing one finger in time.',
+    why: 'It teaches you to create movement inside one chord instead of changing the entire harmony.',
+  },
+  {
+    id: 'change.E-E7', name: 'E to E7', kind: 'change',
+    requires: ['chord.E', 'chord.E7'], between: ['E', 'E7'],
+    goal: 'Move between E and E7 without losing the pulse.',
+    why: 'Hearing stable E become tense E7 is a practical introduction to how chords create forward motion.',
+  },
+  {
+    id: 'change.A-Asus2', name: 'A to Asus2', kind: 'change',
+    requires: ['chord.A', 'chord.Asus2'], between: ['A', 'Asus2'],
+    goal: 'Move between A and Asus2 while the open strings keep ringing.',
+    why: 'This is the kind of tiny chord movement guitarists use to make a repeated chord feel alive.',
+  },
+  {
+    id: 'change.D-Dsus2', name: 'D to Dsus2', kind: 'change',
+    requires: ['chord.D', 'chord.Dsus2'], between: ['D', 'Dsus2'],
+    goal: 'Move between D and Dsus2 with one finger while keeping the rhythm steady.',
+    why: 'A one-finger change can create an intro, fill or hook without learning a completely new chord.',
+  },
+  {
+    id: 'change.C-Cmaj7', name: 'C to C major 7', kind: 'change',
+    requires: ['chord.C', 'chord.Cmaj7'], between: ['C', 'Cmaj7'],
+    goal: 'Move between C and C major 7 by lifting and replacing the index finger cleanly.',
+    why: 'This teaches chord colour in the simplest possible way: same family, one note different, completely different feeling.',
+  },
 
   // --- progressions -------------------------------------------------------
   {
@@ -128,6 +211,20 @@ export const SKILLS: Skill[] = [
     requires: ['chord.E', 'chord.A', 'chord.B7'], sequence: ['E', 'E', 'E', 'E', 'A', 'A', 'E', 'E', 'B7', 'A', 'E', 'E'],
     goal: 'Keep your place through all twelve bars.',
     why: 'The form most improvising sits on top of. Knowing where you are in it is what lets you solo without getting lost.',
+  },
+  {
+    id: 'prog.open-colour', name: 'Open-colour loop', kind: 'progression',
+    requires: ['chord.Cmaj7', 'chord.Em7', 'chord.Am7', 'chord.Dsus2'],
+    sequence: ['Cmaj7', 'Em7', 'Am7', 'Dsus2'],
+    goal: 'Loop four colourful open chords while keeping the ringing strings alive between changes.',
+    why: 'This turns the seventh and suspended shapes into music immediately and teaches you to hear texture, not just chord names.',
+  },
+  {
+    id: 'prog.blues7.A', name: 'Three dominant sevenths in A', kind: 'progression',
+    requires: ['chord.A7', 'chord.D7', 'chord.E7'],
+    sequence: ['A7', 'D7', 'A7', 'E7'],
+    goal: 'Keep a four-bar blues-flavoured loop moving without stopping between the seventh chords.',
+    why: 'Three closely related shapes give you the sound of blues harmony without needing a long form or a pile of theory.',
   },
 
   // --- scales and technique ----------------------------------------------
