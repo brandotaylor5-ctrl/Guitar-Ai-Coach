@@ -12,7 +12,7 @@ import { masteryMap } from '../../src/curriculum/mastery.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
 import { almostThere, chordThatUnlocksMost, playableNow } from '../../src/songs/arrange.ts';
 import type { Readiness } from '../../src/songs/arrange.ts';
-import { chordsIn } from '../../src/songs/library.ts';
+import { SONGS, chordsIn } from '../../src/songs/library.ts';
 import { h, clear } from '../ui/dom.ts';
 import { button } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
@@ -64,9 +64,24 @@ export function songListView(context: AppContext): View {
     ));
 
     if (ready.length === 0) {
+      // Never an empty screen. Somebody who cannot play yet should still be
+      // able to see what they are working towards and hear it.
       element.appendChild(h('section', { class: 'panel' },
-        h('p', { text: 'Tell me which chords you already have and I will show you what you can play.' }),
-        button('Set that up', () => context.navigate('lessons'), 'btn-primary'),
+        h('p', { text: 'You have not told me which chords you have yet, so nothing here is marked as ready. Everything is still open — pick any song to see its chords, hear it, and find out what it needs.' }),
+        button('Start the course instead', () => context.navigate('path'), 'btn-primary'),
+      ));
+      element.appendChild(h('section', { class: 'panel' },
+        h('h4', { text: 'Every song here' }),
+        h('div', { class: 'song-list' }, ...SONGS.map((song) => h('button', {
+          class: 'song-row', type: 'button',
+          onClick: () => context.navigate('song', { song: song.id }),
+        },
+          h('span', { class: 'song-row-main' },
+            h('span', { class: 'song-row-title', text: song.title }),
+            h('span', { class: 'song-row-sub', text: `${song.key} · needs ${chordsIn(song).join(' ')}` }),
+          ),
+          h('span', { class: 'song-row-tag', text: HARDNESS[song.difficulty] ?? '' }),
+        ))),
       ));
     } else {
       element.appendChild(h('section', { class: 'panel' },
