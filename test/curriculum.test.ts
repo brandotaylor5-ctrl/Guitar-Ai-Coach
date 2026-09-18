@@ -57,6 +57,23 @@ describe('working out what the player can do', () => {
     assert.ok(levelOf(mastery, 'chord.Em') >= MASTERED);
   });
 
+  test('one clean lesson is enough to build on without pretending it is mastered', () => {
+    const mastery = masteryMap(drills('chord.Em', 1, 1), NOW);
+    assert.ok(levelOf(mastery, 'chord.Em') >= WORKABLE);
+    assert.ok(levelOf(mastery, 'chord.Em') < MASTERED);
+    const offered = planLessons(mastery, { now: NOW, count: 20 }).map((lesson) => lesson.skill.id);
+    assert.ok(!offered.includes('chord.Em'), 'a successful first lesson should move forward, not immediately repeat');
+    assert.ok(offered.includes('chord.Am'), 'a successful E minor lesson should unlock A minor');
+  });
+
+  test('a guided non-audio lesson can unlock the next concept without claiming mastery', () => {
+    const mastery = masteryMap([
+      { skillId: 'technique.steady-strum', quality: 1, at: NOW, source: 'lesson' as const },
+    ], NOW);
+    assert.ok(levelOf(mastery, 'technique.steady-strum') >= WORKABLE);
+    assert.ok(levelOf(mastery, 'technique.steady-strum') < MASTERED);
+  });
+
   test('one bad take does not undo a skill', () => {
     const good = drills('chord.Em', 1, 10);
     const withSlip = [...good, { skillId: 'chord.Em', quality: 0.1, at: NOW, source: 'drill' as const }];
