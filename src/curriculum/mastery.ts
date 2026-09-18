@@ -19,7 +19,7 @@ export interface Observation {
   /** When it happened. */
   at: number;
   /** Where it came from. Drills are trusted more than passive listening. */
-  source: 'drill' | 'freeplay';
+  source: 'drill' | 'freeplay' | 'lesson';
   /** For a change: clean changes per minute achieved. */
   changesPerMinute?: number;
 }
@@ -52,7 +52,7 @@ export const MASTERED = 0.75;
 export const WORKABLE = 0.30;
 
 /** Passive listening is weaker evidence than a drill someone tried to pass. */
-const SOURCE_WEIGHT = { drill: 1, freeplay: 0.55 } as const;
+const SOURCE_WEIGHT = { drill: 1, freeplay: 0.55, lesson: 1 } as const;
 
 function decayFactor(elapsedMs: number): number {
   const days = elapsedMs / 86_400_000;
