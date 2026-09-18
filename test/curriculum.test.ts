@@ -20,6 +20,11 @@ function drills(skillId: string, quality: number, count = 8, at = NOW): Observat
 }
 
 describe('the skill graph', () => {
+  test('every skill id is unique', () => {
+    const ids = SKILLS.map((skill) => skill.id);
+    assert.equal(new Set(ids).size, ids.length, 'duplicate curriculum ids make planning unpredictable');
+  });
+
   test('every prerequisite names a skill that exists', () => {
     for (const skill of SKILLS) {
       for (const required of skill.requires) {
