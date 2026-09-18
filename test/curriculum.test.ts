@@ -124,11 +124,13 @@ describe('deciding what to work on', () => {
     assert.ok(offered.includes('chord.Am'), 'A minor only needed E minor');
   });
 
-  test('finishing something started beats starting something new', () => {
+  test('finishing something genuinely not usable yet beats starting something new', () => {
     const mastery = masteryMap([
       ...drills('chord.Em', 1, 10),
-      ...drills('chord.Am', 0.5, 4),
+      ...drills('chord.Am', 0.45, 2),
     ], NOW);
+    assert.ok(levelOf(mastery, 'chord.Am') > 0);
+    assert.ok(levelOf(mastery, 'chord.Am') < WORKABLE);
     const lessons = planLessons(mastery, { now: NOW });
     assert.equal(lessons[0]!.skill.id, 'chord.Am');
     assert.equal(lessons[0]!.reason, 'needs-work');
