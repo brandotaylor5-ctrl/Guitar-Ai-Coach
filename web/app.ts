@@ -96,6 +96,9 @@ const capture = new MicCapture({
   onChord(chord) {
     current?.onChord?.(chord);
   },
+  onChordExplain(explanation) {
+    current?.onChordExplain?.(explanation);
+  },
   onError(error) {
     say(error.message, 'error');
   },
@@ -193,6 +196,10 @@ const context: AppContext = {
   },
 
   say,
+
+  setChordDiagnostics(on) {
+    capture.diagnostics = on;
+  },
 };
 
 function buildView(): View {

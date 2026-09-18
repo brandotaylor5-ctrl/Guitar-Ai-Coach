@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { detectChord } from '../web/audio/chordDetect.ts';
+import { detectChord, explainChord } from '../web/audio/chordDetect.ts';
 import { GUITAR_VOICINGS, strumSpectrum } from './helpers.ts';
 
 const SR = 44100;
@@ -207,5 +207,43 @@ describe('the edges of what it can do', () => {
     // own twelfth stands in for the fifth it never played. `ChordTracker`
     // needs three consecutive frames to agree before this reaches anyone.
     assert.equal(detect([40, 63]), 'Emaj7');
+  });
+});
+
+describe('asking the detector why', () => {
+  // Four plausible explanations for a player's missing D chord were modelled
+  // and each came back clean, because guessing about someone else's guitar can
+  // only be answered with another guess. So the detector explains itself.
+
+  test('a chord it hears is reported with its confidence', () => {
+    const explanation = explainChord(strumSpectrum(GUITAR_VOICINGS.D!), SR, FFT);
+    assert.equal(explanation.rejectedBy, null);
+    assert.equal(explanation.detection?.label.replace('♯', '#'), 'D');
+    assert.equal(explanation.bassName, 'D');
+  });
+
+  test('a rejection names the check that stopped it, in words', () => {
+    const explanation = explainChord(strumSpectrum([40]), SR, FFT);
+    assert.equal(explanation.detection, null);
+    assert.ok(explanation.rejectedBy && explanation.rejectedBy.length > 20,
+      'a reason has to be a sentence someone can act on, not a code');
+    assert.doesNotMatch(explanation.rejectedBy!, /null|undefined|NaN/);
+  });
+
+  test('it shows its working even when it fails', () => {
+    const explanation = explainChord(strumSpectrum(GUITAR_VOICINGS.D!), SR, FFT);
+    assert.ok(explanation.fretted.length >= 2, 'which strings it believed');
+    assert.ok(explanation.candidates.length > 0, 'what the runners-up scored');
+    assert.ok(explanation.candidates[0]!.score >= explanation.candidates[1]!.score, 'best first');
+    assert.equal(explanation.chroma.length, 12);
+  });
+
+  test('explaining and detecting never disagree', () => {
+    for (const [name, midis] of Object.entries(GUITAR_VOICINGS)) {
+      const spectrum = strumSpectrum(midis);
+      const detected = detectChord(spectrum, SR, FFT);
+      const explained = explainChord(spectrum, SR, FFT).detection;
+      assert.equal(explained?.label ?? null, detected?.label ?? null, `disagreed on ${name}`);
+    }
   });
 });

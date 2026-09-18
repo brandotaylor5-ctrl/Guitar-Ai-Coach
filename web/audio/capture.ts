@@ -10,8 +10,8 @@
 import type { NoteEvent } from '../../src/types.ts';
 import type { Frame } from '../../src/audio/noteTracker.ts';
 import type { DetectorResult } from '../detector.worker.ts';
-import { ChordTracker } from './chordDetect.ts';
-import type { ChordDetection } from './chordDetect.ts';
+import { ChordTracker, explainChord } from './chordDetect.ts';
+import type { ChordDetection, ChordExplanation } from './chordDetect.ts';
 
 export interface CaptureHandlers {
   /** Notes that finished sounding, with the detector's clock. */
@@ -22,6 +22,14 @@ export interface CaptureHandlers {
   onFrame(frame: Frame): void;
   /** A stable chord guess. Chord detection is intentionally conservative. */
   onChord?(chord: ChordDetection): void;
+  /**
+   * Every frame's full reasoning, when diagnostics are on.
+   *
+   * Off by default: it fires eight times a second and nobody playing the
+   * guitar wants to look at it. On, it is the only way to find out why a
+   * chord someone is definitely playing is not being named.
+   */
+  onChordExplain?(explanation: ChordExplanation): void;
   onError(error: Error): void;
 }
 
@@ -37,6 +45,8 @@ export class MicCapture {
   private readonly handlers: CaptureHandlers;
   deviceId = '';
   minRms = 0.012;
+  /** Report the detector's reasoning every frame. */
+  diagnostics = false;
 
   setSensitivity(minRms: number): void {
     if (!Number.isFinite(minRms) || minRms < 0.002 || minRms > 0.1) {
@@ -118,6 +128,11 @@ export class MicCapture {
     this.chordTimer = window.setInterval(() => {
       if (!this.analyser || !this.spectrum || !this.context) return;
       this.analyser.getFloatFrequencyData(this.spectrum);
+      if (this.diagnostics) {
+        this.handlers.onChordExplain?.(
+          explainChord(this.spectrum, this.context.sampleRate, this.analyser.fftSize),
+        );
+      }
       const chord = this.chordTracker.update(
         this.spectrum,
         this.context.sampleRate,
