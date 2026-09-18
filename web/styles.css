@@ -654,3 +654,48 @@ code { font-family: var(--mono); }
 .setup-details { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
 .setup-details > summary { color: var(--text-dim); font-size: .88rem; cursor: pointer; }
 .setup-details label { display: block; margin: .8rem 0 .2rem; font-size: .9rem; }
+
+/* ============================================================
+   The course — visible from the first second, no setup
+   ============================================================ */
+
+.step-list { display: grid; gap: .5rem; }
+
+.step-card {
+  background: var(--bg-raised); border: 1px solid var(--line);
+  border-radius: var(--radius); overflow: hidden;
+}
+.step-card.is-current { border-color: var(--accent); }
+.step-card.is-done { opacity: .68; }
+
+.step-head {
+  display: flex; align-items: center; gap: .9rem; width: 100%;
+  padding: .9rem 1rem; min-height: var(--tap);
+  background: none; border: none; cursor: pointer;
+  font: inherit; color: var(--text); text-align: left;
+}
+.step-number {
+  display: grid; place-items: center; flex: none;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--bg-sunken); border: 1px solid var(--line);
+  font-size: .85rem; font-weight: 600; color: var(--text-dim);
+}
+.step-card.is-current .step-number { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.step-card.is-done .step-number { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
+.step-head-text { display: grid; gap: .1rem; min-width: 0; }
+.step-title { font-size: 1.02rem; font-weight: 600; line-height: 1.3; }
+.step-kind { font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+
+/* Closed by default so the whole course fits on one screen as a map. */
+.step-body { display: none; padding: 0 1rem 1.1rem; }
+.step-card.is-open .step-body { display: block; }
+.step-outcome { font-size: 1.02rem; margin-bottom: 1rem; }
+.step-steps { padding-left: 1.3rem; margin: .4rem 0 1rem; }
+.step-steps li { margin: .45rem 0; line-height: 1.5; }
+.step-check, .step-watch {
+  padding: .7rem .9rem; border-radius: var(--radius-sm); margin-bottom: .7rem;
+  font-size: .92rem; line-height: 1.5;
+}
+.step-check { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.step-watch { background: color-mix(in srgb, var(--warm) 14%, transparent); }
+.step-expect { margin-bottom: .8rem; }
