@@ -6,7 +6,7 @@ import { MASTERED, WORKABLE, masteryMap, levelOf } from '../src/curriculum/maste
 import { PROGRESSIONS, describeRepertoire, mostValuableNextChord, repertoireFor } from '../src/curriculum/repertoire.ts';
 import type { Observation } from '../src/curriculum/mastery.ts';
 import { describeProgress, planLessons, progressOf } from '../src/curriculum/plan.ts';
-import { buildExercise, exerciseFromProgression, gradeChangeDrill, gradeHoldChord, gradeProgression, observationFrom } from '../src/curriculum/exercise.ts';
+import { buildExercise, exerciseFromProgression, gradeChangeDrill, gradeHoldChord, gradeProgression, gradeScale, observationFrom } from '../src/curriculum/exercise.ts';
 import { CurriculumStore, declareKnownChords, observeFreePlay } from '../src/curriculum/watch.ts';
 
 const DAY = 86_400_000;
@@ -462,5 +462,85 @@ describe('playing a progression you already know', () => {
       assert.equal(entry.chords.length, entry.template.numerals.length, entry.template.id);
       for (const chord of entry.chords) assert.match(chord, /^[A-G]#?m?$/, `${entry.template.id} produced ${chord}`);
     }
+  });
+});
+
+describe('a plan that is not only chords', () => {
+  // Reported by a player: "when I go to the Learn tab, what I'm interested in
+  // learning about guitar is only chords... I'm learning these chords and then
+  // what?" Every new lesson carries the same priority, so ties fell to
+  // position in the skill list — and the chords are written first.
+
+  const knows = (chords: string[]) => masteryMap(declareKnownChords(chords));
+
+  test('someone comfortable with open chords is offered more than chords', () => {
+    const lessons = planLessons(knows(['E', 'Em', 'G', 'D', 'C', 'Am']), { count: 6 });
+    const kinds = new Set(lessons.map((lesson) => lesson.skill.kind));
+    assert.ok(kinds.size > 1, `a plan of six was all ${[...kinds].join(', ')}`);
+    assert.ok(lessons.some((lesson) => lesson.skill.kind === 'scale'),
+      'a player with six chords should be offered a scale');
+  });
+
+  test('chords still lead — breadth is not the same as burying the basics', () => {
+    const lessons = planLessons(knows(['E', 'Em', 'G', 'D', 'C', 'Am']), { count: 6 });
+    assert.equal(lessons[0]!.skill.kind, 'chord');
+  });
+
+  test('work already started still comes first', () => {
+    const mastery = masteryMap([
+      ...declareKnownChords(['E', 'Em', 'G', 'D', 'C', 'Am']),
+      { skillId: 'chord.A', quality: 0.3, at: NOW, source: 'drill' as const },
+    ]);
+    const lessons = planLessons(mastery, { now: NOW, count: 4 });
+    assert.equal(lessons[0]!.skill.id, 'chord.A');
+    assert.equal(lessons[0]!.reason, 'needs-work');
+  });
+
+  test('a beginner with nothing yet still starts at the beginning', () => {
+    const lessons = planLessons(new Map(), { now: NOW, count: 3 });
+    assert.equal(lessons[0]!.reason, 'foundation');
+  });
+
+  test('the major pentatonic a player asked for exists and is reachable', () => {
+    const reachable = planLessons(knows(['E', 'Em', 'G', 'D', 'C', 'Am']), { count: 30 })
+      .map((lesson) => lesson.skill.id);
+    assert.ok(reachable.includes('scale.G.pentatonic.major'));
+  });
+});
+
+describe('grading a scale attempt', () => {
+  const exercise = buildExercise(SKILLS.find((s) => s.id === 'scale.Am.pentatonic')!);
+  const pcs = [9, 0, 2, 4, 7];
+  const run = (midis: number[]) => midis.map((midi, i) => ({ midi, at: i * 400 }));
+
+  test('up and back down in the scale passes', () => {
+    const up = [57, 60, 62, 64, 67, 69];
+    const grade = gradeScale(exercise, run([...up, ...[...up].reverse().slice(1)]), pcs, 30_000);
+    assert.ok(grade.passed, grade.feedback.join(' '));
+    assert.ok(grade.quality > 0.8);
+  });
+
+  test('only going up is not the same as knowing the shape', () => {
+    const grade = gradeScale(exercise, run([57, 60, 62, 64, 67, 69, 72, 74]), pcs, 30_000);
+    assert.equal(grade.passed, false);
+    assert.ok(grade.feedback.some((line) => /down/i.test(line)),
+      'it should say what was missing, not just fail');
+  });
+
+  test('wrong notes are named as wrong notes', () => {
+    const grade = gradeScale(exercise, run([57, 58, 61, 63, 66, 63, 61, 58]), pcs, 30_000);
+    assert.equal(grade.passed, false);
+    assert.ok(grade.feedback.some((line) => /outside the scale/i.test(line)));
+  });
+
+  test('silence is reported as silence rather than failure', () => {
+    const grade = gradeScale(exercise, run([57, 60]), pcs, 30_000);
+    assert.equal(grade.quality, 0);
+    assert.ok(grade.feedback[0]!.includes('microphone'));
+  });
+
+  test('rocking between two notes does not count as a scale', () => {
+    const grade = gradeScale(exercise, run([57, 60, 57, 60, 57, 60, 57, 60]), pcs, 30_000);
+    assert.equal(grade.passed, false);
   });
 });

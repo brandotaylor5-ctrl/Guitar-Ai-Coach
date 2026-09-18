@@ -95,11 +95,62 @@ export function planLessons(mastery: Map<string, SkillMastery>, options: PlanOpt
 
   // Ties broken by position in the graph, so the natural order survives when
   // nothing else distinguishes two lessons.
-  return lessons
+  const ordered = lessons
     .map((lesson, index) => ({ lesson, index }))
     .sort((a, b) => b.lesson.priority - a.lesson.priority || a.index - b.index)
-    .slice(0, count)
     .map((entry) => entry.lesson);
+
+  return spreadAcrossTracks(ordered, count);
+}
+
+/** Which part of playing a skill belongs to, for keeping a plan balanced. */
+function trackOf(skill: Skill): 'chords' | 'lead' | 'rhythm' {
+  if (skill.kind === 'scale') return 'lead';
+  if (skill.kind === 'chord' || skill.kind === 'change' || skill.kind === 'progression') return 'chords';
+  return LEAD_TECHNIQUES.some((part) => skill.id.endsWith(part)) ? 'lead' : 'rhythm';
+}
+
+const LEAD_TECHNIQUES = [
+  'alternate-picking', 'hammer-on', 'pull-off', 'slide', 'vibrato', 'riff-motif', 'call-response',
+];
+
+/**
+ * Take the best lessons, but never all from one part of playing.
+ *
+ * Every new lesson carries the same priority, so ties fell to position in the
+ * skill list — and the chords are written first. The result was a plan that
+ * was chords all the way down, however far someone got: learn a chord, and the
+ * reward is another chord. Someone comfortable with their open shapes asking
+ * "and then what?" was being answered, accurately, with "more of these".
+ *
+ * Work that is already underway or fading still comes first, because that is
+ * genuinely more urgent than breadth. Beyond that, the tracks take turns.
+ */
+function spreadAcrossTracks(ordered: Lesson[], count: number): Lesson[] {
+  const urgent = ordered.filter((lesson) => lesson.priority > 0.6).slice(0, count);
+  if (urgent.length >= count) return urgent;
+
+  const queues = new Map<string, Lesson[]>();
+  for (const lesson of ordered) {
+    if (urgent.includes(lesson)) continue;
+    const track = trackOf(lesson.skill);
+    const queue = queues.get(track) ?? [];
+    queue.push(lesson);
+    queues.set(track, queue);
+  }
+
+  // Chords first on each pass: they are still the backbone, they just no
+  // longer get every slot.
+  const order = ['chords', 'lead', 'rhythm'].filter((track) => queues.has(track));
+  const out = [...urgent];
+  while (out.length < count && order.some((track) => (queues.get(track)?.length ?? 0) > 0)) {
+    for (const track of order) {
+      if (out.length >= count) break;
+      const next = queues.get(track)?.shift();
+      if (next) out.push(next);
+    }
+  }
+  return out;
 }
 
 export interface Progress {

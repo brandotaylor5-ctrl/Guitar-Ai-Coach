@@ -4,6 +4,7 @@ import type { FretPosition, NoteEvent, PhraseAnalysis } from '../../src/types.ts
 import type { Explanation } from '../../src/explain/explain.ts';
 import type { Tuning } from '../../src/music/fretboard.ts';
 import { STANDARD_TUNING } from '../../src/music/fretboard.ts';
+import type { ScaleBox } from '../../src/music/scales.ts';
 import { midiToName } from '../../src/music/notes.ts';
 import { h, svg } from './dom.ts';
 
@@ -170,4 +171,78 @@ export function button(label: string, onClick: () => void, className = ''): HTML
 
 export function empty(message: string): HTMLElement {
   return h('p', { class: 'empty', text: message });
+}
+
+/**
+ * A scale box: the shape under the hand, with the root notes called out.
+ *
+ * Different from `fretboardDiagram` on purpose. That one numbers the notes in
+ * playing order, which is what you want for a riff. A scale is not a sequence
+ * you memorise, it is a shape you look at — so here the dots carry note names
+ * and the roots are marked, because "where is home" is the only question that
+ * matters when you are first finding one.
+ */
+export function scaleDiagram(box: ScaleBox, tuning: Tuning = STANDARD_TUNING): SVGElement {
+  const stringCount = tuning.strings.length;
+  const fretted = box.positions.filter((p) => p.fret > 0).map((p) => p.fret);
+  const first = fretted.length ? Math.max(1, Math.min(...fretted)) : 1;
+  const last = Math.max(first + 3, fretted.length ? Math.max(...fretted) : 4);
+  const fretCount = last - first + 1;
+
+  const openGutter = 26;
+  const padX = 30 + openGutter;
+  const padY = 20;
+  const fretWidth = 46;
+  const stringGap = 24;
+  const width = padX + fretCount * fretWidth + 26;
+  const height = padY * 2 + (stringCount - 1) * stringGap + 26;
+
+  const root = svg('svg', {
+    class: 'fretboard scale-box', viewBox: `0 0 ${width} ${height}`, width, height,
+    role: 'img', 'aria-label': 'Fretboard diagram of the scale shape, with root notes marked',
+  });
+
+  for (let s = 0; s < stringCount; s++) {
+    const y = padY + (stringCount - 1 - s) * stringGap;
+    root.appendChild(svg('line', {
+      x1: padX, y1: y, x2: padX + fretCount * fretWidth, y2: y,
+      class: 'fb-string', 'stroke-width': 1 + (stringCount - 1 - s) * 0.18,
+    }));
+  }
+  for (let f = 0; f <= fretCount; f++) {
+    root.appendChild(svg('line', {
+      x1: padX + f * fretWidth, y1: padY, x2: padX + f * fretWidth,
+      y2: padY + (stringCount - 1) * stringGap, class: 'fb-fret',
+    }));
+  }
+  for (let f = 0; f < fretCount; f++) {
+    const text = svg('text', {
+      x: padX + f * fretWidth + fretWidth / 2,
+      y: padY + (stringCount - 1) * stringGap + 24,
+      class: 'fb-fretnum', 'text-anchor': 'middle',
+    });
+    text.textContent = String(first + f);
+    root.appendChild(text);
+  }
+
+  for (const position of box.positions) {
+    const y = padY + (stringCount - 1 - position.string) * stringGap;
+    const open = position.fret === 0;
+    const x = open
+      ? padX - openGutter / 2 - 4
+      : padX + (position.fret - first) * fretWidth + fretWidth / 2;
+
+    root.appendChild(svg('circle', {
+      cx: x, cy: y, r: 10,
+      class: position.isRoot ? 'fb-root' : open ? 'fb-open' : 'fb-dot',
+    }));
+    const text = svg('text', {
+      x, y: y + 3.5, 'text-anchor': 'middle', 'font-size': 8.5,
+      class: `fb-dotnum${open && !position.isRoot ? ' fb-opennum' : ''}`,
+    });
+    text.textContent = midiToName(position.midi).replace(/\d/g, '');
+    root.appendChild(text);
+  }
+
+  return root;
 }
