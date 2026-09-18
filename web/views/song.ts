@@ -22,6 +22,10 @@ import {
 import { masteryMap } from '../../src/curriculum/mastery.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
 import { chordShape, chordShapeMidis } from '../../src/music/chordShapes.ts';
+import { leadChords, pitchClassOf } from '../../src/create/lead.ts';
+import { leadOverProgression } from '../../src/create/lead.ts';
+import { SCALES, rootPositionFret, scaleBox } from '../../src/music/scales.ts';
+import { pcToName } from '../../src/music/notes.ts';
 import { inferFingering, renderTab } from '../../src/music/fretboard.ts';
 import type { NoteEvent } from '../../src/types.ts';
 import type { ChordDetection } from '../audio/chordDetect.ts';
@@ -210,6 +214,50 @@ export function songView(context: AppContext, params: Record<string, string> = {
     render();
   }
 
+  /**
+   * Soloing, attached to a song instead of stranded in a sandbox.
+   *
+   * The Riff Lab had this and nobody could see the point, because improvising
+   * over an abstract loop is a puzzle rather than music. Over the changes of a
+   * song you have just been playing it is the obvious next thing to try.
+   */
+  function soloCard(): HTMLElement {
+    const chords = leadChords(song!.sections.flatMap((section) => section.bars));
+    const host = h('div', { class: 'solo-host' });
+    const tonicPc = pitchClassOf(song!.key) ?? 0;
+    const minor = song!.key.endsWith('m');
+    const scale = SCALES.find((s) => s.id === (minor ? 'minor-pent' : 'major-pent'))!;
+    const box = scaleBox(tonicPc, scale, context.session.tuning, rootPositionFret(tonicPc, context.session.tuning));
+    const scaleNotes = box.positions.map((p) => p.midi).sort((a, b) => a - b);
+    let variant = 0;
+
+    const draw = (): void => {
+      const lead = leadOverProgression(chords, scaleNotes, variant, 60_000 / song!.bpm * 4);
+      const positions = inferFingering(lead.map((n) => n.midi), { tuning: context.session.tuning, maxFret: 12 });
+      replace(host,
+        tabBlock(renderTab(positions, context.session.tuning)),
+        h('div', { class: 'row-actions' },
+          button('Hear it', () => { void context.player.play(lead); }, 'btn-quiet'),
+          button('Half speed', () => { void context.player.play(lead, { speed: 0.5 }); }, 'btn-quiet'),
+          button('Another one', () => { variant = (variant + 1) % 3; draw(); }, 'btn-quiet'),
+          button('Keep it', () => {
+            void context.library
+              .saveRiff(lead, { comment: `Lead over ${song!.title}` })
+              .then(() => context.say('Saved to You. It came out of a real song, so it will sound like one.'))
+              .catch(() => context.say('Could not save that.', 'error'));
+          }, 'btn-quiet'),
+        ),
+      );
+    };
+    draw();
+
+    return h('section', { class: 'panel' },
+      h('h4', { text: 'Take a solo over it' }),
+      h('p', { class: 'muted', text: `Built from ${pcToName(tonicPc)} ${scale.name}, landing on a note that belongs to whichever chord is underneath. That one habit is most of what makes a solo sound like the song rather than a scale played over it.` }),
+      host,
+    );
+  }
+
   function render(): void {
     clear(element);
 
@@ -250,6 +298,8 @@ export function songView(context: AppContext, params: Record<string, string> = {
 
       ...song!.sections.map(sectionCard),
     );
+    // Soloing over changes you cannot yet play is not a lesson, it is a taunt.
+    if (readiness.ready) element.appendChild(soloCard());
   }
 
   render();

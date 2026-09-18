@@ -156,7 +156,7 @@ export function sessionView(context: AppContext): View {
         h('h2', { text: 'Play. I’ll keep up.' }),
         h('p', { class: 'muted', text: 'I listen for notes, chords, repeated ideas and the tiny changes between takes — then give you one thing worth trying.' }),
       ),
-      h('div', { class: 'live-coach-actions' }, listenButton, voiceButton, button('Open Riff Lab', () => context.navigate('lab'), 'btn-quiet')),
+      h('div', { class: 'live-coach-actions' }, listenButton, voiceButton, button('Find a song to play', () => context.navigate('songs'), 'btn-quiet')),
     ),
 
     h('section', { class: 'live-hearing-grid live-hearing-grid-v3' },

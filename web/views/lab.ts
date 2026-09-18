@@ -10,6 +10,8 @@ import { practiceAttempt } from '../../src/practice/practice.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
 import { h, clear } from '../ui/dom.ts';
 import { button, fretboardDiagram, noteRow, highlightNote, tabBlock } from '../ui/render.ts';
+import { leadOverProgression } from '../../src/create/lead.ts';
+import type { LeadChord } from '../../src/create/lead.ts';
 import type { AppContext, View } from './context.ts';
 
 const ROOTS = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
@@ -36,11 +38,7 @@ interface RiffTemplate {
   rhythm: number[];
 }
 
-interface LabChord {
-  label: string;
-  rootPc: number;
-  minor: boolean;
-}
+type LabChord = LeadChord;
 
 const TEMPLATES: RiffTemplate[] = [
   { id: 'drone', name: 'Drone & Answer', feel: 'Low home note, then a little reply above it.', level: 'easy', lesson: 'Hear a bass note as a floor while the melody moves.', degrees: [0, 2, 0, 3, 2, 0], rhythm: [1, .5, .5, .75, .75, 1.5] },
@@ -140,43 +138,6 @@ function progressionNotes(chords: LabChord[], barMs = 1050): NoteEvent[] {
     for (const midi of [root, third, fifth]) {
       out.push({ midi, startMs: index * barMs, durationMs: barMs * .84, confidence: 1, velocity: .45 });
     }
-  });
-  return out;
-}
-
-function leadOverProgression(chords: LabChord[], scale: number[], variant = 0, barMs = 1050): NoteEvent[] {
-  const out: NoteEvent[] = [];
-  const scalePitchClasses = new Set(scale.map((midi) => midi % 12));
-  let around = variant === 1 ? 64 : variant === 2 ? 52 : 57;
-
-  const pick = (pitchClass: number): number => {
-    const candidates = scale.filter((midi) => midi % 12 === pitchClass);
-    const pool = candidates.length ? candidates : scale;
-    const midi = pool.slice().sort((a, b) => Math.abs(a - around) - Math.abs(b - around))[0]!;
-    around = midi;
-    return midi;
-  };
-
-  chords.forEach((chord, index) => {
-    const third = (chord.rootPc + (chord.minor ? 3 : 4)) % 12;
-    const fifth = (chord.rootPc + 7) % 12;
-    const chordTone = scalePitchClasses.has(third) ? third : fifth;
-    const targets = variant === 1
-      ? [chordTone, fifth]
-      : variant === 2
-        ? [fifth, chord.rootPc]
-        : [chord.rootPc, chordTone];
-
-    targets.forEach((pitchClass, targetIndex) => {
-      const offset = variant === 2 && targetIndex === 1 ? .68 : targetIndex * .5;
-      out.push({
-        midi: pick(pitchClass),
-        startMs: index * barMs + offset * barMs,
-        durationMs: barMs * (variant === 2 ? .26 : .38),
-        confidence: 1,
-        velocity: .62,
-      });
-    });
   });
   return out;
 }
