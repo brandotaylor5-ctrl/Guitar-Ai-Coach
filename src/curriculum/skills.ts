@@ -130,51 +130,15 @@ export const SKILLS: Skill[] = [
   },
 
   // --- useful color chords and open-chord variations ---------------------
-  {
-    id: 'chord.Em7', name: 'E minor 7', kind: 'chord', requires: ['chord.Em'], chord: 'Em7',
-    goal: 'Turn E minor into E minor 7 without losing the ringing open strings.',
-    why: 'One added finger gives E minor a wider, more unresolved color and teaches that chords are families, not isolated shapes.',
-  },
-  {
-    id: 'chord.Am7', name: 'A minor 7', kind: 'chord', requires: ['chord.Am'], chord: 'Am7',
-    goal: 'Turn A minor into A minor 7 by lifting one finger cleanly.',
-    why: 'It is an easy first chord variation and a perfect example of changing one note without changing the whole musical idea.',
-  },
-  {
-    id: 'chord.E7', name: 'E7', kind: 'chord', requires: ['chord.E'], chord: 'E7',
-    goal: 'Hear and hold the extra tension in E7.',
-    why: 'Dominant 7th chords are the sound of blues and musical tension. E7 is the easiest place to hear what that means.',
-  },
-  {
-    id: 'chord.A7', name: 'A7', kind: 'chord', requires: ['chord.A'], chord: 'A7',
-    goal: 'Hold A7 with the open G and high E strings ringing clearly.',
-    why: 'A7 opens blues, country and folk progressions while reinforcing careful string muting and open-string control.',
-  },
-  {
-    id: 'chord.D7', name: 'D7', kind: 'chord', requires: ['chord.D'], chord: 'D7',
-    goal: 'Hold D7 on the top four strings and hear its pull toward G.',
-    why: 'D7 makes the idea of musical tension obvious because it strongly wants to move to G.',
-  },
-  {
-    id: 'chord.G7', name: 'G7', kind: 'chord', requires: ['chord.G'], chord: 'G7',
-    goal: 'Change G into G7 without losing the low-string foundation.',
-    why: 'G7 is a classic folk and blues sound and teaches how one changed note can completely change where a chord wants to go.',
-  },
-  {
-    id: 'chord.Asus2', name: 'A suspended 2', kind: 'chord', requires: ['chord.A'], chord: 'Asus2',
-    goal: 'Open up A major into Asus2 and hear the suspended sound.',
-    why: 'Suspended chords are one of the fastest ways to make ordinary open-chord playing sound like an arrangement instead of an exercise.',
-  },
-  {
-    id: 'chord.Dsus2', name: 'D suspended 2', kind: 'chord', requires: ['chord.D'], chord: 'Dsus2',
-    goal: 'Open D major into Dsus2 while keeping the other fingers planted.',
-    why: 'This teaches chord embellishment with almost no new hand movement — a very useful singer-songwriter habit.',
-  },
-  {
-    id: 'chord.Cmaj7', name: 'C major 7', kind: 'chord', requires: ['chord.C'], chord: 'Cmaj7',
-    goal: 'Open C major into C major 7 and let the top strings ring.',
-    why: 'Major 7ths add a spacious color and teach that harmony can change dramatically when only one note moves.',
-  },
+
+
+
+
+
+
+
+
+
 
   // --- changes ------------------------------------------------------------
   {
@@ -310,36 +274,11 @@ export const SKILLS: Skill[] = [
     goal: 'Move from A minor to F smoothly enough to keep a sad loop going.',
     why: 'This change is central to one of the most common minor-key pop and singer-songwriter progressions.',
   },
-  {
-    id: 'change.Em-Em7', name: 'E minor to E minor 7', kind: 'change',
-    requires: ['chord.Em', 'chord.Em7'], between: ['Em', 'Em7'],
-    goal: 'Add and remove the color note without interrupting the rhythm.',
-    why: 'This turns a static chord into an arrangement and teaches embellishment without changing the harmonic center.',
-  },
-  {
-    id: 'change.Am-Am7', name: 'A minor to A minor 7', kind: 'change',
-    requires: ['chord.Am', 'chord.Am7'], between: ['Am', 'Am7'],
-    goal: 'Lift and replace one finger in time while A stays underneath.',
-    why: 'Tiny chord variations are how singer-songwriters keep one harmony moving.',
-  },
-  {
-    id: 'change.C-Cmaj7', name: 'C to C major 7', kind: 'change',
-    requires: ['chord.C', 'chord.Cmaj7'], between: ['C', 'Cmaj7'],
-    goal: 'Move between C and C major 7 with one clean finger lift.',
-    why: 'It is a simple way to hear how one note changes the emotional color of a chord.',
-  },
-  {
-    id: 'change.A-Asus2', name: 'A to Asus2', kind: 'change',
-    requires: ['chord.A', 'chord.Asus2'], between: ['A', 'Asus2'],
-    goal: 'Move between A and Asus2 as a rhythmic embellishment.',
-    why: 'This is a common acoustic-guitar trick that makes a held chord feel like it is breathing.',
-  },
-  {
-    id: 'change.D-Dsus2', name: 'D to Dsus2', kind: 'change',
-    requires: ['chord.D', 'chord.Dsus2'], between: ['D', 'Dsus2'],
-    goal: 'Lift and replace the top-string finger without losing the D shape.',
-    why: 'It builds control for melodic movement inside chords — the beginning of chord melody and fingerstyle thinking.',
-  },
+
+
+
+
+
 
   // --- progressions -------------------------------------------------------
   {
@@ -638,6 +577,7 @@ export const SKILLS: Skill[] = [
     practice: 'songs',
   },
 
+];
 
 const BY_ID = new Map(SKILLS.map((skill) => [skill.id, skill]));
 
