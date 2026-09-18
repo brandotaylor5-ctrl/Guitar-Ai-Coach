@@ -19,7 +19,7 @@ export interface Observation {
   /** When it happened. */
   at: number;
   /** Where it came from. Drills are trusted more than passive listening. */
-  source: 'drill' | 'freeplay';
+  source: 'drill' | 'freeplay' | 'lesson';
   /** For a change: clean changes per minute achieved. */
   changesPerMinute?: number;
 }
@@ -40,11 +40,19 @@ export const HALF_LIFE_DAYS = 21;
 
 /** Below this, a teacher would still be watching. Above it, it is yours. */
 export const MASTERED = 0.75;
-/** Enough to build on, even if it still needs attention. */
-export const WORKABLE = 0.45;
+/**
+ * Enough to build on without pretending it is mastered.
+ *
+ * One clean, deliberate drill lands at about .34 in the mastery model. The old
+ * .45 threshold therefore forced a beginner to repeat a chord they had just
+ * successfully learned before anything new could unlock. A real teacher does
+ * not do that: one successful first lesson is enough to start the next idea,
+ * while later repetition is what turns the skill into mastery.
+ */
+export const WORKABLE = 0.30;
 
 /** Passive listening is weaker evidence than a drill someone tried to pass. */
-const SOURCE_WEIGHT = { drill: 1, freeplay: 0.55 } as const;
+const SOURCE_WEIGHT = { drill: 1, freeplay: 0.55, lesson: 1 } as const;
 
 function decayFactor(elapsedMs: number): number {
   const days = elapsedMs / 86_400_000;

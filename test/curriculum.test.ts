@@ -20,6 +20,11 @@ function drills(skillId: string, quality: number, count = 8, at = NOW): Observat
 }
 
 describe('the skill graph', () => {
+  test('every skill id is unique', () => {
+    const ids = SKILLS.map((skill) => skill.id);
+    assert.equal(new Set(ids).size, ids.length, 'duplicate curriculum ids make planning unpredictable');
+  });
+
   test('every prerequisite names a skill that exists', () => {
     for (const skill of SKILLS) {
       for (const required of skill.requires) {
@@ -55,6 +60,23 @@ describe('working out what the player can do', () => {
   test('a run of good attempts is', () => {
     const mastery = masteryMap(drills('chord.Em', 1, 10), NOW);
     assert.ok(levelOf(mastery, 'chord.Em') >= MASTERED);
+  });
+
+  test('one clean lesson is enough to build on without pretending it is mastered', () => {
+    const mastery = masteryMap(drills('chord.Em', 1, 1), NOW);
+    assert.ok(levelOf(mastery, 'chord.Em') >= WORKABLE);
+    assert.ok(levelOf(mastery, 'chord.Em') < MASTERED);
+    const offered = planLessons(mastery, { now: NOW, count: 20 }).map((lesson) => lesson.skill.id);
+    assert.ok(!offered.includes('chord.Em'), 'a successful first lesson should move forward, not immediately repeat');
+    assert.ok(offered.includes('chord.Am'), 'a successful E minor lesson should unlock A minor');
+  });
+
+  test('a guided non-audio lesson can unlock the next concept without claiming mastery', () => {
+    const mastery = masteryMap([
+      { skillId: 'technique.steady-strum', quality: 1, at: NOW, source: 'lesson' as const },
+    ], NOW);
+    assert.ok(levelOf(mastery, 'technique.steady-strum') >= WORKABLE);
+    assert.ok(levelOf(mastery, 'technique.steady-strum') < MASTERED);
   });
 
   test('one bad take does not undo a skill', () => {
@@ -102,11 +124,13 @@ describe('deciding what to work on', () => {
     assert.ok(offered.includes('chord.Am'), 'A minor only needed E minor');
   });
 
-  test('finishing something started beats starting something new', () => {
+  test('finishing something genuinely not usable yet beats starting something new', () => {
     const mastery = masteryMap([
       ...drills('chord.Em', 1, 10),
-      ...drills('chord.Am', 0.5, 4),
+      ...drills('chord.Am', 0.45, 2),
     ], NOW);
+    assert.ok(levelOf(mastery, 'chord.Am') > 0);
+    assert.ok(levelOf(mastery, 'chord.Am') < WORKABLE);
     const lessons = planLessons(mastery, { now: NOW });
     assert.equal(lessons[0]!.skill.id, 'chord.Am');
     assert.equal(lessons[0]!.reason, 'needs-work');
