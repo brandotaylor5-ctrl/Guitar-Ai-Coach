@@ -15,7 +15,10 @@
   --accent-dim: #2d8f70;
   --warm: #f0b866;
   --danger: #ef7a7a;
-  --radius: 10px;
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px -12px rgb(0 0 0 / .5);
+  --tap: 46px;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 }
 
@@ -59,11 +62,13 @@ code { font-family: var(--mono); }
 
 .app-header {
   display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
-  padding: .9rem 1.5rem;
-  background: var(--bg-raised);
+  padding: .75rem 1.25rem;
+  background: color-mix(in srgb, var(--bg-raised) 88%, transparent);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 10;
 }
+.app-header h1 { font-size: .95rem; font-weight: 600; margin: 0; }
 .brand { display: flex; align-items: baseline; gap: .6rem; }
 .tagline { color: var(--text-dim); font-size: .85rem; margin: 0; }
 
@@ -73,14 +78,15 @@ code { font-family: var(--mono); }
 }
 .live-dot.is-live { background: var(--accent); box-shadow: 0 0 0 4px rgb(94 224 176 / .18); }
 
-.nav { display: flex; gap: .25rem; margin-left: auto; }
+.nav { display: flex; gap: .2rem; margin-left: auto; align-items: center; }
 .nav-tab {
   background: none; border: 1px solid transparent; color: var(--text-dim);
-  padding: .45rem .8rem; border-radius: var(--radius); cursor: pointer;
-  font: inherit; font-size: .9rem;
+  padding: .5rem .85rem; border-radius: var(--radius-sm); cursor: pointer;
+  font: inherit; font-size: .92rem; font-weight: 500;
+  min-height: var(--tap);
 }
-.nav-tab:hover { color: var(--text); background: var(--bg-sunken); }
-.nav-tab.is-active { color: var(--text); background: var(--bg-sunken); border-color: var(--line); }
+.nav-tab:hover { color: var(--text); }
+.nav-tab.is-active { color: var(--bg); background: var(--accent); font-weight: 600; }
 
 .nav-more { display: none; gap: .25rem; }
 .nav-more.is-open { display: flex; }
@@ -562,3 +568,89 @@ code { font-family: var(--mono); }
 .doctor-bar-name { font-weight: 600; }
 .doctor-bar-fill { height: 8px; border-radius: 4px; background: var(--accent); min-width: 2px; }
 .doctor-bar-num { color: var(--text-dim); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   Songs — the spine of the app
+   ============================================================ */
+
+.view-head { margin-bottom: 1.2rem; }
+.view-head h2 { font-size: 1.6rem; margin-bottom: .25rem; }
+.view-head .muted { max-width: 52ch; }
+
+.song-list { display: grid; gap: .5rem; }
+.song-row {
+  display: flex; align-items: center; gap: 1rem; width: 100%;
+  padding: .85rem 1rem; min-height: var(--tap);
+  background: var(--bg-sunken); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); cursor: pointer;
+  font: inherit; color: var(--text); text-align: left;
+}
+.song-row:hover { border-color: var(--accent-dim); }
+.song-row.is-locked { opacity: .72; }
+.song-row-main { display: grid; gap: .15rem; flex: 1; min-width: 0; }
+.song-row-title { font-size: 1.05rem; font-weight: 600; }
+.song-row-sub { font-size: .85rem; color: var(--text-dim); }
+.song-row-tag {
+  font-size: .72rem; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-dim); white-space: nowrap;
+}
+
+.unlock-card { border-color: var(--accent-dim); }
+.unlock-card strong { color: var(--accent); }
+
+/* ---- one song ---- */
+.song-head { margin-bottom: 1.2rem; }
+.song-head h2 { font-size: 1.75rem; margin: .5rem 0 .25rem; }
+.btn-back {
+  background: none; border: none; color: var(--text-dim);
+  font: inherit; font-size: .9rem; cursor: pointer; padding: .4rem 0;
+}
+.btn-back:hover { color: var(--text); }
+.song-why p { margin: 0; font-size: 1.02rem; }
+.song-transport { margin: 1.2rem 0; }
+.btn-big { font-size: 1.05rem; padding: .85rem 1.8rem; min-height: 52px; }
+
+.level-switch { display: flex; gap: .35rem; flex-wrap: wrap; margin: .2rem 0 .6rem; }
+.level-chip {
+  background: var(--bg-sunken); border: 1px solid var(--line); color: var(--text-dim);
+  padding: .45rem .85rem; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: .85rem; min-height: 38px;
+}
+.level-chip.is-on { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+.level-blurb { margin: 0 0 .8rem; font-size: .88rem; }
+.song-how { font-size: .95rem; }
+
+.song-part-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.song-part-head h3 { margin: 0 0 .6rem; }
+
+/* The chart. Four bars to a line, the way anyone would write one out. */
+.song-chart {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: .3rem;
+  margin: .8rem 0; font-variant-numeric: tabular-nums;
+}
+.song-bar {
+  display: flex; align-items: center; justify-content: center;
+  padding: .7rem .3rem; min-height: 52px;
+  background: var(--bg-sunken); border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 1.05rem; font-weight: 600; color: var(--text-dim);
+}
+.song-bar.is-here {
+  background: var(--accent); border-color: var(--accent); color: var(--bg);
+  transform: scale(1.04);
+}
+
+.chord-shapes { display: flex; gap: 1.2rem; flex-wrap: wrap; }
+.chord-shape { display: grid; gap: .2rem; justify-items: center; }
+.chord-shape-name { font-weight: 600; font-size: 1rem; }
+.row-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+@media (max-width: 620px) {
+  .song-chart { grid-template-columns: repeat(2, 1fr); }
+  .view-head h2 { font-size: 1.4rem; }
+  .song-head h2 { font-size: 1.45rem; }
+}
+
+.setup-details { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.setup-details > summary { color: var(--text-dim); font-size: .88rem; cursor: pointer; }
+.setup-details label { display: block; margin: .8rem 0 .2rem; font-size: .9rem; }
