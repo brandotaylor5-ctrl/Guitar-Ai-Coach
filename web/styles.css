@@ -530,3 +530,18 @@ code { font-family: var(--mono); }
 .setup-details[open] > summary::before { content: '▾ '; }
 .setup-details > summary::-webkit-details-marker { display: none; }
 .setup-details[open] { padding-bottom: .8rem; border-bottom: 1px solid var(--line); }
+
+/* ---- scale shapes ---- */
+.fb-root { fill: var(--accent); stroke: none; }
+.scale-box .fb-dotnum { fill: var(--bg); font-weight: 600; }
+.scale-lesson .note-roles { display: grid; gap: .4rem; margin: .8rem 0 0; padding: 0; list-style: none; }
+.scale-lesson .note-roles li { display: flex; gap: .6rem; align-items: baseline; font-size: .9rem; }
+.scale-lesson .note-roles .pitch {
+  font-weight: 600; min-width: 2.4rem; color: var(--text);
+  background: var(--bg-sunken); border-radius: 6px; padding: .1rem .4rem; text-align: center;
+}
+.scale-lesson .note-roles .why { color: var(--text-dim); }
+.riff-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; margin-top: .9rem; }
+.riff-card h4 { margin: 0 0 .2rem; }
+.riff-why { margin: .6rem 0 0; padding-left: 1.1rem; color: var(--text-dim); font-size: .9rem; }
+.riff-why li { margin: .25rem 0; }

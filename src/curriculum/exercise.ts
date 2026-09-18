@@ -262,6 +262,70 @@ export function gradeHoldChord(exercise: Exercise, heard: HeardChord[], elapsedM
   return { quality, passed: share >= 0.8 && right >= 4, feedback };
 }
 
+/**
+ * Grade a scale attempt from the notes that were actually heard.
+ *
+ * Chord grading asks "was the right thing sounding?". A scale is a sequence,
+ * so the question is different: did the notes belong to the scale, and did the
+ * player get up it and back down. Playing the right five notes in a random
+ * order is not the same as knowing the shape, and being told it was is worse
+ * than not being told anything.
+ */
+export function gradeScale(
+  exercise: Exercise,
+  heard: Array<{ midi: number; at: number }>,
+  scalePcs: number[],
+  elapsedMs: number,
+): Grade {
+  const feedback: string[] = [];
+  if (heard.length < 5) {
+    return {
+      quality: 0,
+      passed: false,
+      feedback: ['I barely heard anything. Check the microphone is picking the guitar up, then go again.'],
+    };
+  }
+
+  const wanted = new Set(scalePcs.map((pc) => ((pc % 12) + 12) % 12));
+  const inScale = heard.filter((n) => wanted.has(((n.midi % 12) + 12) % 12));
+  const accuracy = inScale.length / heard.length;
+
+  // Did the line actually travel? Counting direction changes separates a run
+  // up and back from someone rocking between two notes.
+  let rises = 0;
+  let falls = 0;
+  for (let i = 1; i < heard.length; i++) {
+    const step = heard[i]!.midi - heard[i - 1]!.midi;
+    if (step > 0) rises += 1;
+    else if (step < 0) falls += 1;
+  }
+  const bothWays = rises >= 3 && falls >= 3;
+  const spread = Math.max(...heard.map((n) => n.midi)) - Math.min(...heard.map((n) => n.midi));
+
+  // Direction changes alone would pass someone rocking between two notes, and
+  // told they had played a scale. Knowing a shape means having been to most of
+  // it, so count how much of the scale was actually visited.
+  const visited = new Set(inScale.map((n) => ((n.midi % 12) + 12) % 12)).size;
+  const enoughOfIt = visited >= Math.min(4, wanted.size);
+
+  if (accuracy >= 0.85) feedback.push('Almost every note was in the scale — that is the hard part done.');
+  else if (accuracy >= 0.65) feedback.push('Most of that was in the scale. The stray notes are usually one fret off, so check the shape before going again.');
+  else feedback.push('A lot of those notes were outside the scale. Slow right down and follow the shape on screen rather than your ear.');
+
+  if (!bothWays) feedback.push('Try it up and back down. Coming down is where the shape actually gets learned — most people only ever practise going up.');
+  else feedback.push('You went up and came back down, which is what makes it stick.');
+
+  if (!enoughOfIt || spread < 7) {
+    feedback.push('That stayed in a small area. Use the whole shape, lowest note to highest — every note of it.');
+  }
+  if (elapsedMs < exercise.durationMs * 0.5) feedback.push('That was a short go — the full time is worth it.');
+
+  const quality = Math.max(0, Math.min(1,
+    accuracy * 0.5 + (bothWays ? 0.2 : 0) + (visited / wanted.size) * 0.2 + Math.min(1, spread / 12) * 0.1));
+
+  return { quality, passed: accuracy >= 0.75 && bothWays && enoughOfIt, feedback };
+}
+
 /** Turn a graded attempt into something the mastery model can learn from. */
 export function observationFrom(exercise: Exercise, grade: Grade, at = Date.now()): Observation {
   return {

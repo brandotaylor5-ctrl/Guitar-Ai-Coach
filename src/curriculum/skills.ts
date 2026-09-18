@@ -352,6 +352,24 @@ export const SKILLS: Skill[] = [
     practice: 'lab',
   },
   {
+    id: 'scale.G.pentatonic.major', name: 'G major pentatonic, first position', kind: 'scale',
+    requires: ['chord.G'], scale: { tonicPc: 7, name: 'major pentatonic' },
+    goal: 'Play the bright five-note shape and land on G so it sounds settled.',
+    why: 'The same five-note economy as minor pentatonic, but happy instead of moody. Country, folk and a great deal of pop melody is this shape.',
+  },
+  {
+    id: 'scale.C.pentatonic.major', name: 'C major pentatonic, first position', kind: 'scale',
+    requires: ['chord.C'], scale: { tonicPc: 0, name: 'major pentatonic' },
+    goal: 'Find the same bright shape with C as home.',
+    why: 'C is the key theory is usually explained in, and hearing the major pentatonic here connects the shape to the note names you already half-know.',
+  },
+  {
+    id: 'scale.A.pentatonic.major', name: 'A major pentatonic', kind: 'scale',
+    requires: ['scale.G.pentatonic.major', 'scale.Am.pentatonic'], scale: { tonicPc: 9, name: 'major pentatonic' },
+    goal: 'Play A major pentatonic, then A minor pentatonic, and hear the difference with the same root.',
+    why: 'Major and minor pentatonic on the same root is the clearest lesson in the whole instrument: identical economy, opposite mood, one note moved.',
+  },
+  {
     id: 'scale.E.blues', name: 'E blues scale', kind: 'scale',
     requires: ['scale.Em.pentatonic'], scale: { tonicPc: 4, name: 'blues' },
     goal: 'Add the blues color note to E minor pentatonic and use it deliberately.',

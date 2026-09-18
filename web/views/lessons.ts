@@ -14,15 +14,17 @@ import { masteryMap } from '../../src/curriculum/mastery.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
 import {
   buildExercise, exerciseFromProgression, gradeChangeDrill, gradeHoldChord,
-  gradeProgression, observationFrom,
+  gradeProgression, gradeScale, observationFrom,
 } from '../../src/curriculum/exercise.ts';
 import { repertoireFor } from '../../src/curriculum/repertoire.ts';
 import { SKILLS } from '../../src/curriculum/skills.ts';
 import { chordShape } from '../../src/music/chordShapes.ts';
+import { midiToName } from '../../src/music/notes.ts';
 import { levelOf, WORKABLE } from '../../src/curriculum/mastery.ts';
 import type { Exercise, Grade, HeardChord } from '../../src/curriculum/exercise.ts';
 import { audioContext, audioOutput, unlockAudio } from '../audio/context.ts';
 import { chordTeachingCard } from '../ui/chordCard.ts';
+import { scaleLessonCard } from './scaleLesson.ts';
 import { h, clear, replace } from '../ui/dom.ts';
 import { button, empty } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
@@ -47,6 +49,11 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     exercise: Exercise;
     startedAt: number;
     heard: HeardChord[];
+    /** Notes heard during a scale attempt, which is graded as a sequence. */
+    notes: Array<{ midi: number; at: number }>;
+    /** Session clock at the moment the attempt began, to ignore earlier notes. */
+    fromSessionMs: number;
+    scalePcs: number[];
     feed?: HTMLElement;
     stop: () => void;
   } | null = null;
@@ -78,9 +85,19 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       );
     }
 
-    // Scale practice needs note-by-note listening, not the chord grader. Riff
-    // Lab already owns that loop, so scale lessons go there deliberately.
+    // A scale is taught here now rather than handed off to Riff Lab: the
+    // shape, what each note does, and riffs built from it that can be played
+    // today. Riff Lab is a sandbox, which is the right tool only once you
+    // already have ideas of your own to put in it.
     if (skill.kind === 'scale' && skill.scale) {
+      const card = scaleLessonCard(context, lesson, {
+        practice: (exercise, scalePcs) => {
+          const run = () => { void startDrill(exercise, run, scalePcs); };
+          run();
+        },
+      });
+      if (card) return card;
+
       const scaleId = skill.scale.name === 'minor pentatonic' ? 'minor-pent'
         : skill.scale.name === 'major pentatonic' ? 'major-pent'
           : skill.scale.name;
@@ -88,7 +105,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
         h('header', { class: 'lesson-head' }, h('h3', { text: skill.name }), h('span', { class: 'badge', text: 'lead + fretboard' })),
         h('p', { class: 'lesson-because', text: lesson.because }),
         h('p', { class: 'lesson-goal', text: skill.goal }),
-        h('p', { class: 'muted', text: 'Riff Lab will show the notes on the fretboard, play them, turn them into short musical phrases, then listen to your attempt. A successful attempt feeds back into this learning path.' }),
+        h('p', { class: 'muted', text: 'Riff Lab will show the notes on the fretboard, play them, turn them into short musical phrases, then listen to your attempt.' }),
         button('Learn this in Riff Lab', () => context.navigate('lab', {
           root: String(skill.scale!.tonicPc),
           scale: scaleId,
@@ -156,7 +173,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     return true;
   }
 
-  async function startDrill(exercise: Exercise, again: () => void): Promise<void> {
+  async function startDrill(exercise: Exercise, again: () => void, scalePcs: number[] = []): Promise<void> {
     stopDrill();
     replace(drillHost, h('section', { class: 'panel drill' }, h('h3', { text: exercise.title }), h('p', { class: 'lede', text: 'Getting the microphone ready…' })));
     drillHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -176,6 +193,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     }
 
     const heard: HeardChord[] = [];
+    const notes: Array<{ midi: number; at: number }> = [];
     const barLabel = h('div', { class: 'drill-bar', text: exercise.chords?.[0] ?? '—' });
     const nextLabel = h('div', { class: 'drill-next muted', text: '' });
     const countLabel = h('div', { class: 'drill-count', text: 'Get ready' });
@@ -223,11 +241,13 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       if (startedAt === 0) { showStoppedBeforeStart(); return; }
 
       const elapsed = Math.max(1, Date.now() - startedAt);
-      const grade: Grade = exercise.kind === 'play-progression'
-        ? gradeProgression(exercise, heard, startedAt)
-        : exercise.kind === 'change-drill'
-          ? gradeChangeDrill(exercise, heard, elapsed)
-          : gradeHoldChord(exercise, heard, elapsed);
+      const grade: Grade = exercise.kind === 'play-scale'
+        ? gradeScale(exercise, notes, scalePcs, elapsed)
+        : exercise.kind === 'play-progression'
+          ? gradeProgression(exercise, heard, startedAt)
+          : exercise.kind === 'change-drill'
+            ? gradeChangeDrill(exercise, heard, elapsed)
+            : gradeHoldChord(exercise, heard, elapsed);
 
       store.record([observationFrom(exercise, grade)]);
       const actions = h('div', { class: 'practice-actions' });
@@ -257,7 +277,12 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       countLabel.textContent = 'Done';
     }
 
-    running = { exercise, startedAt: 0, heard, feed: heardFeed, stop: () => { stopAudio(); running = null; } };
+    running = {
+      exercise, startedAt: 0, heard, notes, scalePcs,
+      fromSessionMs: context.session.currentTimeMs,
+      feed: heardFeed,
+      stop: () => { stopAudio(); running = null; },
+    };
 
     replace(drillHost, h('section', { class: 'panel drill' },
       h('p', { class: 'eyebrow', text: 'NOW I LISTEN' }),
@@ -280,6 +305,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
           startedAt = Date.now();
           if (running) running.startedAt = startedAt;
           countLabel.textContent = 'Go';
+          if (running) running.fromSessionMs = context.session.currentTimeMs;
           if (exercise.chords?.length) {
             barLabel.textContent = exercise.chords[0]!;
             nextLabel.textContent = exercise.chords.length > 1 ? `next: ${exercise.chords[1]}` : '';
@@ -308,6 +334,28 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     if (feed) {
       feed.appendChild(h('span', { class: 'chip', text: chord.label }));
       while (feed.children.length > 16) feed.firstElementChild?.remove();
+    }
+  }
+
+  /**
+   * Collect notes for a scale attempt.
+   *
+   * Chords arrive as decisions; notes arrive as a stream that has to be read
+   * out of session memory and de-duplicated, because the same note stays in
+   * the rolling window across several ticks.
+   */
+  function onNotes(): void {
+    if (!running || running.startedAt === 0 || running.exercise.kind !== 'play-scale') return;
+    const seen = running.notes;
+    for (const note of context.session.memory.all()) {
+      if (note.startMs <= running.fromSessionMs) continue;
+      if (seen.some((n) => n.at === note.startMs && n.midi === note.midi)) continue;
+      seen.push({ midi: note.midi, at: note.startMs });
+      const feed = running.feed;
+      if (feed) {
+        feed.appendChild(h('span', { class: 'chip', text: midiToName(note.midi) }));
+        while (feed.children.length > 16) feed.firstElementChild?.remove();
+      }
     }
   }
 
@@ -395,5 +443,5 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
   render();
   startRequestedProgression();
 
-  return { element, onChord, update: () => { if (!running) render(); }, dispose: stopDrill };
+  return { element, onChord, onNotes, update: () => { if (!running) render(); }, dispose: stopDrill };
 }
