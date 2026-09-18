@@ -7,6 +7,7 @@ import type { NoteEvent } from '../../src/types.ts';
 import { midiToName } from '../../src/music/notes.ts';
 import { inferFingering, renderTab } from '../../src/music/fretboard.ts';
 import { practiceAttempt } from '../../src/practice/practice.ts';
+import { CurriculumStore } from '../../src/curriculum/watch.ts';
 import { h, clear } from '../ui/dom.ts';
 import { button, fretboardDiagram, noteRow, highlightNote, tabBlock } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
@@ -183,11 +184,23 @@ function leadOverProgression(chords: LabChord[], scale: number[], variant = 0, b
 export function labView(context: AppContext, params: Record<string, string> = {}): View {
   const requestedRoot = Number(params.root);
   let rootPc = Number.isInteger(requestedRoot) && requestedRoot >= 0 && requestedRoot <= 11 ? requestedRoot : 4;
-  let scale = params.mode === 'minor'
-    ? SCALE_TYPES.find((item) => item.id === 'minor')!
-    : params.mode === 'major'
-      ? SCALE_TYPES.find((item) => item.id === 'major')!
-      : SCALE_TYPES[0]!;
+  let scale = SCALE_TYPES.find((item) => item.id === params.scale)
+    ?? (params.mode === 'minor'
+      ? SCALE_TYPES.find((item) => item.id === 'minor')!
+      : params.mode === 'major'
+        ? SCALE_TYPES.find((item) => item.id === 'major')!
+        : SCALE_TYPES[0]!);
+  const lessonSkillId = params.skill;
+  let curriculum: CurriculumStore | null = null;
+  if (lessonSkillId) {
+    try {
+      window.localStorage.setItem('__curriculum_probe__', '1');
+      window.localStorage.removeItem('__curriculum_probe__');
+      curriculum = new CurriculumStore(window.localStorage);
+    } catch {
+      curriculum = null;
+    }
+  }
   const incomingProgression = parseProgression(params.progression);
   let level: 'all' | Level = 'all';
   let selectedId = TEMPLATES[0]!.id;
@@ -344,7 +357,25 @@ export function labView(context: AppContext, params: Record<string, string> = {}
           if (practiceStartMs === null) { practiceHost.textContent = 'Press Start my attempt first.'; return; }
           const attempt = context.session.memory.all().filter((note) => note.startMs >= practiceStartMs!);
           const result = practiceAttempt(notes, attempt, { requiredAccuracy: .85, tempoTolerance: .18 });
-          practiceHost.textContent = `${Math.round(result.accuracy * 100)}% note match. ${result.feedback.join(' ')}`;
+          const lessonPassed = result.accuracy >= .85 && Math.abs(result.tempoRatio - 1) <= .25;
+
+          clear(practiceHost);
+          practiceHost.appendChild(h('p', { text: `${Math.round(result.accuracy * 100)}% note match. ${result.feedback.join(' ')}` }));
+
+          if (lessonPassed && lessonSkillId && curriculum) {
+            curriculum.record([{
+              skillId: lessonSkillId,
+              quality: Math.max(.85, result.accuracy),
+              at: Date.now(),
+              source: 'drill',
+            }]);
+            practiceHost.append(
+              h('p', { class: 'coaching is-nailed', text: 'That counts. I added it to what you can build on — you do not have to stay stuck here until it is perfect.' }),
+              button('Back to Learn · see what this unlocked', () => context.navigate('lessons'), 'btn-primary'),
+            );
+          } else if (lessonSkillId && !curriculum) {
+            practiceHost.appendChild(h('p', { class: 'muted', text: 'That attempt was heard, but this browser is not allowing curriculum storage, so I cannot carry the result back to Learn.' }));
+          }
           practiceStartMs = null;
         }, 'btn-quiet'),
       ),
