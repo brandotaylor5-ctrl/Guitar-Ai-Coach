@@ -21,7 +21,7 @@ import { SKILLS } from '../../src/curriculum/skills.ts';
 import { chordShape } from '../../src/music/chordShapes.ts';
 import { levelOf, WORKABLE } from '../../src/curriculum/mastery.ts';
 import type { Exercise, Grade, HeardChord } from '../../src/curriculum/exercise.ts';
-import { audioContext, unlockAudio } from '../audio/context.ts';
+import { audioContext, audioOutput, unlockAudio } from '../audio/context.ts';
 import { chordTeachingCard } from '../ui/chordCard.ts';
 import { h, clear, replace } from '../ui/dom.ts';
 import { button, empty } from '../ui/render.ts';
@@ -200,7 +200,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       osc.frequency.value = strong ? 1600 : 1000;
       gain.gain.setValueAtTime(strong ? 0.25 : 0.12, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.05);
-      osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 0.06);
+      osc.connect(gain); gain.connect(audioOutput()); osc.start(); osc.stop(ctx.currentTime + 0.06);
     };
 
     await unlockAudio();

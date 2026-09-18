@@ -14,6 +14,7 @@
  */
 
 let context: AudioContext | null = null;
+let output: DynamicsCompressorNode | null = null;
 let unlocked = false;
 const listeners = new Set<(ready: boolean) => void>();
 
@@ -21,6 +22,30 @@ const listeners = new Set<(ready: boolean) => void>();
 export function audioContext(): AudioContext {
   if (!context) context = new AudioContext({ latencyHint: 'interactive' });
   return context;
+}
+
+/**
+ * Where everything that makes sound should connect, instead of straight to
+ * the destination.
+ *
+ * Six strings of additive synthesis summed together run well past full scale,
+ * and a browser deals with that by clipping — which is heard as crackle and
+ * fizz on the loudest chords, exactly the ones someone is trying to listen
+ * to. This is a limiter: below the threshold it does nothing at all, and
+ * above it holds the peak down instead of letting the sum tear.
+ */
+export function audioOutput(): AudioNode {
+  const ctx = audioContext();
+  if (!output || output.context !== ctx) {
+    output = ctx.createDynamicsCompressor();
+    output.threshold.value = -6;
+    output.knee.value = 3;
+    output.ratio.value = 20;
+    output.attack.value = 0.003;
+    output.release.value = 0.12;
+    output.connect(ctx.destination);
+  }
+  return output;
 }
 
 export function audioReady(): boolean {
