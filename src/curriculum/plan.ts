@@ -61,16 +61,23 @@ export function planLessons(mastery: Map<string, SkillMastery>, options: PlanOpt
     if (level >= MASTERED && !isFading(skill.id, mastery, now)) continue;
     if (!isUnlocked(skill, mastery)) continue;
 
-    if (level >= WORKABLE && isFading(skill.id, mastery, now)) {
-      const days = Math.round((now - (mastery.get(skill.id)?.lastSeenAt ?? now)) / 86_400_000);
-      lessons.push({
-        skill, reason: 'review', priority: 0.7,
-        because: `You had this ${days} days ago. A couple of minutes now and it stays yours.`,
-      });
+    if (level >= WORKABLE) {
+      if (isFading(skill.id, mastery, now)) {
+        const days = Math.round((now - (mastery.get(skill.id)?.lastSeenAt ?? now)) / 86_400_000);
+        lessons.push({
+          skill, reason: 'review', priority: 0.7,
+          because: `You had this ${days} days ago. A couple of minutes now and it stays yours.`,
+        });
+      }
+      // Workable is intentionally not the same as mastered. Once a learner
+      // can use a skill, move forward now and let ordinary playing plus later
+      // review turn it into mastery. Repeating the same chord immediately is
+      // how a curriculum feels stuck even when the learner succeeded.
+      continue;
     } else if (level > 0) {
       lessons.push({
         skill, reason: 'needs-work', priority: 0.9,
-        because: 'You have started this one. It is close, and finishing it opens up what comes after.',
+        because: 'You started this one but it is not usable yet. One focused pass here should open the next door.',
       });
     } else if (skill.requires.length === 0) {
       lessons.push({
