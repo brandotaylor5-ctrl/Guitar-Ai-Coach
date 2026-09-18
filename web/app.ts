@@ -20,6 +20,8 @@ import { todayView } from './views/today.ts';
 import { lessonsView } from './views/lessons.ts';
 import { libraryView } from './views/library.ts';
 import { songsView } from './views/songs.ts';
+import { songListView } from './views/songList.ts';
+import { songView } from './views/song.ts';
 import { fingerprintView } from './views/fingerprint.ts';
 import type { AppContext, View, ViewName } from './views/context.ts';
 
@@ -29,26 +31,45 @@ const state = {
   session: new SketchbookSession(),
   library: new RiffLibrary(),
   listening: false,
-  view: 'today' as ViewName,
+  view: 'songs' as ViewName,
   params: {} as Record<string, string>,
   tuning: STANDARD_TUNING,
   sampleRate: 0,
 };
 
+/**
+ * Four places, and each one is a different question.
+ *
+ * Songs is what you came to do. Learn is how you get better at it. Coach is
+ * the app listening to you. You is what it has heard and what you have made.
+ * Everything else that used to have a tab of its own is reachable from inside
+ * the one it belongs to — seven tabs is not a front page, it is a filing
+ * cabinet, and nobody picks up a guitar to file.
+ */
 const PRIMARY_TABS: Array<[ViewName, string]> = [
-  ['today', 'Today'],
-  ['session', 'Play'],
+  ['songs', 'Songs'],
   ['lessons', 'Learn'],
-  ['library', 'My Riffs'],
+  ['session', 'Coach'],
+  ['library', 'You'],
 ];
 
 const MORE_TABS: Array<[ViewName, string]> = [
+  ['today', 'Start here'],
   ['lab', 'Riff Lab'],
-  ['songs', 'Songs'],
+  ['seeds', 'Song Workshop'],
   ['fingerprint', 'Fingerprint'],
 ];
 
-const VIEW_NAMES = [...PRIMARY_TABS, ...MORE_TABS].map(([view]) => view as string);
+/**
+ * Every routable view, which is not the same as every tab. A single song has
+ * its own address so it can be linked and reloaded, but it is reached by
+ * choosing one rather than from the navigation.
+ */
+const VIEW_NAMES: string[] = [
+  ...PRIMARY_TABS.map(([view]) => view as string),
+  ...MORE_TABS.map(([view]) => view as string),
+  'song',
+];
 
 let moreOpen = false;
 let current: View | null = null;
@@ -191,7 +212,8 @@ const context: AppContext = {
   navigate(view, params = {}) {
     state.view = view;
     state.params = params;
-    window.location.hash = view === 'today' ? '' : `#${view}`;
+    const query = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+    window.location.hash = view === 'songs' && !query ? '' : `#${view}${query ? `?${query}` : ''}`;
     render();
   },
 
@@ -208,9 +230,12 @@ function buildView(): View {
     case 'lessons': return lessonsView(context, state.params);
     case 'session': return sessionView(context);
     case 'library': return libraryView(context, state.params);
-    case 'songs': return songsView(context);
+    case 'songs': return songListView(context);
+    case 'song': return songView(context, state.params);
+    case 'seeds': return songsView(context);
     case 'fingerprint': return fingerprintView(context);
-    default: return todayView(context);
+    case 'today': return todayView(context);
+    default: return songListView(context);
   }
 }
 
@@ -228,6 +253,19 @@ function render(): void {
   // Never hide the section someone is standing in.
   if (MORE_TABS.some(([view]) => view === state.view)) setMoreOpen(true);
   qs('#live-dot').classList.toggle('is-live', state.listening);
+}
+
+/** Read the view and its parameters back out of the address bar. */
+function readHash(): void {
+  const raw = window.location.hash.replace('#', '');
+  const [name, query = ''] = raw.split('?');
+  state.view = VIEW_NAMES.includes(name ?? '') ? (name as ViewName) : 'songs';
+  state.params = Object.fromEntries(
+    query.split('&').filter(Boolean).map((pair) => {
+      const [key, value = ''] = pair.split('=');
+      return [key ?? '', decodeURIComponent(value)];
+    }),
+  );
 }
 
 function setMoreOpen(open: boolean): void {
@@ -325,11 +363,7 @@ function mountChrome(): void {
   custom.addEventListener('change', applyTuning);
   capo.addEventListener('change', applyTuning);
 
-  window.addEventListener('hashchange', () => {
-    const view = window.location.hash.replace('#', '') as ViewName;
-    state.view = VIEW_NAMES.includes(view) ? view : 'today';
-    render();
-  });
+  window.addEventListener('hashchange', () => { readHash(); render(); });
   window.addEventListener('beforeunload', () => { void capture.stop(); });
 }
 
@@ -352,8 +386,7 @@ function start(): void {
   mountChrome();
   armAudioUnlock();
   watchSound();
-  const hash = window.location.hash.replace('#', '') as ViewName;
-  if (VIEW_NAMES.includes(hash)) state.view = hash;
+  readHash();
   render();
 
   window.setInterval(() => {

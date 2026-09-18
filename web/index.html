@@ -22,26 +22,9 @@
     <div class="brand">
       <span id="live-dot" class="live-dot" aria-hidden="true"></span>
       <h1>Guitar AI Coach</h1>
-      <p class="tagline">Your own playing is the curriculum.</p>
     </div>
     <nav id="nav" class="nav" aria-label="Sections"></nav>
-    <label class="tuning-field">
-      <span>Tuning</span>
-      <select id="tuning" class="select"></select>
-    </label>
   </header>
-  <!-- Folded away: these matter once, and a player opening the app should see
-       what to do rather than a form to fill in. -->
-  <details class="main setup-details" aria-label="Instrument settings">
-    <summary>Capo, microphone and tuning</summary>
-    <input id="custom-tuning" class="select" value="E2 A2 D3 G3 B3 E4" aria-label="Custom open strings, low to high, with octave numbers" hidden>
-    <label>Capo fret <input id="capo" class="select" type="number" min="0" max="12" step="1" value="0"></label>
-    <p class="muted">0 means no capo. With a capo, tab frets count from the capo; note names show the sounding pitch.</p>
-    <label>Microphone <select id="microphone" class="select"><option value="">Default microphone</option></select></label>
-    <label>Noise gate <input id="noise-gate" class="select" type="number" min="0.002" max="0.1" step="0.001" value="0.012"></label>
-    <button id="calibrate" class="btn-quiet" type="button">Calibrate room noise</button>
-    <p class="muted">Start listening to list microphones. Stop listening before switching inputs. Lower the noise gate for quiet notes; raise it if background noise creates notes. Calibration needs two seconds with strings muted.</p>
-  </details>
 
   <div id="sound-blocked" class="sound-blocked" role="alert" hidden>
     <span>This browser is holding back sound.</span>
@@ -51,6 +34,18 @@
   <div id="status" class="status" role="status" aria-live="polite"></div>
 
   <main id="view" class="main"></main>
+
+  <details class="main setup-details" aria-label="Instrument settings">
+    <summary>Tuning, capo and microphone</summary>
+    <label>Tuning <select id="tuning" class="select"></select></label>
+    <input id="custom-tuning" class="select" value="E2 A2 D3 G3 B3 E4" aria-label="Custom open strings, low to high, with octave numbers" hidden>
+    <label>Capo fret <input id="capo" class="select" type="number" min="0" max="12" step="1" value="0"></label>
+    <p class="muted">0 means no capo. With a capo, tab frets count from the capo; note names show the sounding pitch.</p>
+    <label>Microphone <select id="microphone" class="select"><option value="">Default microphone</option></select></label>
+    <label>Noise gate <input id="noise-gate" class="select" type="number" min="0.002" max="0.1" step="0.001" value="0.012"></label>
+    <button id="calibrate" class="btn-quiet" type="button">Calibrate room noise</button>
+    <p class="muted">Start listening to list microphones. Stop listening before switching inputs. Lower the noise gate for quiet notes; raise it if background noise creates notes. Calibration needs two seconds with strings muted.</p>
+  </details>
 
   <footer class="app-footer">
     <p>
