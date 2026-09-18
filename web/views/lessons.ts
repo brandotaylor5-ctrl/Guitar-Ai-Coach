@@ -81,26 +81,49 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     // Scale practice needs note-by-note listening, not the chord grader. Riff
     // Lab already owns that loop, so scale lessons go there deliberately.
     if (skill.kind === 'scale' && skill.scale) {
-      const mode = skill.scale.name.toLowerCase().includes('minor') ? 'minor' : 'major';
+      const scaleId = skill.scale.name === 'minor pentatonic' ? 'minor-pent'
+        : skill.scale.name === 'major pentatonic' ? 'major-pent'
+          : skill.scale.name;
       return h('article', { class: `lesson-card is-${lesson.reason}` },
-        h('header', { class: 'lesson-head' }, h('h3', { text: skill.name }), h('span', { class: 'badge', text: 'riff + scale lesson' })),
+        h('header', { class: 'lesson-head' }, h('h3', { text: skill.name }), h('span', { class: 'badge', text: 'lead + fretboard' })),
         h('p', { class: 'lesson-because', text: lesson.because }),
         h('p', { class: 'lesson-goal', text: skill.goal }),
-        h('p', { class: 'muted', text: 'I will show the fretboard, play the notes, give you small riffs made from the scale, then listen to your attempt.' }),
-        button('Open this in Riff Lab', () => context.navigate('lab', { root: String(skill.scale!.tonicPc), mode }), 'btn-primary'),
+        h('p', { class: 'muted', text: 'Riff Lab will show the notes on the fretboard, play them, turn them into short musical phrases, then listen to your attempt. A successful attempt feeds back into this learning path.' }),
+        button('Learn this in Riff Lab', () => context.navigate('lab', {
+          root: String(skill.scale!.tonicPc),
+          scale: scaleId,
+          skill: skill.id,
+        }), 'btn-primary'),
       );
     }
 
     // Do not fake-score techniques that the current detector cannot honestly
     // measure yet. Let Live Coach observe while the learner practises instead.
     if (skill.kind === 'technique') {
+      const destination = skill.practice ?? 'session';
+      const practiceLabel = destination === 'lab' ? 'Practice this in Riff Lab'
+        : destination === 'songs' ? 'Use this in Song Workshop'
+          : 'Practice this with Live Coach';
+      const practiceView = destination === 'lab' ? 'lab' : destination === 'songs' ? 'songs' : 'session';
+      const steps = skill.teach?.length
+        ? h('ol', { class: 'guided-steps' }, ...skill.teach.map((step) => h('li', { text: step })))
+        : h('p', { class: 'muted', text: 'I will keep this practical: one small move, then use it in music.' });
+
       return h('article', { class: `lesson-card is-${lesson.reason}` },
-        h('header', { class: 'lesson-head' }, h('h3', { text: skill.name }), h('span', { class: 'badge', text: 'guided practice' })),
+        h('header', { class: 'lesson-head' }, h('h3', { text: skill.name }), h('span', { class: 'badge', text: 'guided skill' })),
         h('p', { class: 'lesson-because', text: lesson.because }),
         h('p', { class: 'lesson-goal', text: skill.goal }),
+        steps,
         h('details', { class: 'theory' }, h('summary', { text: 'Why this is worth your time' }), h('p', { text: skill.why })),
-        h('p', { class: 'muted', text: 'I can listen while you work on this, but I will not give you a fake pass/fail score for something I cannot measure reliably yet.' }),
-        button('Practice it with Live Coach', () => context.navigate('session'), 'btn-primary'),
+        h('div', { class: 'practice-actions' },
+          button(practiceLabel, () => context.navigate(practiceView, { skill: skill.id }), 'btn-primary'),
+          button('I understand the move — keep me going', () => {
+            store.record([{ skillId: skill.id, quality: 1, at: Date.now(), source: 'lesson' }]);
+            render();
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 'btn-quiet'),
+        ),
+        h('p', { class: 'muted' }, 'That second button means “I understand what I am practising,” not “I mastered it.” The app can bring it back later.'),
       );
     }
 
@@ -209,8 +232,9 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       store.record([observationFrom(exercise, grade)]);
       const actions = h('div', { class: 'practice-actions' });
       if (grade.passed) {
+        const next = planLessons(masteryMap(store.load()), { count: 1 })[0];
         actions.append(
-          button('Show me what this unlocked', () => {
+          button(next ? `Next: ${next.skill.name}` : 'Show me what this unlocked', () => {
             stopDrill();
             render();
             element.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -287,6 +311,51 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     }
   }
 
+  function learningMap(mastery: ReturnType<typeof masteryMap>): HTMLElement {
+    const tracks = [
+      {
+        name: 'Chords & songs',
+        subtitle: 'Open chords, useful changes and progressions.',
+        skills: SKILLS.filter((s) => s.kind === 'chord' || s.kind === 'change' || s.kind === 'progression'),
+      },
+      {
+        name: 'Rhythm & feel',
+        subtitle: 'Pulse, up-strums, dynamics and different time feels.',
+        skills: SKILLS.filter((s) => s.id.startsWith('technique.') && ['steady-strum','up-strum','eighth-strum','dynamics','six-eight','clean-notes'].some((part) => s.id.endsWith(part))),
+      },
+      {
+        name: 'Lead & riffs',
+        subtitle: 'Scales, picking, phrasing and guitar vocabulary.',
+        skills: SKILLS.filter((s) => s.kind === 'scale' || ['alternate-picking','hammer-on','pull-off','slide','vibrato','riff-motif','call-response'].some((part) => s.id.endsWith(part))),
+      },
+      {
+        name: 'Fingerstyle',
+        subtitle: 'Thumb independence and repeating picking patterns.',
+        skills: SKILLS.filter((s) => s.id.includes('fingerstyle')),
+      },
+      {
+        name: 'Songwriting',
+        subtitle: 'Turn your own riffs and progressions into sections.',
+        skills: SKILLS.filter((s) => s.id.includes('song-sections') || s.kind === 'progression'),
+      },
+    ];
+
+    return h('section', { class: 'panel learning-map' },
+      h('h2', { text: 'The road ahead' }),
+      h('p', { class: 'muted', text: 'This is not a fixed level system. I unlock from what you demonstrate, but these are the skills currently available in the course so you can see there is somewhere to go.' }),
+      h('div', { class: 'learning-track-grid' },
+        ...tracks.map((track) => {
+          const usable = track.skills.filter((skill) => levelOf(mastery, skill.id) >= WORKABLE).length;
+          return h('article', { class: 'learning-track' },
+            h('strong', { text: track.name }),
+            h('span', { class: 'learning-track-count', text: `${usable} / ${track.skills.length} introduced` }),
+            h('p', { class: 'muted', text: track.subtitle }),
+          );
+        }),
+      ),
+    );
+  }
+
   function render(): void {
     const mastery = masteryMap(store.load());
     const progress = progressOf(mastery);
@@ -300,6 +369,8 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       h('p', { class: 'muted', text: `${progress.mastered} solid · ${progress.inProgress} under way · ${progress.total} in the whole course` }),
       h('p', { class: 'muted', text: 'Passing one lesson unlocks the next useful branches immediately. Mastery comes from returning to things over time, not being trapped on one card.' }),
     ));
+
+    element.appendChild(learningMap(mastery));
 
     element.appendChild(h('div', { class: 'learn-sequence', 'aria-label': 'How a new skill is learned' },
       h('span', { class: 'is-current', text: '1 · See it' }), h('span', { text: '2 · Hear it' }), h('span', { text: '3 · Try it' }), h('span', { text: '4 · Use it' }),
