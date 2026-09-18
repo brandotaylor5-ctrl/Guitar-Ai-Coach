@@ -125,31 +125,87 @@ describe('chord recognition knows when to say nothing', () => {
   });
 });
 
+describe('a quiet string is still a string', () => {
+  // Reported from real playing: "I'm strumming an A or a D right, but it picks
+  // up D5". The third is the note that tells a major chord from a power chord,
+  // and on an A or D shape it is the one fretted note among open, doubled
+  // strings — so it is always the quietest thing in the chord. Scoring by
+  // loudness alone, root-and-fifth won every time.
+
+  test('a D whose third is quiet is still a D', () => {
+    for (const gain of [0.5, 0.4, 0.3]) {
+      assert.equal(detect(GUITAR_VOICINGS.D!, { gains: [1, 1, 1, gain] }), 'D',
+        `D with its F# at ${gain}`);
+    }
+  });
+
+  test('an A whose third is quiet is still an A', () => {
+    for (const gain of [0.5, 0.4, 0.3]) {
+      assert.equal(detect(GUITAR_VOICINGS.A!, { gains: [1, 1, 1, gain, 1] }), 'A',
+        `A with its C# at ${gain}`);
+    }
+  });
+
+  test('minor chords keep their third when it is quiet too', () => {
+    assert.equal(detect(GUITAR_VOICINGS.Am!, { gains: [1, 1, 1, 0.4, 1] }), 'Am');
+    assert.equal(detect(GUITAR_VOICINGS.Dm!, { gains: [1, 1, 1, 0.4] }), 'Dm');
+  });
+
+  test('a chord with no third at all is still a power chord', () => {
+    // The other half of the bargain: making quiet thirds count must not
+    // conjure one where the player did not fret it.
+    assert.equal(detect([40, 47, 52]), 'E5');
+    assert.equal(detect([45, 52, 57]), 'A5');
+    assert.equal(detect([50, 57, 62]), 'D5');
+  });
+
+  test('sus chords are not thirds either', () => {
+    assert.equal(detect([50, 57, 62, 64]), 'Dsus2');
+    assert.equal(detect([50, 57, 62, 67]), 'Dsus4');
+    assert.equal(detect([45, 52, 57, 59, 64]), 'Asus2');
+  });
+
+  test('one string is never a chord, however richly it rings', () => {
+    assert.equal(detect([40]), null);
+    assert.equal(detect([45]), null);
+  });
+});
+
 describe('the edges of what it can do', () => {
   // These are recorded rather than wished away. A detector whose limits are
   // written down can be trusted at the edges; one whose tests only cover what
   // it happens to do well cannot.
 
-  test('a seventh is reported as its triad', () => {
-    // Right root, right quality, extension dropped. The seventh is one quiet
-    // string among five and does not survive the harmonic clutter.
-    assert.equal(detect(GUITAR_VOICINGS.A7!), 'A');
+  test('sevenths keep their seventh', () => {
+    // These used to come back as bare triads: the seventh is one quiet string
+    // among five, and a threshold set high enough to keep noise out threw it
+    // away. Corroborating a quiet string by its own octave keeps it.
+    assert.equal(detect(GUITAR_VOICINGS.A7!), 'A7');
+    assert.equal(detect([40, 47, 52, 56, 62, 64]), 'E7');
+    assert.equal(detect([45, 52, 55, 60, 64]), 'Am7');
   });
 
-  test('a slow strum reads as a power chord until the strum finishes', () => {
-    // The analysis window is about 190ms. Forty milliseconds between six
-    // strings means the thirds have barely sounded yet, so root-and-fifth is
-    // an honest reading of what has arrived. `ChordTracker` waits for three
-    // agreeing frames, so the full chord wins once the strum completes.
-    assert.equal(detect(GUITAR_VOICINGS.E!, { spreadMs: 40 }), 'E5');
+  test('a major seventh is still reported as its triad', () => {
+    // The one extension that does not survive. A major seventh sits a
+    // semitone below the root's octave, so window spread off a doubled root
+    // covers it either way and it cannot be told apart from the skirt.
+    assert.equal(detect([48, 52, 55, 59, 64]), 'C');
   });
 
-  test('barre chords find the root but can mislabel the quality', () => {
-    // An E-shape F barre lands on F, but a partial from one of the inner
-    // strings is enough to tip it into Fmaj7. The root is dependable here;
-    // the suffix is not, and B minor is missed outright. Open shapes are
-    // what this is good at, and that is most of what a beginner plays.
-    const f = detect([41, 48, 53, 57, 60, 65]);
-    assert.ok(f?.startsWith('F'), `expected an F-rooted chord, got ${f}`);
+  test('barre chords keep their quality', () => {
+    // An E-shape F barre used to tip into Fmaj7, and B minor was missed
+    // outright. A barre is exactly the case where every string is fretted and
+    // none of them rings like an open one, so the quiet-string rule is what
+    // rescued it.
+    assert.equal(detect([41, 48, 53, 57, 60, 65]), 'F');
+    assert.equal(detect([47, 54, 59, 62, 66]), 'Bm');
+  });
+
+  test('two notes far apart can still be named a chord', () => {
+    // A low E and a D# four octaves of harmonics apart is not something anyone
+    // strums, but the detector will call it Emaj7 rather than nothing: the E's
+    // own twelfth stands in for the fifth it never played. `ChordTracker`
+    // needs three consecutive frames to agree before this reaches anyone.
+    assert.equal(detect([40, 63]), 'Emaj7');
   });
 });

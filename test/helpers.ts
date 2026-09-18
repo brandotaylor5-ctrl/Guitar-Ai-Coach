@@ -106,6 +106,12 @@ export interface StrumOptions {
   /** Milliseconds between successive strings, as a pick crosses them. */
   spreadMs?: number;
   noise?: number;
+  /**
+   * Per-string level, lowest string first. A beginner's chord is not six
+   * equal notes: the string the fretting hand is least sure of rings quieter
+   * than the open ones, and on A and D shapes that string is the third.
+   */
+  gains?: number[];
 }
 
 /**
@@ -123,6 +129,7 @@ export function strumSpectrum(midis: number[], options: StrumOptions = {}): Floa
   const detuneCents = options.detuneCents ?? 4;
   const spreadMs = options.spreadMs ?? 18;
   const noise = options.noise ?? 0.002;
+  const gains = options.gains ?? [];
 
   const buffer = new Float64Array(fftSize);
   const amps = [0.55, 1.0, 0.62, 0.4, 0.26, 0.17, 0.11, 0.07];
@@ -140,7 +147,7 @@ export function strumSpectrum(midis: number[], options: StrumOptions = {}): Floa
         const partial = f0 * (k + 1) * Math.sqrt(1 + stiffness * (k + 1) * (k + 1));
         if (partial < sampleRate / 2) value += amps[k]! * Math.sin(2 * Math.PI * partial * t + stringIndex);
       }
-      buffer[i] = buffer[i]! + value * 0.11 * envelope;
+      buffer[i] = buffer[i]! + value * 0.11 * envelope * (gains[stringIndex] ?? 1);
     }
   });
 

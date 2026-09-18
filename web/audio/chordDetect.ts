@@ -115,6 +115,14 @@ export function guitarChroma(db: Float32Array, sampleRate: number, fftSize: numb
 /** Below this a template note is not really sounding, whatever the noise floor says. */
 const PRESENT = 0.3;
 
+/** What a template is charged for each fretted pitch class it cannot name. */
+const UNEXPLAINED = 0.18;
+
+/** A note this strong is a played string on its own evidence. */
+const LOUD = 0.3;
+/** Below this there is nothing to corroborate. */
+const QUIET = 0.18;
+
 export function detectChord(db: Float32Array, sampleRate: number, fftSize: number): ChordDetection | null {
   const { chroma, bassPc, bassMidi, perMidi } = guitarEvidence(db, sampleRate, fftSize);
   const audible = chroma.map((v, pc) => ({ v, pc })).filter((x) => x.v >= 0.28).sort((a, b) => b.v - a.v);
@@ -134,17 +142,57 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
   const PARTIAL_OFFSETS = [12, 19.02, 24, 27.86, 31.02, 34, 36];
   const fretted = new Set<number>();
   if (bassMidi >= 0) {
+    // Every string rings its own partials, not just the bass one. An open E
+    // string puts a B a twelfth above it, which is why an A chord offers a
+    // free B and comes back as Asus2; an open A string puts an E up there,
+    // which is why a D chord offers a free E. Working upward and letting each
+    // note already accepted account for what lies above it removes those
+    // without needing to know which string anything came from. Doubled notes
+    // survive, because the lower copy is accepted before the higher one is
+    // explained away.
+    const sounding: number[] = [];
     for (let midi = 40; midi <= 88; midi++) {
       const energy = perMidi[midi] ?? 0;
-      if (energy < 0.3) continue;
+      if (energy < QUIET) continue;
       // A real note is a peak. Every strong partial drags its neighbours up
       // with it — window spread either side of the bin — so the semitone above
       // a loud string clears any threshold you pick while being nothing but
       // the skirt of it. Only the top of a hump is a note.
       if (energy < (perMidi[midi - 1] ?? 0) || energy < (perMidi[midi + 1] ?? 0)) continue;
-      const isPartialOfBass = midi > bassMidi
-        && PARTIAL_OFFSETS.some((offset) => Math.abs(midi - bassMidi - offset) <= 0.5);
-      if (!isPartialOfBass) fretted.add(((midi % 12) + 12) % 12);
+
+      // A chord's third is one fretted string; its root and fifth are open and
+      // doubled across two or three. So the third is always the quietest note
+      // in the chord, and a threshold set high enough to keep noise out also
+      // throws the third away — which is how a D became D5 for anyone whose
+      // F# was not as loud as two open strings.
+      //
+      // What separates a quiet string from noise is not level but structure: a
+      // real string rings its own octave above itself. So a note below the
+      // confident threshold still counts, if that octave is there too.
+      if (energy < LOUD) {
+        // Only that the octave is there, not that it is a peak in its own
+        // right: a loud string a semitone away flattens it, and the note
+        // below has already had to be a peak to get this far.
+        if ((perMidi[midi + 12] ?? 0) < QUIET) continue;
+        // A note a fifth above a louder one is the one ghost this cannot tell
+        // from a string: its second and fourth partials land exactly on that
+        // note's third and sixth, so it borrows a whole harmonic series it
+        // never had. A real fifth played on a real string is loud enough not
+        // to need this tier.
+        const borrowed = sounding.some((lower) => midi - lower === 7 && (perMidi[lower] ?? 0) > energy);
+        if (borrowed) continue;
+      }
+
+      // Only a string that is confidently sounding may explain away what lies
+      // above it, and only something no louder than itself. A quiet ghost that
+      // gets to cast a shadow swallows the real strings above it: an A chord
+      // whose every note sat at an octave or a twelfth above one faint reading
+      // came back with nothing fretted at all.
+      const isPartial = sounding.some((lower) => (perMidi[lower] ?? 0) >= LOUD
+        && (perMidi[lower] ?? 0) >= energy
+        && PARTIAL_OFFSETS.some((offset) => Math.abs(midi - lower - offset) <= 0.5));
+      sounding.push(midi);
+      if (!isPartial) fretted.add(((midi % 12) + 12) % 12);
     }
   }
 
@@ -171,7 +219,12 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
       const outsideValues = chroma.filter((_, p) => !wanted.includes(p));
       const outside = outsideValues.reduce((a, b) => a + b, 0) / outsideValues.length;
       const rootBonus = chroma[rootPc]! * 0.18;
-      const present = wanted.filter((p) => chroma[p]! >= PRESENT).length;
+      // A string the evidence already decided was fretted counts as present
+      // even if it is quiet. Otherwise the detector charges a chord for a note
+      // it has just finished establishing was played, which is most of what
+      // kept a quiet third from ever winning.
+      const isPresent = (p: number) => chroma[p]! >= PRESENT || fretted.has(p);
+      const present = wanted.filter(isPresent).length;
       const coverage = present / wanted.length;
 
       // The bass note names the chord. This is what stops a template made of
@@ -194,6 +247,7 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
       // explains it instead of throwing that information away and calling Em
       // "E5". Conversely, a real power chord still wins when no third exists.
       const fullChordBonus = template.pcs.length >= 3 ? 0.08 : 0;
+
       let powerChordPenalty = 0;
       if (template.quality === '5') {
         const thirdEvidence = Math.max(chroma[(rootPc + 3) % 12]!, chroma[(rootPc + 4) % 12]!);
@@ -202,6 +256,14 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
         // twelfth — otherwise every single note becomes a power chord.
         if (!fretted.has((rootPc + 7) % 12)) powerChordPenalty += 0.6;
       }
+
+      // A template that asks for fewer notes only has to explain fewer notes,
+      // and averaging over what it asks for lets it ignore the rest for free.
+      // That is the whole reason D5 beat D: it kept the two loud open strings
+      // and simply did not account for the F#. So charge a template for every
+      // string the player actually fretted that it cannot name.
+      const unexplained = [...fretted].filter((p) => !wanted.includes(p)).length;
+      const unexplainedPenalty = unexplained * UNEXPLAINED;
 
       // Reward templates whose defining color note is actually present. This
       // helps major/minor quality survive the harmonic clutter of guitar audio.
@@ -213,7 +275,8 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
       }
 
       const score = inside - outside * 0.34 + rootBonus + fullChordBonus + coverage * 0.04
-        + qualityEvidence - powerChordPenalty + bassBonus - missingPenalty - phantomPenalty;
+        + qualityEvidence - powerChordPenalty + bassBonus - missingPenalty - phantomPenalty
+        - unexplainedPenalty;
       if (!best || score > best.score) {
         if (best) second = best.score;
         best = { score, rootPc, template };
@@ -223,9 +286,16 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
   if (!best) return null;
 
   const wanted = best.template.pcs.map((d) => (best.rootPc + d) % 12);
-  const present = wanted.filter((p) => chroma[p]! >= PRESENT).length;
+  const present = wanted.filter((p) => chroma[p]! >= PRESENT || fretted.has(p)).length;
   const required = best.template.quality === '5' ? 2 : Math.min(3, wanted.length);
   if (present < required || best.score < 0.44) return null;
+
+  // Chroma alone is too generous for the final word: a low E on its own lights
+  // its own twelfth brightly enough to stand in for a fifth, so two notes can
+  // clear a four-note template on borrowed harmonics. Strings, not chroma,
+  // have to account for the shape being claimed.
+  const played = wanted.filter((p) => fretted.has(p)).length;
+  if (played < required) return null;
 
   const margin = Math.max(0, best.score - second);
   const confidence = Math.max(0, Math.min(1, 0.48 + margin * 1.8 + (present / wanted.length) * 0.28));
