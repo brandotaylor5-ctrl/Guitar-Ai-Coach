@@ -11,6 +11,7 @@ import { diffTakes } from '../../src/phrase/diff.ts';
 import { motifContaining } from '../../src/phrase/motif.ts';
 import type { ChordDetection } from '../audio/chordDetect.ts';
 import { observeFreePlay, CurriculumStore } from '../../src/curriculum/watch.ts';
+import { chordDoctor } from '../ui/chordDoctor.ts';
 import { h, clear, relativeTime, replace } from '../ui/dom.ts';
 import { button, empty, noteRow, highlightNote } from '../ui/render.ts';
 import { recallPanel } from './recall.ts';
@@ -141,6 +142,13 @@ export function sessionView(context: AppContext): View {
     })(),
   );
 
+  // Opening the panel is what switches diagnostics on, so the detector is not
+  // explaining itself eight times a second to nobody.
+  const doctor = chordDoctor();
+  doctor.element.addEventListener('toggle', () => {
+    context.setChordDiagnostics?.((doctor.element as HTMLDetailsElement).open);
+  });
+
   const element = h('div', { class: 'view view-session live-coach-view' },
     h('section', { class: 'panel live-coach-hero' },
       h('div', { class: 'live-coach-copy' },
@@ -161,6 +169,8 @@ export function sessionView(context: AppContext): View {
       h('article', { class: 'panel live-hearing-card center-card' }, h('span', { class: 'live-hearing-label', text: 'KEY / CENTER' }), centerReadout, centerHint),
       h('article', { class: 'panel live-hearing-card progression-card' }, h('span', { class: 'live-hearing-label', text: 'PROGRESSION' }), progression),
     ),
+
+    doctor.element,
 
     h('section', { class: 'panel live-next-panel' },
       h('span', { class: 'live-hearing-label', text: 'TRY THIS NEXT' }),
@@ -440,5 +450,5 @@ export function sessionView(context: AppContext): View {
   }, 650);
 
   update(); refreshHarmony();
-  return { element, update, onNotes:update, onFrame, onChord, dispose(){ learnFromPlaying(); disposed=true; window.clearInterval(timer); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } };
+  return { element, update, onNotes:update, onFrame, onChord, onChordExplain: doctor.update, dispose(){ context.setChordDiagnostics?.(false); learnFromPlaying(); disposed=true; window.clearInterval(timer); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } };
 }

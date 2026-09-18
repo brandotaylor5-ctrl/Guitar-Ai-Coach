@@ -5,7 +5,7 @@ import type { RiffLibrary } from '../../src/library/riffLibrary.ts';
 import type { SketchbookSession } from '../../src/session/session.ts';
 import type { RiffPlayer } from '../audio/playback.ts';
 import type { ClipStore } from '../audio/clipStore.ts';
-import type { ChordDetection } from '../audio/chordDetect.ts';
+import type { ChordDetection, ChordExplanation } from '../audio/chordDetect.ts';
 
 export type ViewName = 'today' | 'session' | 'lessons' | 'lab' | 'library' | 'songs' | 'fingerprint';
 
@@ -22,6 +22,9 @@ export interface AppContext {
   refresh(): void;
   navigate(view: ViewName, params?: Record<string, string>): void;
   say(message: string, kind?: 'info' | 'error'): void;
+
+  /** Turn the detector's frame-by-frame reasoning on or off. */
+  setChordDiagnostics?(on: boolean): void;
   /** Save a riff and keep its audio, so the recording survives a reload. */
   keepClipFor(audioRef: string | undefined): Promise<void>;
 }
@@ -34,5 +37,7 @@ export interface View {
   onFrame?(frame: Frame): void;
   /** Stable live chord recognition. */
   onChord?(chord: ChordDetection): void;
+  /** Every frame's reasoning, only while a view has asked for diagnostics. */
+  onChordExplain?(explanation: ChordExplanation): void;
   dispose?(): void;
 }

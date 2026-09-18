@@ -123,10 +123,50 @@ const LOUD = 0.3;
 /** Below this there is nothing to corroborate. */
 const QUIET = 0.18;
 
+/**
+ * Everything the detector worked out about one frame, including why it
+ * decided not to name a chord.
+ *
+ * A detector that can only say "no" is impossible to debug from the other end
+ * of a message. Four plausible explanations for one player's D chord failed in
+ * simulation before this existed, because the only way to test a guess was to
+ * guess again. Now the app can be asked what it actually saw.
+ */
+export interface ChordExplanation {
+  detection: ChordDetection | null;
+  /** Which check stopped it, in words, or null when a chord was named. */
+  rejectedBy: string | null;
+  bassMidi: number;
+  bassName: string;
+  chroma: number[];
+  /** Pitch classes judged to be played strings rather than harmonics. */
+  fretted: number[];
+  /** How concentrated the energy is: chords hold over half in the top four. */
+  concentration: number;
+  /** The best few templates and what they scored. */
+  candidates: Array<{ label: string; score: number; present: number; wanted: number }>;
+}
+
 export function detectChord(db: Float32Array, sampleRate: number, fftSize: number): ChordDetection | null {
+  return analyseChord(db, sampleRate, fftSize).detection;
+}
+
+export function explainChord(db: Float32Array, sampleRate: number, fftSize: number): ChordExplanation {
+  return analyseChord(db, sampleRate, fftSize);
+}
+
+function analyseChord(db: Float32Array, sampleRate: number, fftSize: number): ChordExplanation {
   const { chroma, bassPc, bassMidi, perMidi } = guitarEvidence(db, sampleRate, fftSize);
+  const blank = (rejectedBy: string, extra: Partial<ChordExplanation> = {}): ChordExplanation => ({
+    detection: null, rejectedBy, bassMidi,
+    bassName: bassMidi < 0 ? '—' : NAMES[bassMidi % 12]!,
+    chroma, fretted: [], concentration: 0, candidates: [], ...extra,
+  });
+
   const audible = chroma.map((v, pc) => ({ v, pc })).filter((x) => x.v >= 0.28).sort((a, b) => b.v - a.v);
-  if (audible.length < 2) return null;
+  if (audible.length < 2) {
+    return blank('Only one pitch was loud enough to count — I am hearing a note, not a chord. Play closer to the microphone or strum a little harder.');
+  }
 
   /**
    * Which pitch classes were actually fretted, rather than rung as partials of
@@ -198,7 +238,12 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
 
   // One note, however rich, is not a chord. Two distinct fretted pitch classes
   // is the least that can be.
-  if (fretted.size < 2) return null;
+  if (fretted.size < 2) {
+    return blank(bassMidi < 0
+      ? 'I could not find a lowest note at all, so nothing else could be worked out. Usually the input is too quiet, or the noise gate is set too high.'
+      : 'Everything above the bass note looked like a harmonic of it rather than a separate string. That happens when only one string is really sounding.',
+      { fretted: [...fretted] });
+  }
 
   // Noise spreads itself evenly; a chord concentrates. Counting how many pitch
   // classes are lit does not separate them — a six-string chord rings eight or
@@ -208,10 +253,14 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
   const ranked = [...chroma].sort((a, b) => b - a);
   const total = chroma.reduce((a, b) => a + b, 0);
   const concentration = total > 0 ? ranked.slice(0, 4).reduce((a, b) => a + b, 0) / total : 0;
-  if (concentration < 0.45) return null;
+  if (concentration < 0.45) {
+    return blank(`The sound is too spread out to be a chord (${concentration.toFixed(2)}, needs 0.45). That is usually room noise, or a chord that has already decayed away.`,
+      { fretted: [...fretted], concentration });
+  }
 
   let best: { score: number; rootPc: number; template: typeof TEMPLATES[number] } | null = null;
   let second = -Infinity;
+  const scored: Array<{ label: string; score: number; present: number; wanted: number }> = [];
   for (let rootPc = 0; rootPc < 12; rootPc++) {
     for (const template of TEMPLATES) {
       const wanted = template.pcs.map((d) => (rootPc + d) % 12);
@@ -277,35 +326,50 @@ export function detectChord(db: Float32Array, sampleRate: number, fftSize: numbe
       const score = inside - outside * 0.34 + rootBonus + fullChordBonus + coverage * 0.04
         + qualityEvidence - powerChordPenalty + bassBonus - missingPenalty - phantomPenalty
         - unexplainedPenalty;
+      scored.push({
+        label: `${NAMES[rootPc]}${template.suffix}`, score, present, wanted: wanted.length,
+      });
       if (!best || score > best.score) {
         if (best) second = best.score;
         best = { score, rootPc, template };
       } else if (score > second) second = score;
     }
   }
-  if (!best) return null;
+  const candidates = scored.sort((a, b) => b.score - a.score).slice(0, 4);
+  const context = { fretted: [...fretted], concentration, candidates };
+  if (!best) return blank('No chord template matched at all.', context);
 
   const wanted = best.template.pcs.map((d) => (best.rootPc + d) % 12);
   const present = wanted.filter((p) => chroma[p]! >= PRESENT || fretted.has(p)).length;
   const required = best.template.quality === '5' ? 2 : Math.min(3, wanted.length);
-  if (present < required || best.score < 0.44) return null;
+  const label = `${NAMES[best.rootPc]}${best.template.suffix}`;
 
-  // Chroma alone is too generous for the final word: a low E on its own lights
-  // its own twelfth brightly enough to stand in for a fifth, so two notes can
-  // clear a four-note template on borrowed harmonics. Strings, not chroma,
-  // have to account for the shape being claimed.
-  const played = wanted.filter((p) => fretted.has(p)).length;
-  if (played < required) return null;
+  if (present < required) {
+    return blank(`${label} was the best guess, but only ${present} of its ${wanted.length} notes were sounding and I need ${required}.`, context);
+  }
+  if (best.score < 0.44) {
+    return blank(`${label} was the best guess but scored ${best.score.toFixed(2)}, under the 0.44 I need to say it out loud.`, context);
+  }
 
   const margin = Math.max(0, best.score - second);
   const confidence = Math.max(0, Math.min(1, 0.48 + margin * 1.8 + (present / wanted.length) * 0.28));
-  if (confidence < 0.58) return null;
+  if (confidence < 0.58) {
+    return blank(`${label} won, but only just — ${candidates[1]?.label ?? 'the next guess'} was close behind, so I am not confident enough to name it.`, context);
+  }
+
   return {
-    label: `${NAMES[best.rootPc]}${best.template.suffix}`,
-    rootPc: best.rootPc,
-    quality: best.template.quality,
-    confidence,
-    pitchClasses: audible.slice(0, 6).map((x) => x.pc),
+    detection: {
+      label,
+      rootPc: best.rootPc,
+      quality: best.template.quality,
+      confidence,
+      pitchClasses: audible.slice(0, 6).map((x) => x.pc),
+    },
+    rejectedBy: null,
+    bassMidi,
+    bassName: bassMidi < 0 ? '—' : NAMES[bassMidi % 12]!,
+    chroma,
+    ...context,
   };
 }
 

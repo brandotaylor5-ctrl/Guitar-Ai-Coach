@@ -545,3 +545,20 @@ code { font-family: var(--mono); }
 .riff-card h4 { margin: 0 0 .2rem; }
 .riff-why { margin: .6rem 0 0; padding-left: 1.1rem; color: var(--text-dim); font-size: .9rem; }
 .riff-why li { margin: .25rem 0; }
+
+/* ---- chord doctor: the detector thinking out loud ---- */
+.chord-doctor { margin-top: 1rem; }
+.chord-doctor > summary { cursor: pointer; font-size: .9rem; color: var(--text-dim); }
+.chord-doctor[open] > summary { color: var(--text); margin-bottom: .6rem; }
+.doctor-verdict { margin: .5rem 0; font-size: .95rem; line-height: 1.45; }
+.doctor-verdict.is-good { color: var(--accent); font-weight: 600; }
+.doctor-verdict.is-blocked { color: var(--text); }
+.doctor-grid { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: .6rem 0; }
+.doctor-label { display: block; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); margin-top: .7rem; }
+.doctor-value { font-size: 1.1rem; font-weight: 600; }
+.doctor-chips, .doctor-candidates { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: .3rem; }
+.doctor-chroma { display: grid; gap: .25rem; margin-top: .3rem; }
+.doctor-bar { display: grid; grid-template-columns: 2rem 1fr 2.6rem; align-items: center; gap: .5rem; font-size: .8rem; }
+.doctor-bar-name { font-weight: 600; }
+.doctor-bar-fill { height: 8px; border-radius: 4px; background: var(--accent); min-width: 2px; }
+.doctor-bar-num { color: var(--text-dim); text-align: right; font-variant-numeric: tabular-nums; }
