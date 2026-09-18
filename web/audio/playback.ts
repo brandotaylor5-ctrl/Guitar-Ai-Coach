@@ -10,7 +10,7 @@
 import type { NoteEvent } from '../../src/types.ts';
 import { midiToFrequency } from '../../src/music/notes.ts';
 import { timeStretch } from '../../src/audio/timeStretch.ts';
-import { audioContext, unlockAudio } from './context.ts';
+import { audioContext, audioOutput, unlockAudio } from './context.ts';
 
 /** Relative amplitude of each partial, and how fast each one dies away. */
 const PARTIALS = [
@@ -28,6 +28,23 @@ export interface PlayOptions {
   onNote?: (index: number) => void;
   /** Called once playback finishes or is stopped. */
   onEnd?: () => void;
+}
+
+/**
+ * The most notes sounding at once — a strum counts as one chord, not six
+ * separate events. Notes within a strum window are treated as simultaneous
+ * because that is how they are heard.
+ */
+function maxSimultaneous(notes: NoteEvent[]): number {
+  const STRUM_MS = 60;
+  const starts = notes.map((n) => n.startMs).sort((a, b) => a - b);
+  let most = 1;
+  let from = 0;
+  for (let i = 0; i < starts.length; i += 1) {
+    while (starts[i]! - starts[from]! > STRUM_MS) from += 1;
+    most = Math.max(most, i - from + 1);
+  }
+  return most;
 }
 
 export class RiffPlayer {
@@ -59,8 +76,12 @@ export class RiffPlayer {
     if (context.state !== 'running') await unlockAudio();
 
     const master = context.createGain();
-    master.gain.value = 0.9;
-    master.connect(context.destination);
+    // A six-string chord is six voices summed. Holding every chord to the
+    // level of a single note would make chords disappear, so this backs off
+    // by the square root of the voice count: loud enough to feel like a
+    // strum, quiet enough that the limiter is barely working.
+    master.gain.value = 0.9 / Math.sqrt(maxSimultaneous(notes));
+    master.connect(audioOutput());
     this.master = master;
     this.playing = true;
 
@@ -142,7 +163,7 @@ export class RiffPlayer {
 
     const master = context.createGain();
     master.gain.value = 1;
-    master.connect(context.destination);
+    master.connect(audioOutput());
     this.master = master;
 
     const source = context.createBufferSource();
