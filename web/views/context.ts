@@ -7,7 +7,7 @@ import type { RiffPlayer } from '../audio/playback.ts';
 import type { ClipStore } from '../audio/clipStore.ts';
 import type { ChordDetection, ChordExplanation } from '../audio/chordDetect.ts';
 
-export type ViewName = 'path' | 'today' | 'session' | 'lessons' | 'lab' | 'library' | 'songs' | 'song' | 'seeds' | 'fingerprint';
+export type ViewName = 'practice' | 'path' | 'today' | 'session' | 'lessons' | 'lab' | 'library' | 'songs' | 'song' | 'seeds' | 'fingerprint';
 
 export interface AppContext {
   session: SketchbookSession;

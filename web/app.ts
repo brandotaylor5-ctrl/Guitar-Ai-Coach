@@ -22,6 +22,7 @@ import { libraryView } from './views/library.ts';
 import { songsView } from './views/songs.ts';
 import { songListView } from './views/songList.ts';
 import { pathView } from './views/path.ts';
+import { practiceTodayView } from './views/practiceToday.ts';
 import { songView } from './views/song.ts';
 import { fingerprintView } from './views/fingerprint.ts';
 import type { AppContext, View, ViewName } from './views/context.ts';
@@ -32,7 +33,7 @@ const state = {
   session: new SketchbookSession(),
   library: new RiffLibrary(),
   listening: false,
-  view: 'path' as ViewName,
+  view: 'practice' as ViewName,
   params: {} as Record<string, string>,
   tuning: STANDARD_TUNING,
   sampleRate: 0,
@@ -48,10 +49,10 @@ const state = {
  * cabinet, and nobody picks up a guitar to file.
  */
 const PRIMARY_TABS: Array<[ViewName, string]> = [
+  ['practice', 'Today'],
   ['path', 'Learn'],
   ['songs', 'Songs'],
   ['session', 'Coach'],
-  ['library', 'You'],
 ];
 
 /**
@@ -65,6 +66,7 @@ const PRIMARY_TABS: Array<[ViewName, string]> = [
  * that is where it lives now.
  */
 const MORE_TABS: Array<[ViewName, string]> = [
+  ['library', 'Your riffs'],
   ['lessons', 'Adaptive lessons'],
   ['today', 'Start here'],
   ['seeds', 'Song Workshop'],
@@ -224,7 +226,7 @@ const context: AppContext = {
     state.view = view;
     state.params = params;
     const query = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-    window.location.hash = view === 'path' && !query ? '' : `#${view}${query ? `?${query}` : ''}`;
+    window.location.hash = view === 'practice' && !query ? '' : `#${view}${query ? `?${query}` : ''}`;
     render();
   },
 
@@ -241,13 +243,14 @@ function buildView(): View {
     case 'lessons': return lessonsView(context, state.params);
     case 'session': return sessionView(context);
     case 'library': return libraryView(context, state.params);
+    case 'practice': return practiceTodayView(context);
     case 'path': return pathView(context);
     case 'songs': return songListView(context);
     case 'song': return songView(context, state.params);
     case 'seeds': return songsView(context);
     case 'fingerprint': return fingerprintView(context);
     case 'today': return todayView(context);
-    default: return pathView(context);
+    default: return practiceTodayView(context);
   }
 }
 
@@ -271,7 +274,7 @@ function render(): void {
 function readHash(): void {
   const raw = window.location.hash.replace('#', '');
   const [name, query = ''] = raw.split('?');
-  state.view = VIEW_NAMES.includes(name ?? '') ? (name as ViewName) : 'path';
+  state.view = VIEW_NAMES.includes(name ?? '') ? (name as ViewName) : 'practice';
   state.params = Object.fromEntries(
     query.split('&').filter(Boolean).map((pair) => {
       const [key, value = ''] = pair.split('=');
