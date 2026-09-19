@@ -25,7 +25,7 @@ export interface MusicalUse {
 }
 
 function pathChordSkill(step: PathStep): string | null {
-  if (!step.chord) return null;
+  if (step.kind !== 'chord' || !step.chord) return null;
   return `chord.${step.chord}`;
 }
 
