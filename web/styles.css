@@ -699,3 +699,8 @@ code { font-family: var(--mono); }
 .step-check { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .step-watch { background: color-mix(in srgb, var(--warm) 14%, transparent); }
 .step-expect { margin-bottom: .8rem; }
+
+.step-shapes { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 0 0 1.2rem; }
+.step-shape { display: grid; gap: .35rem; justify-items: center; }
+.step-shape-name { font-weight: 600; font-size: 1.05rem; }
+.step-shape .note-roles { justify-items: start; }
