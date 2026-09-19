@@ -26,6 +26,9 @@ import { compactChordLabel, normalizeChordLabel, readMelody, readTime } from '..
 import { phraseObservation, PlayerModelStore, practiceObservation } from '../../src/coach/playerModel.ts';
 import { hardPartTarget, learningWindow, planPhrase } from '../../src/coach/oneRoom.ts';
 import { chooseTeacherLesson, musicalUseFor } from '../../src/coach/teacher.ts';
+import {
+  JOURNEY_STAGES, guidedSessionPlan, journeyStatus,
+} from '../../src/coach/journey.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
 import { masteryMap } from '../../src/curriculum/mastery.ts';
 import { loadProgress, saveDone } from '../../src/curriculum/path.ts';
@@ -110,6 +113,10 @@ export function coachView(context:AppContext):View {
   let chordTargetStep:PathStep|null = null;
 
   let tempoTimer = 0;
+  let sessionTimer = 0;
+  let guidedStep:PathStep|null = null;
+  let guidedIndex = 0;
+  let guidedPhase = 0;
 
   const stageKicker = h('p', { class:'coach-stage-kicker' });
   const stageTitle = h('h1');
@@ -214,8 +221,49 @@ export function coachView(context:AppContext):View {
     return chooseTeacherLesson(loadProgress(store), masteryMap(curriculum.load()));
   }
 
+  function clearSessionTimer():void {
+    if (sessionTimer) window.clearInterval(sessionTimer);
+    sessionTimer = 0;
+  }
+
+  function journeyStrip(step:PathStep):HTMLElement {
+    const status = journeyStatus(loadProgress(store), step);
+    return h('div', { class:'coach-journey-strip' },
+      ...JOURNEY_STAGES.map((stage, index) =>
+        h('div', {
+          class:`coach-journey-stage${index < status.stageIndex ? ' is-done' : index === status.stageIndex ? ' is-current' : ''}`,
+        },
+          h('span', { class:'coach-journey-dot', text:index < status.stageIndex ? '✓' : String(index + 1) }),
+          h('span', { text:stage.name }),
+        )),
+    );
+  }
+
+  function sessionOverview(step:PathStep):HTMLElement {
+    const mastery = masteryMap(curriculum.load());
+    const plan = guidedSessionPlan(step, mastery);
+    return h('section', { class:'coach-session-overview' },
+      h('div', { class:'coach-session-overview-head' },
+        h('div', {},
+          h('span', { class:'coach-heard-label', text:'TODAY\'S PATH' }),
+          h('strong', { text:`~${plan.totalMinutes} minutes · one new thing` }),
+        ),
+        h('span', { class:'badge', text:'4 parts' }),
+      ),
+      h('div', { class:'coach-session-steps' },
+        h('div', {}, h('span', { text:'1' }), h('p', {}, h('strong', { text:'Warm up' }), h('small', { text:`${plan.warmup.minutes} min · ${plan.warmup.title}` }))),
+        h('div', {}, h('span', { text:'2' }), h('p', {}, h('strong', { text:'Learn' }), h('small', { text:`${plan.learnMinutes} min · ${step.title}` }))),
+        h('div', {}, h('span', { text:'3' }), h('p', {}, h('strong', { text:'Make music' }), h('small', { text:`${plan.musicMinutes} min · use the new thing immediately` }))),
+        h('div', {}, h('span', { text:'4' }), h('p', {}, h('strong', { text:'Play' }), h('small', { text:`${plan.playMinutes} min · finish with the instrument, not a lesson screen` }))),
+      ),
+    );
+  }
+
   function renderTeacherHome(announce=false):void {
     freePlayMode = false;
+    guidedStep = null;
+    guidedPhase = 0;
+    clearSessionTimer();
     stopTempo();
     chordTarget = null;
     chordTargetHost = null;
@@ -223,23 +271,67 @@ export function coachView(context:AppContext):View {
     clear(workbench);
 
     const choice = teacherChoice();
-    const lessonNumber = choice.index + 1;
+    const progress = loadProgress(store);
+    const status = journeyStatus(progress, choice.step);
     setStage(
-      `YOUR NEXT LESSON · ${lessonNumber}`,
+      `TODAY · ${status.stage.name.toUpperCase()}`,
       choice.step.title,
-      `${choice.step.outcome} ${choice.reason}`,
+      `You are in ${status.stage.name}: ${status.stage.promise} Today’s win: ${choice.step.outcome}`,
       announce,
     );
 
-    const teach = button('Teach me this', () => renderTeacherLesson(choice.step, choice.index), 'btn-primary coach-start');
-    const know = button('I already know this', () => {
+    const startToday = button('Start today’s session', () => renderWarmupPhase(choice.step, choice.index), 'btn-primary coach-start');
+    const know = button('I already know this lesson', () => {
       finishStep(choice.step, false);
     }, 'btn-quiet');
-    const free = button('Listen to me play instead', () => { void startFreePlay(); }, 'coach-text-action');
-    setActions(teach, know, free);
+    const free = button('I just want to play — coach me', () => { void startFreePlay(); }, 'coach-text-action');
+    setActions(startToday, know, free);
+
+    workbench.append(
+      journeyStrip(choice.step),
+      sessionOverview(choice.step),
+      h('details', { class:'coach-why-next' },
+        h('summary', { text:'Why am I here?' }),
+        h('p', { text:choice.reason }),
+        h('p', { class:'muted', text:`Lesson ${status.lessonNumber} of ${status.totalLessons}. ${status.stageCompleted} of ${status.stageTotal} finished in this stage.` }),
+      ),
+    );
+  }
+
+  function renderWarmupPhase(step:PathStep, index:number):void {
+    freePlayMode = false;
+    guidedStep = step;
+    guidedIndex = index;
+    guidedPhase = 1;
+    clearSessionTimer();
+    stopTempo();
+    clear(workbench);
+
+    const plan = guidedSessionPlan(step, masteryMap(curriculum.load()));
+    setStage(
+      'TODAY · 1 OF 4 · WARM UP',
+      plan.warmup.title,
+      plan.warmup.instruction,
+      true,
+    );
+    setActions(
+      button('Done — teach me something new', () => renderTeacherLesson(step, index), 'btn-primary coach-start'),
+      button('Skip warm-up', () => renderTeacherLesson(step, index), 'coach-text-action'),
+    );
+
+    const warm = h('section', { class:'coach-task coach-session-phase' },
+      h('span', { class:'coach-phase-time', text:`${plan.warmup.minutes} min` }),
+      h('p', { class:'coach-task-title', text:plan.warmup.title }),
+      h('p', { text:plan.warmup.instruction }),
+    );
+    if (plan.warmup.chords.length) warm.appendChild(chordLoopControls(plan.warmup.chords));
+    else warm.appendChild(h('p', { class:'muted', text:'Slow and clean. This is only to wake the hands up — do not turn it into a workout.' }));
+    workbench.appendChild(warm);
   }
 
   function finishStep(step:PathStep, earned:boolean):void {
+    const wasGuided = guidedStep?.id === step.id && guidedPhase > 0;
+    clearSessionTimer();
     const progress = loadProgress(store);
     progress.done.add(step.id);
     saveDone(store, progress.done);
@@ -254,17 +346,31 @@ export function coachView(context:AppContext):View {
       }]);
     }
 
+    guidedStep = null;
+    guidedPhase = 0;
     const next = teacherChoice();
+    const status = journeyStatus(loadProgress(store), next.step);
     clear(workbench);
     setStage(
-      'NICE. NEXT.',
-      next.step.title,
-      `${next.step.outcome} I’ll teach it when you’re ready.`,
+      wasGuided ? 'TODAY COMPLETE' : 'NICE. NEXT.',
+      wasGuided ? `You moved forward in ${status.stage.name}.` : next.step.title,
+      wasGuided
+        ? `Next time I’ll start with ${next.step.title}. You do not need to decide what to practise next.`
+        : `${next.step.outcome} I’ll teach it when you’re ready.`,
       true,
     );
     setActions(
-      button('Teach me the next thing', () => renderTeacherLesson(next.step, next.index), 'btn-primary coach-start'),
+      button(wasGuided ? 'Keep going anyway' : 'Teach me the next thing', () => renderWarmupPhase(next.step, next.index), 'btn-primary coach-start'),
       button('Done for now', () => renderTeacherHome(false), 'btn-quiet'),
+    );
+    workbench.append(
+      journeyStrip(next.step),
+      h('section', { class:'coach-session-finish' },
+        h('strong', { text:wasGuided ? 'That was a complete practice session.' : 'That lesson is recorded.' }),
+        h('p', { text:wasGuided
+          ? 'You warmed up, learned one new thing, used it musically, and finished by playing. That is enough for today.'
+          : 'The course has moved forward. Coach will choose what comes next.' }),
+      ),
     );
   }
 
