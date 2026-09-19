@@ -8,7 +8,7 @@ import { button } from './render.ts';
 const STRING_NAMES = ['low E', 'A', 'D', 'G', 'B', 'high E'];
 const SHORT_NAMES = ['E', 'A', 'D', 'G', 'B', 'e'];
 
-function diagram(chord: string): HTMLElement {
+export function chordDiagram(chord: string): HTMLElement {
   const shape = chordShape(chord);
   if (!shape) return h('div', { class: 'chord-shape-missing', text: `No finger map for ${chord} yet.` });
 
@@ -92,7 +92,7 @@ export function chordTeachingCard(
       h('div', { class: 'chord-strum-cue', text: `Strum from string ${shape.strumFrom}` }),
     ),
     h('div', { class: 'chord-teach-layout' },
-      diagram(chord),
+      chordDiagram(chord),
       h('div', { class: 'chord-instructions' },
         h('ol', {}, ...shape.steps.map((step) => h('li', { text: step }))),
         h('p', { class: 'chord-listen-for' }, h('strong', { text: 'Listen for: ' }), shape.listenFor),
