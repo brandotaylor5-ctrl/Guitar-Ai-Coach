@@ -66,7 +66,7 @@ export function libraryView(context: AppContext, params: Record<string, string> 
   const element = h('div', { class: 'view view-library' },
     h('section', { class: 'panel' },
       h('h2', { text: 'Your riffs' }),
-      h('p', { class: 'muted', text: 'Everything here is something you played.' }),
+      h('p', { class: 'muted', text: 'Riffs you played, plus any lick or line you kept.' }),
       list,
       dataRow,
     ),
@@ -79,7 +79,7 @@ export function libraryView(context: AppContext, params: Record<string, string> 
     const riffs = await context.library.listRiffs();
     clear(list);
     if (riffs.length === 0) {
-      list.appendChild(empty('Nothing saved yet. Play something, then ask what you just played.'));
+      list.appendChild(empty('Nothing here yet. Play something with Coach listening and it will catch it — or keep a lick from a scale lesson or a song.'));
       return;
     }
     riffs.forEach((riff, index) => {

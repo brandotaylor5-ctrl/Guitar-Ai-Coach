@@ -129,7 +129,8 @@ export function songsView(context: AppContext): View {
     );
 
     if (riffs.length === 0) {
-      panel.appendChild(empty('Save a riff from Play or Riff Lab first. Then this becomes a songwriting workspace.'));
+      panel.appendChild(empty('Save a riff first — from Coach while you play, or from any scale lesson or song. Then this becomes a songwriting workspace.'));
+      panel.appendChild(button('Go and make one', () => context.navigate('path', {}), 'btn-primary'));
       return panel;
     }
 

@@ -105,8 +105,8 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
         h('header', { class: 'lesson-head' }, h('h3', { text: skill.name }), h('span', { class: 'badge', text: 'lead + fretboard' })),
         h('p', { class: 'lesson-because', text: lesson.because }),
         h('p', { class: 'lesson-goal', text: skill.goal }),
-        h('p', { class: 'muted', text: 'Riff Lab will show the notes on the fretboard, play them, turn them into short musical phrases, then listen to your attempt.' }),
-        button('Learn this in Riff Lab', () => context.navigate('lab', {
+        h('p', { class: 'muted', text: 'I do not have a drawn shape for this scale yet, so I will not pretend to teach it. The workbench will still show you the notes and play them.' }),
+        button('Show me the notes', () => context.navigate('lab', {
           root: String(skill.scale!.tonicPc),
           scale: scaleId,
           skill: skill.id,
@@ -118,7 +118,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     // measure yet. Let Live Coach observe while the learner practises instead.
     if (skill.kind === 'technique') {
       const destination = skill.practice ?? 'session';
-      const practiceLabel = destination === 'lab' ? 'Practice this in Riff Lab'
+      const practiceLabel = destination === 'lab' ? 'Practice this on the workbench'
         : destination === 'songs' ? 'Use this in Song Workshop'
           : 'Practice this with Live Coach';
       const practiceView = destination === 'lab' ? 'lab' : destination === 'songs' ? 'songs' : 'session';
