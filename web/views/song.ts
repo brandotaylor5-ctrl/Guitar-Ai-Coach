@@ -30,7 +30,8 @@ import { inferFingering, renderTab } from '../../src/music/fretboard.ts';
 import type { NoteEvent } from '../../src/types.ts';
 import type { ChordDetection } from '../audio/chordDetect.ts';
 import { h, clear, replace } from '../ui/dom.ts';
-import { button, fretboardDiagram, tabBlock } from '../ui/render.ts';
+import { button, tabBlock } from '../ui/render.ts';
+import { chordDiagram } from '../ui/chordCard.ts';
 import { lickCard } from '../ui/lickCard.ts';
 import { licksInKey, lickToEvents } from '../../src/music/licks.ts';
 import type { AppContext, View } from './context.ts';
@@ -302,10 +303,7 @@ export function songView(context: AppContext, params: Record<string, string> = {
           return h('div', { class: 'chord-shape' },
             h('span', { class: 'chord-shape-name', text: chord }),
             shape
-              ? fretboardDiagram(
-                  inferFingering(chordShapeMidis(shape), { tuning: context.session.tuning, maxFret: 5 }),
-                  context.session.tuning,
-                )
+              ? chordDiagram(chord)
               : h('span', { class: 'muted', text: 'shape not stored' }),
           );
         })),
