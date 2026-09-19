@@ -4,6 +4,8 @@
  */
 
 import { SketchbookSession } from '../src/session/session.ts';
+import { analyzeNotes } from '../src/phrase/analyze.ts';
+import { PlayerModelStore, phraseObservation } from '../src/coach/playerModel.ts';
 import { noiseGate } from '../src/audio/calibration.ts';
 import { RiffLibrary } from '../src/library/riffLibrary.ts';
 import { LocalStorageRiffStore } from '../src/library/localStorageStore.ts';
@@ -98,6 +100,26 @@ function storage(): Storage | null {
     return window.localStorage;
   } catch {
     return null;
+  }
+}
+
+async function backfillPlayerModel(store: Storage): Promise<void> {
+  const model = new PlayerModelStore(store);
+  try {
+    const riffs = await state.library.listRiffs();
+    for (const riff of riffs) {
+      for (const version of riff.versions) {
+        if (version.notes.length < 3) continue;
+        const analysis = analyzeNotes(version.notes, { tuning: state.tuning });
+        model.recordPhrase(phraseObservation(
+          `library:${riff.id}:${version.id}`,
+          analysis,
+          version.createdAt,
+        ));
+      }
+    }
+  } catch {
+    // Historical backfill is an enhancement, never a reason to block the app.
   }
 }
 
@@ -393,6 +415,7 @@ function start(): void {
   const store = storage();
   state.library = new RiffLibrary(store ? new LocalStorageRiffStore(store) : undefined);
   state.session = new SketchbookSession({ library: state.library, tuning: state.tuning });
+  if (store) void backfillPlayerModel(store);
 
   mountChrome();
   armAudioUnlock();
