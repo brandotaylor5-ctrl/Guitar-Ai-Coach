@@ -15,7 +15,7 @@ import { renderTab, inferFingering } from '../../src/music/fretboard.ts';
 import { practiceAttempt } from '../../src/practice/practice.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
 import {
-  PlayerModelStore, practiceObservation,
+  PlayerModelStore, buildPlayerProfile, practiceObservation, recommendAdaptiveTask,
 } from '../../src/coach/playerModel.ts';
 import {
   RIFF_LESSONS, buildRiffStudy, developStudy, neckZones, rootLocations,
@@ -501,6 +501,7 @@ export function labView(context: AppContext, params: Record<string, string> = {}
       passed,
       firstMistakeIndex: result.firstMistakeIndex,
     }));
+    const nextAdaptive = recommendAdaptiveTask(buildPlayerProfile(playerModel.load()));
 
     clear(feedbackHost);
     feedbackHost.append(
@@ -519,6 +520,12 @@ export function labView(context: AppContext, params: Record<string, string> = {}
         }]);
       }
     }
+
+    feedbackHost.appendChild(h('div', { class: 'riff-model-update' },
+      h('span', { class: 'eyebrow', text: 'COACH UPDATE' }),
+      h('strong', { text: nextAdaptive.title }),
+      h('p', { class: 'muted', text: nextAdaptive.reason }),
+    ));
 
     if (!passed && result.firstMistakeIndex !== null) {
       const hard = practiceSlice(attemptTarget, result.firstMistakeIndex);
