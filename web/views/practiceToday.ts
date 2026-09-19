@@ -17,6 +17,9 @@ import type { ItemKind, SessionItem } from '../../src/curriculum/session.ts';
 import { loadProgress } from '../../src/curriculum/path.ts';
 import { masteryMap } from '../../src/curriculum/mastery.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
+import {
+  PlayerModelStore, buildPlayerProfile, recommendAdaptiveTask,
+} from '../../src/coach/playerModel.ts';
 import { h, clear, replace } from '../ui/dom.ts';
 import { button } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
@@ -44,6 +47,7 @@ const LENGTH_KEY = 'guitar-session-minutes';
 
 export function practiceTodayView(context: AppContext): View {
   const store = storage();
+  const modelStore = new PlayerModelStore(store);
   const element = h('div', { class: 'view view-practice' });
 
   let minutes = Number(store.getItem(LENGTH_KEY) ?? 15) || 15;
@@ -115,6 +119,8 @@ export function practiceTodayView(context: AppContext): View {
     const progress = loadProgress(store);
     const mastery = masteryMap(new CurriculumStore(store).load());
     const session = buildSession(progress.current, mastery, minutes);
+    const profile = buildPlayerProfile(modelStore.load());
+    const adaptive = recommendAdaptiveTask(profile);
 
     clear(element);
     element.append(
@@ -139,6 +145,24 @@ export function practiceTodayView(context: AppContext): View {
           }, `level-chip${option === minutes ? ' is-on' : ''}`))),
       ),
     );
+
+    const adaptiveParams: Record<string, string> = {
+      lesson: adaptive.lessonId,
+      adaptive: adaptive.kind,
+    };
+    if (adaptive.zoneIndex !== undefined) adaptiveParams.zone = String(adaptive.zoneIndex);
+    if (adaptive.bpm !== undefined) adaptiveParams.bpm = String(adaptive.bpm);
+
+    element.appendChild(h('section', { class: 'panel today-adaptive-card' },
+      h('p', { class: 'eyebrow', text: 'COACH NOTICED' }),
+      h('h3', { text: adaptive.title }),
+      h('p', { text: adaptive.reason }),
+      h('p', { class: 'muted', text: adaptive.instruction }),
+      h('div', { class: 'practice-actions' },
+        button('Give this 3 focused minutes', () => context.navigate('lab', adaptiveParams), 'btn-primary'),
+        button('Why are you recommending this?', () => context.navigate('fingerprint'), 'btn-quiet'),
+      ),
+    ));
 
     for (const [index, item] of session.items.entries()) {
       element.appendChild(itemCard(item, index));
