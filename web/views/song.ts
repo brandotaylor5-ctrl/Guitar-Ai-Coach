@@ -31,6 +31,8 @@ import type { NoteEvent } from '../../src/types.ts';
 import type { ChordDetection } from '../audio/chordDetect.ts';
 import { h, clear, replace } from '../ui/dom.ts';
 import { button, fretboardDiagram, tabBlock } from '../ui/render.ts';
+import { lickCard } from '../ui/lickCard.ts';
+import { licksInKey, lickToEvents } from '../../src/music/licks.ts';
 import type { AppContext, View } from './context.ts';
 
 const LEVELS: Level[] = ['strum', 'boom-chuck', 'melody'];
@@ -299,7 +301,31 @@ export function songView(context: AppContext, params: Record<string, string> = {
       ...song!.sections.map(sectionCard),
     );
     // Soloing over changes you cannot yet play is not a lesson, it is a taunt.
-    if (readiness.ready) element.appendChild(soloCard());
+    if (readiness.ready) {
+      element.appendChild(soloCard());
+
+      const tonicPc = pitchClassOf(song!.key) ?? 0;
+      const minor = song!.key.endsWith('m');
+      const licks = licksInKey(tonicPc, minor).slice(0, 3);
+      if (licks.length) {
+        const host = h('section', { class: 'panel' },
+          h('h4', { text: 'Licks that fit this song' }),
+          h('p', { class: 'muted', text: `Moved into ${song!.key}, so they sit over these chords without you having to work anything out. Play one at the end of a line and the song stops sounding like practice.` }),
+        );
+        for (const lick of licks) {
+          host.appendChild(lickCard(lick, {
+            tuning: context.session.tuning, player: context.player, bpm: song!.bpm,
+            onKeep: (kept) => {
+              void context.library
+                .saveRiff(lickToEvents(kept, song!.bpm), { comment: `${kept.name} · from ${song!.title}` })
+                .then(() => context.say(`Saved ${kept.name} to You.`))
+                .catch(() => context.say('Could not save that one.', 'error'));
+            },
+          }));
+        }
+        element.appendChild(host);
+      }
+    }
   }
 
   render();

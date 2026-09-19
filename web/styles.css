@@ -704,3 +704,12 @@ code { font-family: var(--mono); }
 .step-shape { display: grid; gap: .35rem; justify-items: center; }
 .step-shape-name { font-weight: 600; font-size: 1.05rem; }
 .step-shape .note-roles { justify-items: start; }
+
+/* ---- licks: the vocabulary ---- */
+.lick-card { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: .9rem 1rem; margin-top: .8rem; }
+.lick-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.lick-head h4 { margin: 0; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 1rem; }
+.lick-tag { font-size: .74rem; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim); white-space: nowrap; }
+.lick-use { font-size: .92rem; margin: .3rem 0 .6rem; }
+.lick-why { font-size: .9rem; color: var(--text-dim); margin: .6rem 0; }
+.lick-why strong { color: var(--text); }
