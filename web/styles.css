@@ -713,3 +713,25 @@ code { font-family: var(--mono); }
 .lick-use { font-size: .92rem; margin: .3rem 0 .6rem; }
 .lick-why { font-size: .9rem; color: var(--text-dim); margin: .6rem 0; }
 .lick-why strong { color: var(--text); }
+
+/* ---- is my chord clean ---- */
+.string-check { border-color: var(--accent-dim); }
+.check-picker { display: flex; gap: .35rem; flex-wrap: wrap; margin: .6rem 0 .9rem; }
+.check-verdict { font-size: 1rem; line-height: 1.5; margin: 0 0 .7rem; }
+.check-verdict.is-good { color: var(--accent); font-weight: 600; }
+.check-advice { font-size: .92rem; color: var(--text-dim); margin: .5rem 0 0; }
+.check-strings { display: grid; gap: .2rem; margin: .6rem 0; }
+.check-row {
+  display: grid; grid-template-columns: 1.4rem 1.4rem 4.2rem 1fr;
+  align-items: center; gap: .6rem;
+  padding: .4rem .6rem; border-radius: var(--radius-sm);
+  background: var(--bg-sunken); font-size: .9rem;
+}
+.check-mark { font-size: 1rem; text-align: center; }
+.check-row.is-ringing .check-mark { color: var(--accent); }
+.check-row.is-missing { background: color-mix(in srgb, var(--danger) 20%, transparent); }
+.check-row.is-missing .check-mark { color: var(--danger); }
+.check-row.is-unclear .check-mark { color: var(--warm); }
+.check-row.is-not-played { opacity: .45; }
+.check-string { font-weight: 600; text-align: center; }
+.check-fret, .check-word { color: var(--text-dim); }

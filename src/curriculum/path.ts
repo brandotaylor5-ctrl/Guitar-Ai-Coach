@@ -120,10 +120,10 @@ export const PATH: PathStep[] = [
       'Curl both fingers so their tips press and their bellies do not touch the neighbouring strings.',
       'Strum all six strings slowly, from the thick one down.',
     ],
-    check: 'Pick each string one at a time. All six ring. No clicks, no dead strings.',
+    check: 'Pick each string one at a time. All six ring. No clicks, no dead strings — or let the app check it for you and name the string.',
     watchFor: 'The 3rd string (G) going dead is the usual one. Your middle finger is leaning on it — curl it more.',
     expect: 'Most people get a clean E minor within two or three sessions.',
-    practice: { view: 'lessons', label: 'Learn it with the app listening' },
+    practice: { view: 'session', label: 'Strum it and I will tell you which string is dead' },
     chord: 'Em',
   },
   {
@@ -161,7 +161,7 @@ export const PATH: PathStep[] = [
     check: 'Every string rings. The thin E in particular — it is the one people mute with the underside of the ring finger.',
     watchFor: 'If the thin E is dead, your ring finger is too flat. Come up onto its tip.',
     expect: 'Harder than E minor. Give it a week.',
-    practice: { view: 'lessons', label: 'Learn it with the app listening' },
+    practice: { view: 'session', label: 'Strum it and I will tell you which string is dead' },
     chord: 'G',
   },
   {
@@ -214,7 +214,7 @@ export const PATH: PathStep[] = [
     check: 'Both ring cleanly, and you can change into each from G without a gap.',
     watchFor: 'On D, hitting the two thick strings. Aim your strum at the thin four only.',
     expect: 'C is the hardest of the open chords for most people. Two to three weeks.',
-    practice: { view: 'lessons', label: 'Learn them with the app listening' },
+    practice: { view: 'session', label: 'Strum them and I will check each string' },
     chords: ['C', 'D'],
   },
   {
