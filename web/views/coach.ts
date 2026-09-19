@@ -438,7 +438,7 @@ export function coachView(context:AppContext):View {
       feedback,
       h('div', { class:'coach-after-task' },
         button('Back to my idea', () => {
-          if (currentPhrase && currentAnalysis) renderPhrase(currentPhrase, currentAnalysis);
+          if (currentAnalysis) renderPhrase(currentAnalysis.phrase, currentAnalysis);
         }, 'coach-text-action'),
       ),
     ));
