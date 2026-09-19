@@ -33,6 +33,7 @@ import {
   qualityFamily, readMelody, readTime, readTouch,
 } from '../../src/coach/liveTutor.ts';
 import { chordDiagram, chordTeachingCard } from '../ui/chordCard.ts';
+import { audioContext, audioOutput, unlockAudio } from '../audio/context.ts';
 import { h, clear, relativeTime, replace } from '../ui/dom.ts';
 import {
   button, empty, fretboardDiagram, noteRow, highlightNote, tabBlock,
@@ -64,6 +65,8 @@ export function sessionView(context: AppContext): View {
   let targetBestScore = -1;
   let targetCleanAnnounced = false;
   let targetFeedbackHost: HTMLElement | null = null;
+  let tempoClickTimer = 0;
+  let currentTempoBpm = 0;
   const shownChordLessons = new Set<string>();
   const chordHistory: HeardChord[] = [];
 
@@ -105,6 +108,8 @@ export function sessionView(context: AppContext): View {
 
   const tempoValue = h('div', { class: 'live-musical-value', text: '—' });
   const tempoDetail = h('p', { class: 'muted live-musical-detail', text: 'Repeat a figure and I can estimate your pulse.' });
+  const tempoPracticeButton = button('Practice this pulse', () => { void toggleTempoPractice(); }, 'btn-quiet');
+  tempoPracticeButton.disabled = true;
 
   const centerReadout = h('div', { class: 'live-center-value', text: '—' });
   const centerHint = h('span', { class: 'muted', text: 'I need a couple chord changes or a settled melody first.' });
@@ -216,6 +221,7 @@ export function sessionView(context: AppContext): View {
         h('span', { class: 'live-hearing-label', text: 'TIME · TEMPO' }),
         tempoValue,
         tempoDetail,
+        h('div', { class: 'live-card-action' }, tempoPracticeButton),
       ),
       h('article', { class: 'panel live-hearing-card center-card' },
         h('span', { class: 'live-hearing-label', text: 'HOME / KEY CLUE' }),
@@ -323,6 +329,49 @@ export function sessionView(context: AppContext): View {
 
   addCoach('I’m ready. Start Live Coach and play naturally. I will teach from whatever shows up.', 'hello');
 
+  function stopTempoPractice(): void {
+    if (tempoClickTimer) window.clearInterval(tempoClickTimer);
+    tempoClickTimer = 0;
+    tempoPracticeButton.textContent = 'Practice this pulse';
+    tempoPracticeButton.classList.remove('is-live');
+  }
+
+  async function toggleTempoPractice(): Promise<void> {
+    if (tempoClickTimer) {
+      stopTempoPractice();
+      return;
+    }
+    if (!currentTempoBpm) return;
+    await unlockAudio();
+
+    const click = (strong: boolean) => {
+      const ctx = audioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = strong ? 1450 : 980;
+      gain.gain.setValueAtTime(strong ? 0.18 : 0.11, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.045);
+      osc.connect(gain);
+      gain.connect(audioOutput());
+      osc.start();
+      osc.stop(ctx.currentTime + 0.055);
+    };
+
+    let beat = 0;
+    click(true);
+    tempoPracticeButton.textContent = `Stop ${currentTempoBpm} BPM pulse`;
+    tempoPracticeButton.classList.add('is-live');
+    const beatMs = 60_000 / currentTempoBpm;
+    tempoClickTimer = window.setInterval(() => {
+      beat += 1;
+      click(beat % 4 === 0);
+    }, beatMs);
+    addCoach(
+      `I’m giving you ${currentTempoBpm} BPM. Play the same idea against this pulse and try to make the notes sit inside it instead of chasing it.`,
+      'teaching',
+    );
+  }
+
   // ---- exact chord teaching + live string feedback -----------------------
 
   function chordSkillId(label: string): string | null {
@@ -386,7 +435,7 @@ export function sessionView(context: AppContext): View {
     if (!context.listening) void context.startListening();
   }
 
-  function openChordTutor(label: string, intro: string, arm: boolean): void {
+  function openChordTutor(label: string, intro: string, arm: boolean, scroll = true): void {
     const clean = normalizeChordLabel(label);
     clear(chordTutorHost);
     targetFeedbackHost = null;
@@ -424,7 +473,7 @@ export function sessionView(context: AppContext): View {
     );
 
     chordTutorHost.append(top, teach);
-    chordTutorHost.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (scroll) chordTutorHost.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     if (arm) armChordTarget(clean);
   }
 
@@ -577,6 +626,15 @@ export function sessionView(context: AppContext): View {
     tempoDetail.textContent = time.bpm === null
       ? time.detail
       : `${time.detail} ${touch.headline !== 'Touch still unclear' ? `Touch: ${touch.headline.toLowerCase()}.` : ''}`;
+    if (time.bpm !== null) {
+      currentTempoBpm = time.bpm;
+      tempoPracticeButton.disabled = false;
+      if (!tempoClickTimer) tempoPracticeButton.textContent = `Practice ${time.bpm} BPM`;
+    } else {
+      currentTempoBpm = 0;
+      tempoPracticeButton.disabled = true;
+      stopTempoPractice();
+    }
 
     // A melodic read is another clue about home. Do not overwrite a stronger
     // multi-chord key inference, but do fill the blank when melody arrives first.
@@ -630,6 +688,7 @@ export function sessionView(context: AppContext): View {
       ),
       h('div', { class: 'live-own-idea' },
         ideaRow,
+        suggestionFingering(phrase.notes),
         h('div', { class: 'practice-actions' },
           button('Play it back', () => {
             void context.player.play(phrase.notes, {
@@ -956,6 +1015,7 @@ export function sessionView(context: AppContext): View {
         clean,
         `You just found ${chord.label}. If that name means nothing to your hand yet, this is the shape.`,
         false,
+        false,
       );
       addCoach(
         `That chord is ${chord.label}. I put the hand position on screen because naming a chord you do not know is not teaching it.`,
@@ -998,6 +1058,7 @@ export function sessionView(context: AppContext): View {
     onChordExplain,
     dispose() {
       context.setChordDiagnostics?.(false);
+      stopTempoPractice();
       learnFromPlaying();
       disposed = true;
       window.clearInterval(timer);
