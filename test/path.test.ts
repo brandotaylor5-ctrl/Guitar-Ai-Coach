@@ -1,7 +1,9 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { PATH, loadProgress, saveDone, stepById } from '../src/curriculum/path.ts';
-import { songById } from '../src/songs/library.ts';
+import { songById, chordsIn } from '../src/songs/library.ts';
+import { getSkill } from '../src/curriculum/skills.ts';
+import { chordShape } from '../src/music/chordShapes.ts';
 
 function fakeStore() {
   const map = new Map<string, string>();
@@ -57,7 +59,9 @@ describe('a course that works before it has heard you', () => {
     const index = (id: string) => PATH.findIndex((step) => step.id === id);
     assert.ok(index('fret') < index('chord-em'), 'fretting a note comes before a chord');
     assert.ok(index('chord-em') < index('change'), 'a chord comes before changing between two');
-    assert.ok(index('change') < index('first-song'), 'changes come before a song');
+    assert.ok(index('chord-g') < index('chord-d'), 'G is taught before D in the first-song family');
+    assert.ok(index('chord-d') < index('change'), 'both song chords come before practising their change');
+    assert.ok(index('change') < index('first-song'), 'the exact song change comes before the first song');
     assert.ok(index('clean-notes') < index('scale-minor-pent'), 'picking comes before a scale');
     assert.ok(index('scale-minor-pent') < index('first-riff'), 'a scale comes before writing with it');
   });
@@ -70,6 +74,39 @@ describe('a course that works before it has heard you', () => {
       assert.ok(step.practice.label.length > 5, `${step.id} needs a real button label`);
       const songId = step.practice.params?.song;
       if (songId) assert.ok(songById(songId), `${step.id} links to a song that does not exist: ${songId}`);
+    }
+  });
+
+  test('course practice links to exact adaptive skills when it names one', () => {
+    for (const step of PATH) {
+      const skillId = step.practice?.params?.skill;
+      if (!skillId) continue;
+      assert.ok(getSkill(skillId), `${step.id} points to missing skill ${skillId}`);
+      assert.equal(step.practice?.params?.path, step.id,
+        `${step.id} must carry its course id into practice so success can advance the course`);
+    }
+  });
+
+  test('every chord the course teaches has a concrete beginner finger map', () => {
+    for (const step of PATH) {
+      if (!step.chord) continue;
+      assert.ok(chordShape(step.chord), `${step.id} teaches ${step.chord} without a stored physical shape`);
+    }
+  });
+
+  test('a song is never assigned before every chord in it has appeared in the course', () => {
+    const taught = new Set<string>();
+    for (const step of PATH) {
+      if (step.kind === 'song' && step.practice?.params?.song) {
+        const song = songById(step.practice.params.song);
+        assert.ok(song, `${step.id} points to a missing song`);
+        for (const chord of chordsIn(song!)) {
+          assert.ok(taught.has(chord),
+            `${step.id} assigns ${song!.title} before teaching ${chord}`);
+        }
+      }
+      if (step.chord) taught.add(step.chord);
+      for (const chord of step.chords ?? []) taught.add(chord);
     }
   });
 
