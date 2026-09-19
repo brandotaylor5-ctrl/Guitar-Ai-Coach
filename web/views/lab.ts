@@ -15,6 +15,9 @@ import { renderTab, inferFingering } from '../../src/music/fretboard.ts';
 import { practiceAttempt } from '../../src/practice/practice.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
 import {
+  PlayerModelStore, practiceObservation,
+} from '../../src/coach/playerModel.ts';
+import {
   RIFF_LESSONS, buildRiffStudy, developStudy, neckZones, rootLocations,
 } from '../../src/curriculum/riffSchool.ts';
 import type {
@@ -99,12 +102,29 @@ export function labView(context: AppContext, params: Record<string, string> = {}
   let scale = (params.scale ? scaleById(params.scale) : null)
     ?? scaleById(params.mode === 'major' ? 'major-pent' : 'minor-pent')!;
   let zones = neckZones(rootPc, scale, context.session.tuning);
-  let zoneIndex = 0;
-  let selectedLessonId = RIFF_LESSONS[0]!.id;
+  const requestedZone = Number(params.zone);
+  let zoneIndex = Number.isInteger(requestedZone) && requestedZone >= 0 && requestedZone < zones.length
+    ? requestedZone
+    : 0;
+  let selectedLessonId = params.lesson && RIFF_LESSONS.some((lesson) => lesson.id === params.lesson)
+    ? params.lesson
+    : RIFF_LESSONS[0]!.id;
+  const adaptiveKind = params.adaptive ?? '';
+  const adaptiveBpmRaw = Number(params.bpm);
+  const adaptiveBpm = Number.isFinite(adaptiveBpmRaw) && adaptiveBpmRaw >= 40 && adaptiveBpmRaw <= 240
+    ? Math.round(adaptiveBpmRaw)
+    : null;
   let lessonLevel: LessonLevel = 'all';
   let attemptStartMs: number | null = null;
   let attemptTarget: NoteEvent[] | null = null;
   let attemptLabel = '';
+  let attemptMeta: {
+    source: 'riff-school' | 'my-riff';
+    targetId: string;
+    lessonId?: string;
+    zoneIndex?: number;
+    startFret?: number;
+  } | null = null;
   let revealStudy = false;
   let selectedMyRiffId = params.riff ?? '';
   let disposed = false;
@@ -119,6 +139,22 @@ export function labView(context: AppContext, params: Record<string, string> = {}
   } catch {
     curriculum = null;
   }
+
+  const playerModel = new PlayerModelStore(
+    (() => {
+      try {
+        window.localStorage.setItem('__riff_model_probe__', '1');
+        window.localStorage.removeItem('__riff_model_probe__');
+        return window.localStorage;
+      } catch {
+        const memory = new Map<string, string>();
+        return {
+          getItem: (k: string) => memory.get(k) ?? null,
+          setItem: (k: string, v: string) => { memory.set(k, v); },
+        };
+      }
+    })(),
+  );
 
   // ---- controls -----------------------------------------------------------
 
@@ -158,6 +194,26 @@ export function labView(context: AppContext, params: Record<string, string> = {}
   const myRiffsHost = h('div', { class: 'my-riff-trainer-host' });
   const liveHarmonyHost = h('div', { class: 'live-harmony-riff-host' });
 
+  const adaptivePanel = adaptiveKind
+    ? h('section', { class: 'panel riff-adaptive-assignment' },
+        h('p', { class: 'eyebrow', text: 'COACH SENT YOU HERE' }),
+        h('h3', { text: adaptiveKind === 'timing'
+          ? 'This one is about your pulse.'
+          : adaptiveKind === 'position'
+            ? `This one is about Zone ${zoneIndex + 1}.`
+            : adaptiveKind === 'interval'
+              ? 'This one is about expanding your melodic vocabulary.'
+              : adaptiveKind === 'register'
+                ? 'This one is about getting out of one register.'
+                : adaptiveKind === 'resolution'
+                  ? 'This one is about tension and where you land.'
+                  : 'This one is about developing an idea.' }),
+        h('p', { class: 'muted', text: adaptiveBpm
+          ? `Coach chose this from your playing history. The target pulse is about ${adaptiveBpm} BPM; accuracy first, speed later.`
+          : 'Coach chose this from patterns across your playing history, not because this lesson happened to be next in a list.' }),
+      )
+    : h('span');
+
   const element = h('div', { class: 'view view-lab riff-school-view' },
     h('section', { class: 'panel riff-school-hero' },
       h('div', {},
@@ -171,6 +227,8 @@ export function labView(context: AppContext, params: Record<string, string> = {}
         h('label', {}, 'Focus ', levelSelect),
       ),
     ),
+
+    adaptivePanel,
 
     h('section', { class: 'panel riff-map-panel' },
       h('div', { class: 'lab-section-head' },
@@ -278,7 +336,7 @@ export function labView(context: AppContext, params: Record<string, string> = {}
   }
 
   function activeStudy(): RiffStudy {
-    return buildRiffStudy(activeLesson(), activeZone(), rootPc, scale, 88);
+    return buildRiffStudy(activeLesson(), activeZone(), rootPc, scale, adaptiveBpm ?? 88);
   }
 
   // ---- neck map -----------------------------------------------------------
@@ -383,14 +441,34 @@ export function labView(context: AppContext, params: Record<string, string> = {}
     });
   }
 
-  async function startAttempt(target: NoteEvent[], label: string): Promise<void> {
+  async function startAttempt(
+    target: NoteEvent[],
+    label: string,
+    meta: {
+      source: 'riff-school' | 'my-riff';
+      targetId: string;
+      lessonId?: string;
+      zoneIndex?: number;
+      startFret?: number;
+    } = { source: 'riff-school', targetId: label },
+  ): Promise<void> {
     if (!context.listening) await context.startListening();
     attemptStartMs = context.session.currentTimeMs;
     attemptTarget = target;
     attemptLabel = label;
+    attemptMeta = meta;
     replace(feedbackHost,
       h('p', { class: 'coaching', text: `Listening for ${label}. Play it once, leave a short pause, then press Check my take.` }),
     );
+  }
+
+  function practiceSlice(notes: NoteEvent[], center: number): NoteEvent[] {
+    const from = Math.max(0, center - 1);
+    const to = Math.min(notes.length, center + 2);
+    const slice = notes.slice(from, to);
+    if (!slice.length) return [];
+    const origin = slice[0]!.startMs;
+    return slice.map((note) => ({ ...note, startMs: note.startMs - origin }));
   }
 
   function checkAttempt(): void {
@@ -407,6 +485,23 @@ export function labView(context: AppContext, params: Record<string, string> = {}
     });
     const passed = result.accuracy >= .82 && Math.abs(result.tempoRatio - 1) <= .32;
 
+    const meta = attemptMeta ?? { source: 'riff-school' as const, targetId: attemptLabel || 'unknown' };
+    playerModel.recordPractice(practiceObservation({
+      source: meta.source,
+      targetId: meta.targetId,
+      ...(meta.lessonId ? { lessonId: meta.lessonId } : {}),
+      scaleId: scale.id,
+      rootPc,
+      ...(typeof meta.zoneIndex === 'number' ? { zoneIndex: meta.zoneIndex } : {}),
+      ...(typeof meta.startFret === 'number' ? { startFret: meta.startFret } : {}),
+      reference: attemptTarget,
+      attempt,
+      accuracy: result.accuracy,
+      tempoRatio: result.tempoRatio,
+      passed,
+      firstMistakeIndex: result.firstMistakeIndex,
+    }));
+
     clear(feedbackHost);
     feedbackHost.append(
       h('p', { class: `coaching${passed ? ' is-nailed' : ''}`,
@@ -414,7 +509,7 @@ export function labView(context: AppContext, params: Record<string, string> = {}
     );
 
     if (passed) {
-      feedbackHost.appendChild(h('p', { class: 'muted', text: 'Good. Do not grind it to death — now move it, change it, or use it.' }));
+      feedbackHost.appendChild(h('p', { class: 'muted', text: 'Good. Do not grind it to death — now move it, change it, or use it. Coach remembered this attempt.' }));
       if (linkedSkillId && curriculum) {
         curriculum.record([{
           skillId: linkedSkillId,
@@ -425,9 +520,34 @@ export function labView(context: AppContext, params: Record<string, string> = {}
       }
     }
 
+    if (!passed && result.firstMistakeIndex !== null) {
+      const hard = practiceSlice(attemptTarget, result.firstMistakeIndex);
+      if (hard.length >= 2) {
+        const hardRow = noteRow(hard);
+        feedbackHost.append(
+          h('div', { class: 'riff-hard-part' },
+            h('strong', { text: 'Stop restarting the whole riff.' }),
+            h('p', { class: 'muted', text: 'Loop the note before the first miss, the miss, and the note after it. Fix the transition, then put it back into the phrase.' }),
+            hardRow,
+            h('div', { class: 'practice-actions' },
+              button('Hear hard part · 50%', () => playWithRow(hard, hardRow, .5), 'btn-quiet'),
+              button('Hear hard part · 75%', () => playWithRow(hard, hardRow, .75), 'btn-quiet'),
+              button('Practice only this chunk', () => {
+                void startAttempt(hard, `${attemptLabel || 'riff'} · hard part`, {
+                  ...meta,
+                  targetId: `${meta.targetId}:hard-${result.firstMistakeIndex}`,
+                });
+              }, 'btn-primary'),
+            ),
+          ),
+        );
+      }
+    }
+
     attemptStartMs = null;
     attemptTarget = null;
     attemptLabel = '';
+    attemptMeta = null;
   }
 
   function variationCard(variant: DevelopedRiff, source: RiffStudy): HTMLElement {
@@ -438,13 +558,23 @@ export function labView(context: AppContext, params: Record<string, string> = {}
       row,
       h('div', { class: 'practice-actions' },
         button('Hear it', () => playWithRow(variant.events, row), 'btn-quiet'),
-        button('Practice this version', () => { void startAttempt(variant.events, variant.label); }, 'btn-quiet'),
+        button('Practice this version', () => { void startAttempt(variant.events, variant.label, {
+          source: 'riff-school',
+          targetId: `${source.lesson.id}:${variant.kind}`,
+          lessonId: source.lesson.id,
+          zoneIndex: source.zone.index,
+          startFret: source.zone.startFret,
+        }); }, 'btn-quiet'),
         button('Save as my riff', async () => {
           const riff = await context.library.saveRiff(variant.events, {
             name: null,
             comment: `Riff School · ${ROOTS[rootPc]} ${scale.name} · ${source.lesson.name} → ${variant.label}`,
             tags: ['riff-school', scale.id],
           });
+          playerModel.recordCreative(
+            variant.kind === 'ending' ? 'ending' : variant.kind,
+            'riff-school',
+          );
           context.say('Saved the changed version. That is the point: keep the branch you actually like.');
           selectedMyRiffId = riff.id;
           void renderMyRiffs();
@@ -463,6 +593,11 @@ export function labView(context: AppContext, params: Record<string, string> = {}
           const song = await context.library.createSong(name.trim());
           await context.library.addToSong(song.id, 'A section', a.id, a.currentVersionId);
           await context.library.addToSong(song.id, 'B section', b.id, b.currentVersionId);
+          playerModel.recordCreative(
+            variant.kind === 'ending' ? 'ending' : variant.kind,
+            'riff-school',
+          );
+          playerModel.recordCreative('song-seed', 'riff-school');
           context.say('Made a two-section song seed from one motif and one deliberate change.');
           context.navigate('seeds');
         }, 'btn-quiet'),
@@ -480,7 +615,7 @@ export function labView(context: AppContext, params: Record<string, string> = {}
     const tab = renderTab(study.positions, context.session.tuning);
     const nextZone = zones[(zoneIndex + 1) % zones.length];
     const moved = nextZone
-      ? buildRiffStudy(study.lesson, nextZone, rootPc, scale, 88)
+      ? buildRiffStudy(study.lesson, nextZone, rootPc, scale, adaptiveBpm ?? 88)
       : null;
     const variants = developStudy(study, scale, rootPc);
 
@@ -527,7 +662,13 @@ export function labView(context: AppContext, params: Record<string, string> = {}
         button('Hear it', () => playWithRow(study.events, row), 'btn-primary'),
         button('75%', () => playWithRow(study.events, row, .75), 'btn-quiet'),
         button('50%', () => playWithRow(study.events, row, .5), 'btn-quiet'),
-        button('Try it by ear', () => { void startAttempt(study.events, study.lesson.name); }, 'btn-quiet'),
+        button('Try it by ear', () => { void startAttempt(study.events, study.lesson.name, {
+          source: 'riff-school',
+          targetId: study.lesson.id,
+          lessonId: study.lesson.id,
+          zoneIndex: zone.index,
+          startFret: zone.startFret,
+        }); }, 'btn-quiet'),
         button('Check my take', checkAttempt, 'btn-quiet'),
       ),
       reveal,
@@ -547,7 +688,13 @@ export function labView(context: AppContext, params: Record<string, string> = {}
               movedRow,
               h('div', { class: 'practice-actions' },
                 button('Hear moved version', () => playWithRow(moved.events, movedRow), 'btn-primary'),
-                button('Practice moved version', () => { void startAttempt(moved.events, `${study.lesson.name} in Zone ${nextZone.index + 1}`); }, 'btn-quiet'),
+                button('Practice moved version', () => { void startAttempt(moved.events, `${study.lesson.name} in Zone ${nextZone.index + 1}`, {
+                  source: 'riff-school',
+                  targetId: study.lesson.id,
+                  lessonId: study.lesson.id,
+                  zoneIndex: nextZone.index,
+                  startFret: nextZone.startFret,
+                }); }, 'btn-quiet'),
                 button('Make this my active zone', () => {
                   zoneIndex = nextZone.index;
                   revealStudy = true;
@@ -621,7 +768,10 @@ export function labView(context: AppContext, params: Record<string, string> = {}
           button('Hear it', () => playWithRow(notes, row), 'btn-primary'),
           button('75%', () => playWithRow(notes, row, .75), 'btn-quiet'),
           button('50%', () => playWithRow(notes, row, .5), 'btn-quiet'),
-          button('Start my attempt', () => { void startAttempt(notes, riff.name ?? 'your saved riff'); }, 'btn-quiet'),
+          button('Start my attempt', () => { void startAttempt(notes, riff.name ?? 'your saved riff', {
+            source: 'my-riff',
+            targetId: riff.id,
+          }); }, 'btn-quiet'),
           button('Check my take', checkAttempt, 'btn-quiet'),
         ),
         h('details', { class: 'section' },
@@ -681,13 +831,17 @@ export function labView(context: AppContext, params: Record<string, string> = {}
           button('Hear progression', () => { void context.player.play(progressionNotes(incomingProgression)); }, 'btn-quiet'),
           button('Hear lead', () => playWithRow(lead, row), 'btn-primary'),
           button('Another lead', () => { variant = (variant + 1) % 3; drawLead(); }, 'btn-quiet'),
-          button('Practice this lead', () => { void startAttempt(lead, `lead over ${labels}`); }, 'btn-quiet'),
+          button('Practice this lead', () => { void startAttempt(lead, `lead over ${labels}`, {
+            source: 'riff-school',
+            targetId: `harmony:${labels}`,
+          }); }, 'btn-quiet'),
           button('Save this lead', async () => {
             const riff = await context.library.saveRiff(lead, {
               comment: `Riff School · written over ${labels}`,
               tags: ['riff-school', 'harmony'],
             });
             selectedMyRiffId = riff.id;
+            playerModel.recordCreative('harmony', 'riff-school');
             context.say('Saved the lead. Now change it until it stops sounding like the app and starts sounding like you.');
             void renderMyRiffs();
           }, 'btn-quiet'),
