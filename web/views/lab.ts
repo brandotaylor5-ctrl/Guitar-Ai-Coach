@@ -96,7 +96,7 @@ export function labView(context: AppContext, params: Record<string, string> = {}
     ? requestedRoot
     : 9; // A minor pentatonic puts the classic first home under the hand at fret 5.
 
-  let scale = scaleById(params.scale)
+  let scale = (params.scale ? scaleById(params.scale) : null)
     ?? scaleById(params.mode === 'major' ? 'major-pent' : 'minor-pent')!;
   let zones = neckZones(rootPc, scale, context.session.tuning);
   let zoneIndex = 0;
