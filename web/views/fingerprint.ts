@@ -9,7 +9,7 @@
 import { buildFingerprint, describeFingerprint, suggestDeparture, MIN_TAKES_FOR_FINGERPRINT } from '../../src/fingerprint/fingerprint.ts';
 import { pcToName } from '../../src/music/notes.ts';
 import { h, clear } from '../ui/dom.ts';
-import { empty } from '../ui/render.ts';
+import { button, empty } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
 
 export function fingerprintView(context: AppContext): View {
@@ -29,10 +29,17 @@ export function fingerprintView(context: AppContext): View {
     );
 
     if (!fingerprint.hasEnoughMaterial) {
+      // Refusing to guess is right. Leaving the screen with nothing on it and
+      // nowhere to go is not — a page that only says "come back later" is a
+      // dead end, and every dead end reads as the app being broken.
       panel.appendChild(empty(
-        `There are only ${fingerprint.takeCount} ideas here so far. ` +
-        `Once there are ${MIN_TAKES_FOR_FINGERPRINT} or so, patterns start to show up. ` +
-        'Anything said before then would just be noise.',
+        fingerprint.takeCount === 0
+          ? `Nothing to draw from yet. This reads your own playing back to you — what you reach for, which notes you favour, how your ideas tend to move — and it needs about ${MIN_TAKES_FOR_FINGERPRINT} saved ideas before any of that is more than guesswork.`
+          : `${fingerprint.takeCount} so far. Around ${MIN_TAKES_FOR_FINGERPRINT} and patterns start to show. Anything said before then would just be noise.`,
+      ));
+      panel.appendChild(h('div', { class: 'practice-actions' },
+        button('Play something and let it listen', () => context.navigate('session'), 'btn-primary'),
+        button('Keep a lick from a lesson', () => context.navigate('path'), 'btn-quiet'),
       ));
       element.appendChild(panel);
       return;
