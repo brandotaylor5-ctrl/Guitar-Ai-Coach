@@ -141,6 +141,8 @@ export interface ChordExplanation {
   chroma: number[];
   /** Pitch classes judged to be played strings rather than harmonics. */
   fretted: number[];
+  /** Strength at each MIDI note, so a caller can ask about one string. */
+  perMidi: number[];
   /** How concentrated the energy is: chords hold over half in the top four. */
   concentration: number;
   /** The best few templates and what they scored. */
@@ -160,7 +162,7 @@ function analyseChord(db: Float32Array, sampleRate: number, fftSize: number): Ch
   const blank = (rejectedBy: string, extra: Partial<ChordExplanation> = {}): ChordExplanation => ({
     detection: null, rejectedBy, bassMidi,
     bassName: bassMidi < 0 ? '—' : NAMES[bassMidi % 12]!,
-    chroma, fretted: [], concentration: 0, candidates: [], ...extra,
+    chroma, perMidi, fretted: [], concentration: 0, candidates: [], ...extra,
   });
 
   const audible = chroma.map((v, pc) => ({ v, pc })).filter((x) => x.v >= 0.28).sort((a, b) => b.v - a.v);
@@ -369,6 +371,7 @@ function analyseChord(db: Float32Array, sampleRate: number, fftSize: number): Ch
     bassMidi,
     bassName: bassMidi < 0 ? '—' : NAMES[bassMidi % 12]!,
     chroma,
+    perMidi,
     ...context,
   };
 }

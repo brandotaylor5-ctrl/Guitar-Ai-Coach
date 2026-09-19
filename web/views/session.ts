@@ -12,6 +12,8 @@ import { motifContaining } from '../../src/phrase/motif.ts';
 import type { ChordDetection } from '../audio/chordDetect.ts';
 import { observeFreePlay, CurriculumStore } from '../../src/curriculum/watch.ts';
 import { chordDoctor } from '../ui/chordDoctor.ts';
+import { stringCheckPanel } from '../ui/stringCheck.ts';
+import { beginnerChordShapes } from '../../src/music/chordShapes.ts';
 import { h, clear, relativeTime, replace } from '../ui/dom.ts';
 import { button, empty, noteRow, highlightNote } from '../ui/render.ts';
 import { recallPanel } from './recall.ts';
@@ -144,6 +146,16 @@ export function sessionView(context: AppContext): View {
 
   // Opening the panel is what switches diagnostics on, so the detector is not
   // explaining itself eight times a second to nobody.
+  // Checking a chord needs the same per-frame evidence the doctor uses, so it
+  // turns diagnostics on the same way.
+  const checker = stringCheckPanel({
+    chords: beginnerChordShapes().map((shape) => shape.chord),
+    tuning: context.session.tuning,
+    listening: () => context.listening,
+    onNeedMic: () => { void context.startListening(); },
+  });
+  context.setChordDiagnostics?.(true);
+
   const doctor = chordDoctor();
   doctor.element.addEventListener('toggle', () => {
     context.setChordDiagnostics?.((doctor.element as HTMLDetailsElement).open);
@@ -170,6 +182,7 @@ export function sessionView(context: AppContext): View {
       h('article', { class: 'panel live-hearing-card progression-card' }, h('span', { class: 'live-hearing-label', text: 'PROGRESSION' }), progression),
     ),
 
+    checker.element,
     doctor.element,
 
     h('section', { class: 'panel live-next-panel' },
@@ -450,5 +463,5 @@ export function sessionView(context: AppContext): View {
   }, 650);
 
   update(); refreshHarmony();
-  return { element, update, onNotes:update, onFrame, onChord, onChordExplain: doctor.update, dispose(){ context.setChordDiagnostics?.(false); learnFromPlaying(); disposed=true; window.clearInterval(timer); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } };
+  return { element, update, onNotes:update, onFrame, onChord, onChordExplain: (explanation) => { checker.update(explanation); doctor.update(explanation); }, dispose(){ context.setChordDiagnostics?.(false); learnFromPlaying(); disposed=true; window.clearInterval(timer); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } };
 }
