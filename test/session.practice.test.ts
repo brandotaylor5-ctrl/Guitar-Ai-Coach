@@ -64,11 +64,35 @@ describe('a practice session, not a menu', () => {
     }
   });
 
-  test('a song only appears when it can actually be played', () => {
-    const session = buildSession(PATH[0]!, beginner, 20, NOW);
-    const song = session.items.find((item) => item.kind === 'song');
-    // With no chords, the slot must not promise a song they cannot play.
-    assert.ok(!song || song.goTo?.view === 'songs', 'do not hand a beginner a song they cannot play');
+  test('the song slot always names a song, and never lies about it', () => {
+    // It used to be headed "Play something whole" and then say "open Songs and
+    // listen to one you cannot play yet" — naming nothing. A heading that
+    // promises a song has to be followed by a song.
+    const song = buildSession(PATH[0]!, beginner, 20, NOW).items.find((i) => i.kind === 'song')!;
+    assert.ok(song, 'there is always a song slot');
+    assert.ok(song.goTo?.params?.song, 'it points at a specific song');
+    assert.match(song.title, /\w/);
+    // For somebody who cannot play it, it must say so rather than instruct.
+    assert.match(song.what, /cannot play it yet/i);
+    assert.notEqual(song.label, undefined, 'and it is not headed "play something whole"');
+  });
+
+  test('a player who can play something is told to play it, by name', () => {
+    const song = buildSession(PATH[5]!, playing, 20, NOW).items.find((i) => i.kind === 'song')!;
+    assert.match(song.title, /^Play .+ all the way through$/);
+    assert.ok(song.goTo?.params?.song);
+  });
+
+  test('the new thing carries its real instructions, not a pointer', () => {
+    const item = buildSession(PATH[0]!, beginner, 20, NOW).items.find((i) => i.kind === 'new')!;
+    assert.ok(item.do && item.do.length >= 3, 'the steps have to be on the card');
+    assert.deepEqual(item.do, PATH[0]!.steps);
+  });
+
+  test('a complete beginner is not told to mess about with nothing', () => {
+    const item = buildSession(PATH[0]!, beginner, 20, NOW).items.find((i) => i.kind === 'play')!;
+    assert.doesNotMatch(item.title, /whatever you want/i);
+    assert.ok(item.what.length > 40, 'give them something concrete instead');
   });
 
   test('something going stale gets brought back', () => {
@@ -108,3 +132,21 @@ describe('a practice session, not a menu', () => {
     assert.ok(titles.size >= 2, 'the same song every day is how a routine goes stale');
   });
 });
+
+describe('the session never sends you after a button that is not there', () => {
+  test('the beginner song slot names the control the song page actually has', () => {
+    // It said 'press Hear it' and the button is called 'Hear the whole song'.
+    // Small, and exactly the kind of thing that makes an app feel broken.
+    const song = buildSession(PATH[0]!, beginner, 20, NOW).items.find((i) => i.kind === 'song')!;
+    const quoted = [...song.what.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(quoted.length > 0, 'it should name the control it wants pressed');
+    for (const label of quoted) {
+      assert.ok(SONG_PAGE_BUTTONS.includes(label!), `the song page has no button called "${label}"`);
+    }
+  });
+});
+
+/** Controls the song page offers, whether or not the song can be played. */
+const SONG_PAGE_BUTTONS = [
+  'Hear the whole song', 'Play along', 'Just the chords', 'Bass and strum', 'The melody',
+];

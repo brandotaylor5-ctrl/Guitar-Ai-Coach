@@ -35,6 +35,21 @@ export interface SessionItem {
   title: string;
   /** What to actually do for these minutes. */
   what: string;
+  /**
+   * The actual instructions, so the session can be done on this screen.
+   *
+   * Without these the card showed a one-line summary and a button to go and
+   * read the real thing somewhere else, which makes a session a table of
+   * contents rather than something you can do.
+   */
+  do?: string[];
+  /**
+   * Heading for this slot, when the kind's usual one would be a lie.
+   *
+   * A slot headed "Play something whole" that then says you cannot play
+   * anything yet is exactly the kind of thing that makes an app feel broken.
+   */
+  label?: string;
   /** Why this is in today's session, in the coach's voice. */
   because: string;
   minutes: number;
@@ -124,6 +139,7 @@ export function buildSession(
     kind: 'new',
     title: current.title,
     what: current.outcome,
+    do: current.steps,
     because: 'New material goes here because it is the only part that needs you fresh. Everything else survives being tired.',
     minutes: Math.max(4, Math.round(minutes * 0.35)),
     goTo: { view: 'path' },
@@ -153,25 +169,45 @@ export function buildSession(
       goTo: { view: 'song', params: { song: song.id } },
     });
   } else {
+    // Never a slot headed "play something whole" that names no song. The
+    // easiest one in the repertoire is the target, and it is named, linked
+    // and playable to listen to even before it can be played.
+    const target = [...SONGS].sort((a, b) => a.difficulty - b.difficulty)[0]!;
+    const needs = chordsIn(target);
     items.push({
       kind: 'song',
-      title: 'Look at what you are working towards',
-      what: 'Open Songs and listen to one you cannot play yet. Find out which chord it needs.',
-      because: 'Knowing what the work is for is the thing that keeps it going.',
+      label: 'The song you are working towards',
+      title: `Listen to ${target.title}`,
+      what: `You cannot play it yet — it needs ${needs.join(' and ')}. Open it, press "Hear the whole song", and look at the chord shapes while it plays. This is the one you are working towards.`,
+      because: `${target.title} is the shortest distance between where you are and playing a whole song. Knowing which song the work is for is most of what keeps the work happening.`,
       minutes: 3,
-      goTo: { view: 'songs' },
+      goTo: { view: 'song', params: { song: target.id } },
     });
   }
 
-  // 5. Free play, unstructured on purpose.
-  items.push({
-    kind: 'play',
-    title: 'Play whatever you want',
-    what: 'No goal. Mess about. If something sounds good, play it twice so you remember it.',
-    because: 'Practice with no play in it stops being something you do. This is also where your own ideas come from — the app is listening if you want it caught.',
-    minutes: 2,
-    goTo: { view: 'session' },
-  });
+  // 5. Free play — but only once there is something to play with. Telling
+  // somebody who cannot yet fret a note to "mess about" is not an invitation,
+  // it is a blank page.
+  if (chords.length >= 1) {
+    items.push({
+      kind: 'play',
+      title: 'Play whatever you want',
+      what: 'No goal. Mess about. If something sounds good, play it twice so you remember it.',
+      because: 'Practice with no play in it stops being something you do. This is also where your own ideas come from — the app is listening if you want it caught.',
+      minutes: 2,
+      goTo: { view: 'session' },
+    });
+  } else {
+    items.push({
+      kind: 'play',
+      label: 'Finish with your ears',
+      title: 'Get used to the sound',
+      what: 'Play each string on its own, slowly, from thickest to thinnest and back. Listen to how long each one rings before it fades.',
+      because: 'Before anything else, your ear needs to know what this instrument sounds like when it is working. It also tells you whether it is in tune.',
+      minutes: 2,
+      goTo: { view: 'session' },
+    });
+  }
 
   return trimTo(items, minutes);
 }

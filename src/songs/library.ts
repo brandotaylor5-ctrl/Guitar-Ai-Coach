@@ -72,7 +72,7 @@ export const SONGS: Song[] = [
     key: 'G',
     bpm: 92,
     difficulty: 1,
-    why: 'Two chords, and they are two you almost certainly have. It is the shortest distance between holding a chord and playing an actual song someone would recognise.',
+    why: 'Two chords, and they are the two most songs start with. It is the shortest distance between holding a chord and playing something people recognise.',
     sections: [
       {
         id: 'verse',
@@ -103,7 +103,7 @@ export const SONGS: Song[] = [
     key: 'G',
     bpm: 100,
     difficulty: 1,
-    why: 'Three chords in the order thousands of songs use them. Learn this shape of song once and you can hear it coming in everything else.',
+    why: 'Three chords in the order thousands of songs use them. Learn this shape of song once and you start hearing it coming in everything else.',
     sections: [
       {
         id: 'verse',
