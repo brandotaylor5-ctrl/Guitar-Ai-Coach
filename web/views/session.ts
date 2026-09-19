@@ -32,6 +32,9 @@ import {
   compactChordLabel, inferHarmonyCenter, nextPlayableChord, normalizeChordLabel,
   qualityFamily, readMelody, readTime, readTouch,
 } from '../../src/coach/liveTutor.ts';
+import {
+  PlayerModelStore, buildPlayerProfile, phraseObservation, recommendAdaptiveTask,
+} from '../../src/coach/playerModel.ts';
 import { chordDiagram, chordTeachingCard } from '../ui/chordCard.ts';
 import { audioContext, audioOutput, unlockAudio } from '../audio/context.ts';
 import { h, clear, relativeTime, replace } from '../ui/dom.ts';
@@ -86,6 +89,23 @@ export function sessionView(context: AppContext): View {
     })(),
   );
 
+  const playerModel = new PlayerModelStore(
+    (() => {
+      try {
+        window.localStorage.setItem('__player_model_probe__', '1');
+        window.localStorage.removeItem('__player_model_probe__');
+        return window.localStorage;
+      } catch {
+        const memory = new Map<string, string>();
+        return {
+          getItem: (k: string) => memory.get(k) ?? null,
+          setItem: (k: string, v: string) => { memory.set(k, v); },
+        };
+      }
+    })(),
+  );
+  let lastAdaptiveKind = '';
+
   // ---- the four things a musician actually wants to know -----------------
 
   const noteReadout = h('span', { class: 'live-now-note', text: '—' });
@@ -118,6 +138,7 @@ export function sessionView(context: AppContext): View {
   const harmonyNext = h('div', { class: 'live-harmony-next muted', text: 'Play two chord changes and I can suggest a teachable next move.' });
 
   const tryNext = h('div', { class: 'live-try-next muted', text: 'Play something. I will give you one musical thing to try, not ten.' });
+  const adaptiveHost = h('div', { class: 'live-adaptive-host' });
   const chordTutorHost = h('div', { class: 'live-chord-tutor' });
   const createHost = h('div', { class: 'live-create-host' });
   const coachFeed = h('div', { class: 'live-coach-feed', 'aria-live': 'polite' });
@@ -247,6 +268,8 @@ export function sessionView(context: AppContext): View {
       tryNext,
     ),
 
+    adaptiveHost,
+
     chordTutorHost,
     createHost,
 
@@ -328,6 +351,61 @@ export function sessionView(context: AppContext): View {
   }
 
   addCoach('I’m ready. Start Live Coach and play naturally. I will teach from whatever shows up.', 'hello');
+
+  function renderAdaptiveCoach(announce = false): void {
+    clear(adaptiveHost);
+    const profile = buildPlayerProfile(playerModel.load());
+    const task = recommendAdaptiveTask(profile);
+
+    const stats = h('div', { class: 'live-adaptive-stats' },
+      h('span', { class: 'badge', text: `${profile.phraseCount} phrases remembered` }),
+      h('span', { class: 'badge', text: `${profile.practiceCount} measured attempts` }),
+      profile.tempo.median
+        ? h('span', { class: 'badge', text: `usual pulse ~${Math.round(profile.tempo.median)} BPM` })
+        : null,
+      profile.timing.tendency !== 'unknown'
+        ? h('span', { class: 'badge', text: `timing: ${profile.timing.tendency}` })
+        : null,
+    );
+
+    const params: Record<string, string> = {
+      lesson: task.lessonId,
+      adaptive: task.kind,
+    };
+    if (task.zoneIndex !== undefined) params.zone = String(task.zoneIndex);
+    if (task.bpm !== undefined) params.bpm = String(task.bpm);
+
+    adaptiveHost.appendChild(h('section', { class: 'panel live-adaptive-panel' },
+      h('div', { class: 'live-section-head' },
+        h('div', {},
+          h('p', { class: 'eyebrow', text: 'BASED ON YOUR PLAYING' }),
+          h('h3', { text: task.title }),
+          h('p', { text: task.reason }),
+        ),
+        h('span', { class: 'badge', text: `${Math.round(task.confidence * 100)}% confidence` }),
+      ),
+      h('p', { class: 'live-adaptive-instruction', text: task.instruction }),
+      stats,
+      h('div', { class: 'practice-actions' },
+        button('Train this now', () => context.navigate('lab', params), 'btn-primary'),
+        button('See what Coach has learned', () => context.navigate('fingerprint'), 'btn-quiet'),
+      ),
+    ));
+
+    if (
+      announce &&
+      task.kind !== 'collect' &&
+      task.confidence >= .65 &&
+      task.kind !== lastAdaptiveKind
+    ) {
+      lastAdaptiveKind = task.kind;
+      addCoach(
+        `I’m starting to see something across sessions: ${task.reason} ${task.instruction}`,
+        'teaching',
+        button('Train that', () => context.navigate('lab', params), 'btn-quiet'),
+      );
+    }
+  }
 
   function stopTempoPractice(): void {
     if (tempoClickTimer) window.clearInterval(tempoClickTimer);
@@ -752,6 +830,8 @@ export function sessionView(context: AppContext): View {
           button('Hear your phrase → answer', () => { void context.player.play(answer.full); }, 'btn-primary'),
           button('Keep the two-part riff', async () => {
             await context.library.saveRiff(answer.full, { comment: 'Live Coach · call and response' });
+            playerModel.recordCreative('answer', 'live-coach');
+            renderAdaptiveCoach();
             context.say('Saved the call-and-response version as a new riff.');
           }, 'btn-quiet'),
         ),
@@ -771,6 +851,8 @@ export function sessionView(context: AppContext): View {
               await context.library.saveRiff(ending.full, {
                 comment: `Live Coach · ${ending.label.toLowerCase()} ending`,
               });
+              playerModel.recordCreative('ending', 'live-coach');
+              renderAdaptiveCoach();
               context.say(`Saved the ${ending.label.toLowerCase()} version.`);
             }, 'btn-quiet'),
           ),
@@ -792,6 +874,8 @@ export function sessionView(context: AppContext): View {
         await context.keepClipFor(riff.versions[0]?.audioRef);
         const song = await context.library.createSong(name.trim());
         await context.library.addToSong(song.id, 'verse', riff.id, riff.currentVersionId);
+        playerModel.recordCreative('song-seed', 'live-coach');
+        renderAdaptiveCoach();
         context.say('Song seed started from the exact phrase you played.');
         context.navigate('seeds');
       }, 'btn-primary'),
@@ -940,6 +1024,8 @@ export function sessionView(context: AppContext): View {
     const melody = readMelody(analysis);
     const time = readTime(analysis, previousAnalysis);
 
+    playerModel.recordPhrase(phraseObservation(latest.id, analysis));
+    renderAdaptiveCoach(true);
     renderMusicalRead(analysis);
     renderPhraseCoachMove(analysis);
     renderCreateFromRecall(recall);
@@ -1066,6 +1152,7 @@ export function sessionView(context: AppContext): View {
 
   update();
   refreshHarmony();
+  renderAdaptiveCoach();
 
   return {
     element,
