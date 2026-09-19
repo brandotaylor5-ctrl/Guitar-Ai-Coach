@@ -11,6 +11,9 @@ import { explainRelation } from '../../src/explain/explain.ts';
 import { analyzeNotes } from '../../src/phrase/analyze.ts';
 import { suggestAnswer, suggestChords, suggestEndings } from '../../src/create/suggest.ts';
 import { motifBranches } from '../../src/create/songwriting.ts';
+import {
+  PlayerModelStore, buildPlayerProfile,
+} from '../../src/coach/playerModel.ts';
 import { chordShape, chordShapeMidis } from '../../src/music/chordShapes.ts';
 import { midiToName, pcToName } from '../../src/music/notes.ts';
 import { h, clear, relativeTime } from '../ui/dom.ts';
@@ -22,6 +25,21 @@ const ROLES = ['intro', 'verse', 'pre-chorus', 'chorus', 'bridge', 'transition',
 
 export function songsView(context: AppContext): View {
   const element = h('div', { class: 'view view-songs' });
+  const playerModel = new PlayerModelStore(
+    (() => {
+      try {
+        window.localStorage.setItem('__song_model_probe__', '1');
+        window.localStorage.removeItem('__song_model_probe__');
+        return window.localStorage;
+      } catch {
+        const memory = new Map<string, string>();
+        return {
+          getItem: (k: string) => memory.get(k) ?? null,
+          setItem: (k: string, v: string) => { memory.set(k, v); },
+        };
+      }
+    })(),
+  );
   let openSongId: string | null = null;
   let workshopRiffId: string | null = null;
 
@@ -164,6 +182,21 @@ export function songsView(context: AppContext): View {
     ));
     panel.appendChild(h('p', { class: 'muted', text: `Your riff: ${analysis.noteNames.join(' → ')}` }));
 
+    const profile = buildPlayerProfile(playerModel.load());
+    const creativeHabit = profile.creative[0];
+    if (creativeHabit && profile.creativeCount >= 3 && creativeHabit.share >= .5) {
+      const alternative = creativeHabit.kind === 'rhythm' ? 'space or register'
+        : creativeHabit.kind === 'space' ? 'rhythm or register'
+          : creativeHabit.kind === 'register' ? 'rhythm or ending'
+            : creativeHabit.kind === 'ending' ? 'rhythm or space'
+              : 'one small change instead of another new section';
+      panel.appendChild(h('div', { class: 'departure songwriting-habit' },
+        h('p', { class: 'eyebrow', text: 'A PATTERN IN YOUR WRITING' }),
+        h('p', { text: `You have kept ${creativeHabit.kind} changes more than anything else lately.` }),
+        h('p', { class: 'muted', text: `That may be part of your voice. For contrast, make this pass about ${alternative} and leave the rest alone.` }),
+      ));
+    }
+
     const harmony = h('div', { class: 'section' },
       h('h3', { text: '1 · Put harmony under it' }),
       h('p', { class: 'muted', text: 'These chords are suggested because they already contain a lot of the notes you played. They are auditions, not answers.' }),
@@ -211,6 +244,7 @@ export function songsView(context: AppContext): View {
                 parentId: riff.currentVersionId,
                 comment: `Song Workshop · ${branch.label.toLowerCase()}`,
               });
+              playerModel.recordCreative(branch.kind, 'song-workshop');
               context.say('Kept as a new version. Your original is untouched.');
               void render();
             }, 'btn-quiet'),
@@ -236,6 +270,7 @@ export function songsView(context: AppContext): View {
               parentId: riff.currentVersionId,
               comment: 'Song Workshop · call-and-response extension',
             });
+            playerModel.recordCreative('answer', 'song-workshop');
             context.say('Kept as a new version. Your original is still there.');
             void render();
           }, 'btn-quiet'),
@@ -258,6 +293,7 @@ export function songsView(context: AppContext): View {
                 parentId: riff.currentVersionId,
                 comment: `Song Workshop · ${ending.label.toLowerCase()} ending`,
               });
+              playerModel.recordCreative('ending', 'song-workshop');
               context.say('Kept as a new version. Nothing was overwritten.');
               void render();
             }, 'btn-quiet'),
@@ -277,6 +313,7 @@ export function songsView(context: AppContext): View {
         if (name === null || !name.trim()) return;
         const song = await context.library.createSong(name.trim());
         await context.library.addToSong(song.id, 'verse', riff.id, riff.currentVersionId);
+        playerModel.recordCreative('song-seed', 'song-workshop');
         openSongId = song.id;
         context.say('Song seed started with your riff as the verse.');
         void render();
