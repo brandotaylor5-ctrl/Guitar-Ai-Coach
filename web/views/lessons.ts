@@ -207,9 +207,11 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     // measure yet. Let Live Coach observe while the learner practises instead.
     if (skill.kind === 'technique') {
       const destination = skill.practice ?? 'session';
-      const practiceLabel = destination === 'lab' ? 'Practice this on the workbench'
-        : destination === 'songs' ? 'Use this in Song Workshop'
-          : 'Start a guided 45-second practice';
+      const fromCourse = Boolean(params.path);
+      const practiceLabel = fromCourse ? 'Start guided practice'
+        : destination === 'lab' ? 'Practice this on the workbench'
+          : destination === 'songs' ? 'Use this in Song Workshop'
+            : 'Start a guided 45-second practice';
       const practiceView = destination === 'lab' ? 'lab' : destination === 'songs' ? 'songs' : 'session';
       const steps = skill.teach?.length
         ? h('ol', { class: 'guided-steps' }, ...skill.teach.map((step) => h('li', { text: step })))
@@ -223,7 +225,7 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
         h('details', { class: 'theory' }, h('summary', { text: 'Why this is worth your time' }), h('p', { text: skill.why })),
         h('div', { class: 'practice-actions' },
           button(practiceLabel, () => {
-            if (practiceView === 'session') void startTechniqueGuide(skill);
+            if (fromCourse || practiceView === 'session') void startTechniqueGuide(skill);
             else context.navigate(practiceView, { skill: skill.id });
           }, 'btn-primary'),
           button('I understand the move — keep me going', () => {
