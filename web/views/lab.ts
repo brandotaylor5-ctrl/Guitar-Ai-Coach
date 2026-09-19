@@ -1,89 +1,51 @@
 /**
- * Riff Lab: scales, musical riff shapes, progression playback and immediate
- * listen-to-my-attempt feedback. The loop is hear -> see -> play -> feedback.
+ * Riff School.
+ *
+ * Not a lick vending machine. This view connects ear -> fretboard -> phrase ->
+ * another position -> variation -> song. The teaching material is original and
+ * built from scale functions, so the reusable skill is the point.
  */
 
-import type { NoteEvent } from '../../src/types.ts';
-import { midiToName } from '../../src/music/notes.ts';
-import { inferFingering, renderTab } from '../../src/music/fretboard.ts';
+import type { NoteEvent, Riff } from '../../src/types.ts';
+import { midiToName, pcToName } from '../../src/music/notes.ts';
+import {
+  SCALES, scaleById, scaleBox, scaleNoteNames, scaleRun,
+} from '../../src/music/scales.ts';
+import { renderTab, inferFingering } from '../../src/music/fretboard.ts';
 import { practiceAttempt } from '../../src/practice/practice.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
-import { h, clear } from '../ui/dom.ts';
-import { button, fretboardDiagram, noteRow, highlightNote, tabBlock } from '../ui/render.ts';
+import {
+  RIFF_LESSONS, buildRiffStudy, developStudy, neckZones, rootLocations,
+} from '../../src/curriculum/riffSchool.ts';
+import type {
+  DevelopedRiff, NeckZone, RiffLesson, RiffStudy,
+} from '../../src/curriculum/riffSchool.ts';
 import { leadOverProgression } from '../../src/create/lead.ts';
 import type { LeadChord } from '../../src/create/lead.ts';
+import { h, clear, replace } from '../ui/dom.ts';
+import {
+  button, fretboardDiagram, highlightNote, noteRow, scaleDiagram, tabBlock,
+} from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
 
 const ROOTS = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
-
-const SCALE_TYPES = [
-  { id: 'minor-pent', label: 'Minor pentatonic', degrees: [0, 3, 5, 7, 10], minor: true },
-  { id: 'major-pent', label: 'Major pentatonic', degrees: [0, 2, 4, 7, 9], minor: false },
-  { id: 'minor', label: 'Natural minor', degrees: [0, 2, 3, 5, 7, 8, 10], minor: true },
-  { id: 'major', label: 'Major', degrees: [0, 2, 4, 5, 7, 9, 11], minor: false },
-  { id: 'dorian', label: 'Dorian', degrees: [0, 2, 3, 5, 7, 9, 10], minor: true },
-  { id: 'mixolydian', label: 'Mixolydian', degrees: [0, 2, 4, 5, 7, 9, 10], minor: false },
-  { id: 'blues', label: 'Blues', degrees: [0, 3, 5, 6, 7, 10], minor: true },
-];
-
-type Level = 'easy' | 'medium' | 'stretch';
-
-interface RiffTemplate {
-  id: string;
-  name: string;
-  feel: string;
-  level: Level;
-  lesson: string;
-  degrees: number[];
-  rhythm: number[];
-}
-
 type LabChord = LeadChord;
+type LessonLevel = 'all' | RiffLesson['level'];
 
-const TEMPLATES: RiffTemplate[] = [
-  { id: 'drone', name: 'Drone & Answer', feel: 'Low home note, then a little reply above it.', level: 'easy', lesson: 'Hear a bass note as a floor while the melody moves.', degrees: [0, 2, 0, 3, 2, 0], rhythm: [1, .5, .5, .75, .75, 1.5] },
-  { id: 'three', name: 'Three-Step Hook', feel: 'A compact shape that sounds like a hook, not an exercise.', level: 'easy', lesson: 'Repeat a small shape before adding more notes.', degrees: [0, 1, 2, 1, 0, 4, 2, 0], rhythm: [.5, .5, 1, .5, .5, 1, .5, 1.5] },
-  { id: 'pedal', name: 'Pedal Tone', feel: 'Home keeps returning while an upper note changes.', level: 'easy', lesson: 'A repeated note can glue a riff together.', degrees: [0, 3, 0, 4, 0, 2, 0, 1, 0], rhythm: [.5, .5, .5, .5, .5, .5, .5, .5, 1] },
-  { id: 'space', name: 'Open-Space Climb', feel: 'Leaves room between notes so the guitar can ring.', level: 'easy', lesson: 'Silence is part of the riff.', degrees: [0, 1, 3, 2, 4, 3, 5], rhythm: [1, .5, 1, .5, 1, .5, 1.5] },
-  { id: 'descend', name: 'Descending Turn', feel: 'Starts high, folds inward, then lands without sounding too neat.', level: 'medium', lesson: 'A line can resolve by contour, not only by hitting home.', degrees: [5, 4, 2, 3, 1, 2, 0], rhythm: [.5, .5, .75, .25, .5, .5, 1.5] },
-  { id: 'call', name: 'Call / Response', feel: 'Two short ideas that sound like they are talking.', level: 'medium', lesson: 'Think in sentences instead of endless scales.', degrees: [0, 2, 3, 2, 5, 4, 2, 0], rhythm: [.5, .5, 1, 1, .5, .5, .75, 1.25] },
-  { id: 'late', name: 'Late-Night Loop', feel: 'A darker repeating cell with one color-changing note.', level: 'medium', lesson: 'Change one note and keep the rhythm recognizable.', degrees: [0, 2, 4, 2, 1, 2, 4, 2], rhythm: [.75, .25, .5, .5, .75, .25, .5, 1] },
-  { id: 'shuffle', name: 'Lopsided Shuffle', feel: 'A little bounce that gets addictive when repeated.', level: 'medium', lesson: 'Uneven rhythm can create identity before pitch does.', degrees: [0, 1, 2, 0, 3, 2, 1, 0], rhythm: [.5, .25, .75, .5, .5, .25, .75, 1] },
-  { id: 'skip', name: 'String-Skip Shape', feel: 'Leaps away from home and snaps back.', level: 'medium', lesson: 'Bigger interval jumps make a line feel less scalar.', degrees: [0, 4, 1, 5, 2, 4, 0], rhythm: [.5, .5, .5, .75, .25, .5, 1.5] },
-  { id: 'push', name: 'Push the Downbeat', feel: 'Starts the thought early so the landing feels bigger.', level: 'medium', lesson: 'Where a note starts matters as much as which note it is.', degrees: [1, 2, 0, 3, 2, 4, 2, 0], rhythm: [.25, .25, 1, .5, .5, .5, .5, 1.5] },
-  { id: 'wide', name: 'Wide-Open Fifths', feel: 'Big, plain-spoken movement with room around it.', level: 'stretch', lesson: 'Wide intervals can sound strong without many notes.', degrees: [0, 4, 0, 5, 2, 5, 1, 0], rhythm: [.75, .75, .5, .5, .75, .25, .5, 1.5] },
-  { id: 'question', name: 'Question Mark', feel: 'Refuses to settle where you expect.', level: 'stretch', lesson: 'An unresolved ending can make you want the next bar.', degrees: [0, 2, 3, 4, 2, 5, 4, 3], rhythm: [.5, .5, .5, .5, .75, .25, .5, 1.5] },
-  { id: 'mirror', name: 'Mirror Phrase', feel: 'Climbs, then answers with the contour turned around.', level: 'stretch', lesson: 'Reuse a contour instead of inventing eight new notes.', degrees: [0, 1, 3, 4, 4, 3, 1, 0], rhythm: [.5, .5, .75, .75, .5, .5, .75, 1.25] },
-  { id: 'octave', name: 'Octave Lift', feel: 'Repeats the idea higher so the second half feels larger.', level: 'stretch', lesson: 'Register can create development without changing the idea.', degrees: [0, 1, 2, 0, 5, 6, 7, 5], rhythm: [.5, .5, .75, 1, .5, .5, .75, 1.5] },
-  { id: 'threebeat', name: 'Three-Beat Cell', feel: 'A repeating cell that keeps crossing the bar line.', level: 'stretch', lesson: 'A phrase length that fights the bar can create momentum.', degrees: [0, 2, 1, 0, 2, 1, 3, 2, 1], rhythm: [.5, .5, .5, .5, .5, .5, .5, .5, 1] },
-  { id: 'resolve-late', name: 'Late Resolution', feel: 'Keeps dodging home until the last possible second.', level: 'stretch', lesson: 'Delay the obvious answer to make it matter more.', degrees: [2, 3, 4, 2, 5, 3, 1, 2, 0], rhythm: [.5, .5, .5, .5, .75, .25, .5, .5, 1.5] },
-];
-
-function scaleMidis(rootPc: number, degrees: number[], tuningLow: number): number[] {
-  let root = tuningLow;
-  while (((root % 12) + 12) % 12 !== rootPc) root++;
-  const out: number[] = [];
-  for (let octave = 0; octave < 3; octave++) {
-    for (const degree of degrees) out.push(root + degree + octave * 12);
-  }
-  return out;
+function eventFromPosition(midi: number, startMs: number, durationMs: number): NoteEvent {
+  return { midi, startMs, durationMs, confidence: 1, velocity: .6 };
 }
 
-function riffFromTemplate(template: RiffTemplate, notes: number[], beatMs = 430): NoteEvent[] {
-  let cursor = 0;
-  return template.degrees.map((degree, index) => {
-    const midi = notes[Math.max(0, Math.min(notes.length - 1, degree))]!;
-    const duration = template.rhythm[index] ?? .5;
-    const event: NoteEvent = {
-      midi,
-      startMs: cursor,
-      durationMs: Math.max(130, beatMs * duration * .78),
-      confidence: 1,
-      velocity: .62,
-    };
-    cursor += beatMs * duration;
-    return event;
-  });
+function eventsFromRun(positions: ReturnType<typeof scaleRun>, bpm = 92): NoteEvent[] {
+  const step = 60_000 / bpm / 2;
+  return positions.map((position, index) =>
+    eventFromPosition(position.midi, index * step, step * .82));
+}
+
+function currentRiffNotes(riff: Riff): NoteEvent[] {
+  return riff.versions.find((version) => version.id === riff.currentVersionId)?.notes
+    ?? riff.versions[0]?.notes
+    ?? [];
 }
 
 function makeChord(rootPc: number, minor: boolean): LabChord {
@@ -100,31 +62,13 @@ function parseProgression(raw: string | undefined): LabChord[] {
   }).filter((chord): chord is LabChord => chord !== null).slice(0, 8);
 }
 
-function progressions(rootPc: number, minor: boolean): LabChord[][] {
-  const c = (offset: number, isMinor = false) => makeChord((rootPc + offset) % 12, isMinor);
-  return minor
-    ? [
-        [c(0, true), c(8), c(3), c(10)],
-        [c(0, true), c(5, true), c(8), c(7)],
-        [c(0, true), c(10), c(8), c(10)],
-      ]
-    : [
-        [c(0), c(7), c(9, true), c(5)],
-        [c(0), c(5), c(9, true), c(7)],
-        [c(9, true), c(5), c(0), c(7)],
-      ];
-}
-
 function nearestMidiForPc(pitchClass: number, around: number): number {
   let best = around;
-  let distance = 99;
+  let distance = Infinity;
   for (let midi = 40; midi <= 84; midi++) {
-    if (midi % 12 !== pitchClass) continue;
+    if (((midi % 12) + 12) % 12 !== pitchClass) continue;
     const next = Math.abs(midi - around);
-    if (next < distance) {
-      best = midi;
-      distance = next;
-    }
+    if (next < distance) { best = midi; distance = next; }
   }
   return best;
 }
@@ -133,10 +77,14 @@ function progressionNotes(chords: LabChord[], barMs = 1050): NoteEvent[] {
   const out: NoteEvent[] = [];
   chords.forEach((chord, index) => {
     const root = nearestMidiForPc(chord.rootPc, 50);
-    const third = root + (chord.minor ? 3 : 4);
-    const fifth = root + 7;
-    for (const midi of [root, third, fifth]) {
-      out.push({ midi, startMs: index * barMs, durationMs: barMs * .84, confidence: 1, velocity: .45 });
+    for (const midi of [root, root + (chord.minor ? 3 : 4), root + 7]) {
+      out.push({
+        midi,
+        startMs: index * barMs,
+        durationMs: barMs * .84,
+        confidence: 1,
+        velocity: .43,
+      });
     }
   });
   return out;
@@ -144,266 +92,639 @@ function progressionNotes(chords: LabChord[], barMs = 1050): NoteEvent[] {
 
 export function labView(context: AppContext, params: Record<string, string> = {}): View {
   const requestedRoot = Number(params.root);
-  let rootPc = Number.isInteger(requestedRoot) && requestedRoot >= 0 && requestedRoot <= 11 ? requestedRoot : 4;
-  let scale = SCALE_TYPES.find((item) => item.id === params.scale)
-    ?? (params.mode === 'minor'
-      ? SCALE_TYPES.find((item) => item.id === 'minor')!
-      : params.mode === 'major'
-        ? SCALE_TYPES.find((item) => item.id === 'major')!
-        : SCALE_TYPES[0]!);
-  const lessonSkillId = params.skill;
-  let curriculum: CurriculumStore | null = null;
-  if (lessonSkillId) {
-    try {
-      window.localStorage.setItem('__curriculum_probe__', '1');
-      window.localStorage.removeItem('__curriculum_probe__');
-      curriculum = new CurriculumStore(window.localStorage);
-    } catch {
-      curriculum = null;
-    }
-  }
+  let rootPc = Number.isInteger(requestedRoot) && requestedRoot >= 0 && requestedRoot <= 11
+    ? requestedRoot
+    : 9; // A minor pentatonic puts the classic first home under the hand at fret 5.
+
+  let scale = (params.scale ? scaleById(params.scale) : null)
+    ?? scaleById(params.mode === 'major' ? 'major-pent' : 'minor-pent')!;
+  let zones = neckZones(rootPc, scale, context.session.tuning);
+  let zoneIndex = 0;
+  let selectedLessonId = RIFF_LESSONS[0]!.id;
+  let lessonLevel: LessonLevel = 'all';
+  let attemptStartMs: number | null = null;
+  let attemptTarget: NoteEvent[] | null = null;
+  let attemptLabel = '';
+  let revealStudy = false;
+  let selectedMyRiffId = params.riff ?? '';
+  let disposed = false;
+
   const incomingProgression = parseProgression(params.progression);
-  let level: 'all' | Level = 'all';
-  let selectedId = TEMPLATES[0]!.id;
-  let practiceStartMs: number | null = null;
-  let currentRiffs = new Map<string, NoteEvent[]>();
+  const linkedSkillId = params.skill;
+  let curriculum: CurriculumStore | null = null;
+  try {
+    window.localStorage.setItem('__riff_school_probe__', '1');
+    window.localStorage.removeItem('__riff_school_probe__');
+    curriculum = new CurriculumStore(window.localStorage);
+  } catch {
+    curriculum = null;
+  }
+
+  // ---- controls -----------------------------------------------------------
 
   const rootSelect = h('select', { class: 'select' }) as HTMLSelectElement;
-  ROOTS.forEach((name, pc) => rootSelect.appendChild(h('option', { value: pc, text: name, selected: pc === rootPc })));
+  ROOTS.forEach((name, pc) =>
+    rootSelect.appendChild(h('option', { value: pc, text: name, selected: pc === rootPc })));
 
   const scaleSelect = h('select', { class: 'select' }) as HTMLSelectElement;
-  SCALE_TYPES.forEach((item) => scaleSelect.appendChild(h('option', { value: item.id, text: item.label, selected: item.id === scale.id })));
+  const featuredScales = [
+    'minor-pent', 'major-pent', 'blues', 'dorian-pent', 'dominant-pent',
+    'major', 'minor', 'dorian', 'mixolydian',
+  ];
+  for (const id of featuredScales) {
+    const item = scaleById(id);
+    if (!item) continue;
+    scaleSelect.appendChild(h('option', {
+      value: item.id,
+      text: item.name,
+      selected: item.id === scale.id,
+    }));
+  }
 
   const levelSelect = h('select', { class: 'select' }) as HTMLSelectElement;
-  [['all', 'All levels'], ['easy', 'Easy'], ['medium', 'Medium'], ['stretch', 'Stretch me']]
-    .forEach(([value, label]) => levelSelect.appendChild(h('option', { value, text: label })));
+  [
+    ['all', 'All phrase skills'],
+    ['start', 'Start · make a phrase'],
+    ['connect', 'Connect · stop playing boxes'],
+    ['create', 'Create · develop ideas'],
+  ].forEach(([value, label]) =>
+    levelSelect.appendChild(h('option', { value, text: label })));
 
-  const scaleHost = h('div', { class: 'lab-scale-host' });
-  const riffsHost = h('div', { class: 'lab-riffs' });
-  const detailHost = h('div', { class: 'lab-detail' });
-  const progressionsHost = h('div', { class: 'lab-progressions' });
-  const practiceHost = h('div', { class: 'lab-practice-feedback muted', text: 'Pick a riff, hear it, then let the app listen to your attempt.' });
+  const zoneHost = h('div', { class: 'riff-zone-strip' });
+  const mapHost = h('div', { class: 'riff-map-host' });
+  const lessonHost = h('div', { class: 'riff-school-lessons' });
+  const studyHost = h('div', { class: 'riff-study-host' });
+  const feedbackHost = h('div', { class: 'riff-attempt-feedback' });
+  const myRiffsHost = h('div', { class: 'my-riff-trainer-host' });
+  const liveHarmonyHost = h('div', { class: 'live-harmony-riff-host' });
 
-  const incomingPanel = incomingProgression.length >= 2
-    ? h('section', { class: 'panel live-next-panel' },
-        h('span', { class: 'live-hearing-label', text: 'FROM LIVE COACH' }),
-        h('h3', { text: 'That progression you just played is here.' }),
-        h('p', { class: 'muted', text: `${incomingProgression.map((chord) => chord.label).join(' → ')} · I’ll use these exact chords below instead of swapping in a stock loop.` }),
-      )
-    : h('div', {});
-
-  const element = h('div', { class: 'view view-lab' },
-    h('section', { class: 'panel lab-hero' },
+  const element = h('div', { class: 'view view-lab riff-school-view' },
+    h('section', { class: 'panel riff-school-hero' },
       h('div', {},
-        h('p', { class: 'lab-kicker', text: 'RIFF LAB' }),
-        h('h2', { text: 'Turn theory into something your fingers can hear.' }),
-        h('p', { class: 'muted', text: 'Choose a sound, steal a musical shape, build leads over chord loops, slow them down, and have the app check your take.' }),
+        h('p', { class: 'lab-kicker', text: 'RIFF SCHOOL' }),
+        h('h2', { text: 'Learn the neck by making music on it.' }),
+        h('p', { class: 'muted', text: 'Hear it → find it → play it → move it → change it → keep the version that becomes yours.' }),
       ),
       h('div', { class: 'lab-controls' },
-        h('label', {}, 'Key ', rootSelect),
-        h('label', {}, 'Scale ', scaleSelect),
-        h('label', {}, 'Shelf ', levelSelect),
+        h('label', {}, 'Home ', rootSelect),
+        h('label', {}, 'Sound ', scaleSelect),
+        h('label', {}, 'Focus ', levelSelect),
       ),
     ),
-    incomingPanel,
-    h('section', { class: 'panel' },
-      h('h3', { text: 'Scale explorer' }),
-      h('p', { class: 'muted', text: 'Tap a note to hear it. The fretboard shows practical places to find the sound in your current tuning.' }),
-      scaleHost,
-    ),
-    h('section', { class: 'panel' },
+
+    h('section', { class: 'panel riff-map-panel' },
       h('div', { class: 'lab-section-head' },
-        h('div', {}, h('h3', { text: 'Riff shelf' }), h('p', { class: 'muted', text: 'Musical shapes grouped by how much they ask of your hands and ears.' })),
-        button('Surprise me', () => {
-          const pool = filteredTemplates();
-          selectedId = pool[Math.floor(Math.random() * pool.length)]?.id ?? TEMPLATES[0]!.id;
-          renderRiffs();
-        }, 'btn-quiet'),
+        h('div', {},
+          h('p', { class: 'eyebrow', text: '1 · MAP THE NECK' }),
+          h('h3', { text: 'One sound. Connected neighborhoods.' }),
+          h('p', { class: 'muted', text: 'These are hand-sized zones, not magic boxes. Roots and shared notes are the landmarks that let you move between them.' }),
+        ),
       ),
-      riffsHost,
-      detailHost,
-      h('div', { class: 'lab-practice-box' }, h('h4', { text: 'PLAY IT BACK TO ME' }), practiceHost),
+      zoneHost,
+      mapHost,
     ),
-    h('section', { class: 'panel' },
-      h('h3', { text: 'Progression → riff playground' }),
-      h('p', { class: 'muted', text: 'Hear the harmony first. Then make different lead ideas that target notes inside those chords while staying in your chosen scale.' }),
-      progressionsHost,
+
+    h('section', { class: 'panel riff-school-panel' },
+      h('div', { class: 'lab-section-head' },
+        h('div', {},
+          h('p', { class: 'eyebrow', text: '2 · BUILD VOCABULARY' }),
+          h('h3', { text: 'Original phrases that teach one musical move.' }),
+          h('p', { class: 'muted', text: 'No famous-riff database. These studies teach reusable devices: motif, space, contour, call-and-response, rhythmic identity and delayed resolution.' }),
+        ),
+      ),
+      lessonHost,
+      studyHost,
+      h('div', { class: 'lab-practice-box riff-feedback-box' },
+        h('h4', { text: 'LIVE ATTEMPT' }),
+        feedbackHost,
+      ),
+    ),
+
+    h('section', { class: 'panel my-riff-panel' },
+      h('div', { class: 'lab-section-head' },
+        h('div', {},
+          h('p', { class: 'eyebrow', text: '3 · MY RIFF TRAINER' }),
+          h('h3', { text: 'Bring your own musical problem.' }),
+          h('p', { class: 'muted', text: 'Anything you captured in Coach can become a slow-down, replay and live-comparison exercise here.' }),
+        ),
+      ),
+      myRiffsHost,
+    ),
+
+    h('section', { class: 'panel live-riff-harmony-panel' },
+      h('div', { class: 'lab-section-head' },
+        h('div', {},
+          h('p', { class: 'eyebrow', text: '4 · PLAY THE CHANGES' }),
+          h('h3', { text: incomingProgression.length >= 2 ? 'Build a line over the chords you just played.' : 'Harmony becomes the next layer.' }),
+          h('p', { class: 'muted', text: incomingProgression.length >= 2
+            ? 'This is your Live Coach progression — not a stock backing loop.'
+            : 'Play a progression in Coach and choose “Build a riff over these.” Riff School will use those exact chord changes.' }),
+        ),
+      ),
+      liveHarmonyHost,
     ),
   );
 
-  rootSelect.addEventListener('change', () => { rootPc = Number(rootSelect.value); render(); });
-  scaleSelect.addEventListener('change', () => { scale = SCALE_TYPES.find((item) => item.id === scaleSelect.value) ?? SCALE_TYPES[0]!; render(); });
+  // ---- state / refresh ----------------------------------------------------
+
+  rootSelect.addEventListener('change', () => {
+    rootPc = Number(rootSelect.value);
+    resetSound();
+  });
+  scaleSelect.addEventListener('change', () => {
+    scale = scaleById(scaleSelect.value) ?? scaleById('minor-pent')!;
+    resetSound();
+  });
   levelSelect.addEventListener('change', () => {
-    level = levelSelect.value as 'all' | Level;
-    const pool = filteredTemplates();
-    if (!pool.some((item) => item.id === selectedId)) selectedId = pool[0]?.id ?? TEMPLATES[0]!.id;
-    renderRiffs();
+    lessonLevel = levelSelect.value as LessonLevel;
+    const pool = filteredLessons();
+    if (!pool.some((lesson) => lesson.id === selectedLessonId)) {
+      selectedLessonId = pool[0]?.id ?? RIFF_LESSONS[0]!.id;
+    }
+    renderLessons();
+    renderStudy();
   });
 
-  function filteredTemplates(): RiffTemplate[] {
-    return level === 'all' ? TEMPLATES : TEMPLATES.filter((template) => template.level === level);
+  function resetSound(): void {
+    zones = neckZones(rootPc, scale, context.session.tuning);
+    zoneIndex = 0;
+    revealStudy = false;
+    renderMap();
+    renderLessons();
+    renderStudy();
   }
 
-  function renderScale(): void {
-    clear(scaleHost);
-    const midis = scaleMidis(rootPc, scale.degrees, context.session.tuning.strings[0]!);
-    const firstOctave = midis.slice(0, scale.degrees.length + 1);
-    scaleHost.appendChild(h('div', { class: 'lab-note-buttons' },
-      ...firstOctave.map((midi, index) => button(`${midiToName(midi)}${index === 0 ? ' · HOME' : ''}`, () => { void context.player.playNote(midi); }, index === 0 ? 'btn-primary' : 'btn-quiet')),
-    ));
-    scaleHost.appendChild(fretboardDiagram(inferFingering(firstOctave, { tuning: context.session.tuning, maxFret: 12 }), context.session.tuning));
+  function filteredLessons(): RiffLesson[] {
+    return lessonLevel === 'all'
+      ? RIFF_LESSONS
+      : RIFF_LESSONS.filter((lesson) => lesson.level === lessonLevel);
   }
 
-  function renderRiffs(): void {
-    const midis = scaleMidis(rootPc, scale.degrees, context.session.tuning.strings[0]!);
-    currentRiffs = new Map(TEMPLATES.map((template) => [template.id, riffFromTemplate(template, midis)]));
-    const pool = filteredTemplates();
-    if (!pool.some((item) => item.id === selectedId)) selectedId = pool[0]?.id ?? TEMPLATES[0]!.id;
-    clear(riffsHost);
-    const grid = h('div', { class: 'lab-riff-grid' });
-    pool.forEach((template) => {
-      grid.appendChild(h('button', {
-        class: `lab-riff-card${template.id === selectedId ? ' is-active' : ''}`,
-        type: 'button',
-        onClick: () => { selectedId = template.id; renderRiffs(); },
-      },
-      h('span', { class: 'lab-level', text: template.level }),
-      h('strong', { text: template.name }),
-      h('span', { text: template.feel })));
+  function activeZone(): NeckZone {
+    return zones[Math.max(0, Math.min(zones.length - 1, zoneIndex))] ?? {
+      index: 0,
+      id: 'zone-1',
+      startFret: 0,
+      highFret: 4,
+      anchorDegree: 0,
+      anchorName: pcToName(rootPc),
+      box: scaleBox(rootPc, scale, context.session.tuning, 0, 4),
+    };
+  }
+
+  function activeLesson(): RiffLesson {
+    return RIFF_LESSONS.find((lesson) => lesson.id === selectedLessonId)
+      ?? RIFF_LESSONS[0]!;
+  }
+
+  function activeStudy(): RiffStudy {
+    return buildRiffStudy(activeLesson(), activeZone(), rootPc, scale, 88);
+  }
+
+  // ---- neck map -----------------------------------------------------------
+
+  function renderMap(): void {
+    clear(zoneHost);
+    clear(mapHost);
+
+    if (!zones.length) {
+      mapHost.appendChild(h('p', { class: 'muted', text: 'I could not build a useful neck map in this tuning.' }));
+      return;
+    }
+
+    zones.forEach((zone, index) => {
+      zoneHost.appendChild(button(
+        `Zone ${index + 1} · fret ${zone.startFret}`,
+        () => {
+          zoneIndex = index;
+          revealStudy = false;
+          renderMap();
+          renderStudy();
+        },
+        `riff-zone-btn${index === zoneIndex ? ' is-on' : ''}`,
+      ));
     });
-    riffsHost.appendChild(grid);
-    renderDetail();
-  }
 
-  function renderDetail(): void {
-    const template = TEMPLATES.find((item) => item.id === selectedId) ?? TEMPLATES[0]!;
-    const notes = currentRiffs.get(template.id);
-    if (!notes) return;
-    clear(detailHost);
-    const row = noteRow(notes);
-    const positions = inferFingering(notes.map((note) => note.midi), { tuning: context.session.tuning });
-    const hear = async (speed = 1) => {
-      await context.player.play(notes, { speed, onNote: (index) => highlightNote(row, index), onEnd: () => highlightNote(row, null) });
-    };
+    const zone = activeZone();
+    const roots = rootLocations(rootPc, context.session.tuning, 12);
+    const noteNames = scaleNoteNames(rootPc, scale);
 
-    detailHost.appendChild(h('article', { class: 'lab-selected-riff' },
-      h('div', { class: 'lab-selected-copy' },
-        h('h3', { text: template.name }),
-        h('p', { class: 'muted', text: template.feel }),
-        h('p', {}, h('strong', { text: 'What this teaches: ' }), template.lesson),
-      ),
-      row,
-      h('div', { class: 'lab-riff-actions' },
-        button('Hear it', () => { void hear(1); }, 'btn-primary'),
-        button('75%', () => { void hear(.75); }, 'btn-quiet'),
-        button('50%', () => { void hear(.5); }, 'btn-quiet'),
-        button('Save to my library', async () => {
-          const riff = await context.library.saveRiff(notes, { comment: `Riff Lab · ${ROOTS[rootPc]} ${scale.label} · ${template.name}` });
-          context.say('Saved. Change it until it becomes yours.');
-          context.navigate('library', { riff: riff.id });
-        }, 'btn-quiet'),
-      ),
-      h('details', { class: 'section' },
-        h('summary', { text: 'Show tab + fingering' }),
-        fretboardDiagram(positions, context.session.tuning),
-        tabBlock(renderTab(positions, context.session.tuning)),
-      ),
-      h('div', { class: 'lab-riff-actions' },
-        button('Start my attempt', async () => {
-          if (!context.listening) await context.startListening();
-          practiceStartMs = context.session.currentTimeMs;
-          practiceHost.textContent = 'Listening now. Play the riff once, then press Check my take.';
-        }, 'btn-primary'),
-        button('Check my take', () => {
-          if (practiceStartMs === null) { practiceHost.textContent = 'Press Start my attempt first.'; return; }
-          const attempt = context.session.memory.all().filter((note) => note.startMs >= practiceStartMs!);
-          const result = practiceAttempt(notes, attempt, { requiredAccuracy: .85, tempoTolerance: .18 });
-          const lessonPassed = result.accuracy >= .85 && Math.abs(result.tempoRatio - 1) <= .25;
+    const run = scaleRun(rootPc, scale, context.session.tuning, zone.startFret, 4);
+    const runEvents = eventsFromRun(run);
 
-          clear(practiceHost);
-          practiceHost.appendChild(h('p', { text: `${Math.round(result.accuracy * 100)}% note match. ${result.feedback.join(' ')}` }));
-
-          if (lessonPassed && lessonSkillId && curriculum) {
-            curriculum.record([{
-              skillId: lessonSkillId,
-              quality: Math.max(.85, result.accuracy),
-              at: Date.now(),
-              source: 'drill',
-            }]);
-            practiceHost.append(
-              h('p', { class: 'coaching is-nailed', text: 'That counts. I added it to what you can build on — you do not have to stay stuck here until it is perfect.' }),
-              button('Back to Learn · see what this unlocked', () => context.navigate('lessons'), 'btn-primary'),
-            );
-          } else if (lessonSkillId && !curriculum) {
-            practiceHost.appendChild(h('p', { class: 'muted', text: 'That attempt was heard, but this browser is not allowing curriculum storage, so I cannot carry the result back to Learn.' }));
-          }
-          practiceStartMs = null;
-        }, 'btn-quiet'),
-      ),
-    ));
-  }
-
-  function progressionCard(chords: LabChord[], label: string, fromLive: boolean, scaleNotes: number[]): HTMLElement {
-    const chordLabels = chords.map((item) => item.label).join(' → ');
-    const leadHost = h('div', { class: 'lab-generated-lead' });
-    let variant = 0;
-
-    const drawLead = (): void => {
-      clear(leadHost);
-      const lead = leadOverProgression(chords, scaleNotes, variant);
-      const leadRow = noteRow(lead);
-      leadHost.append(
-        h('p', {}, h('strong', { text: `Lead ${String.fromCharCode(65 + variant)}: ` }), variant === 0 ? 'aim for roots and chord color.' : variant === 1 ? 'start higher and lean on chord tones.' : 'leave more space and answer downward.'),
-        leadRow,
-        h('div', { class: 'lab-progression-actions' },
-          button('Hear lead', () => { void context.player.play(lead, { onNote: (noteIndex) => highlightNote(leadRow, noteIndex), onEnd: () => highlightNote(leadRow, null) }); }, 'btn-quiet'),
-          button('Another lead', () => { variant = (variant + 1) % 3; drawLead(); }, 'btn-quiet'),
-          button('Save this lead', async () => {
-            await context.library.saveRiff(lead, { comment: `Built over ${chordLabels} · ${ROOTS[rootPc]} ${scale.label}` });
-            context.say('That progression-based lead is in My Riffs now.');
-          }, 'btn-quiet'),
+    mapHost.append(
+      h('div', { class: 'riff-map-copy' },
+        h('div', {},
+          h('span', { class: 'badge', text: `${ROOTS[rootPc]} ${scale.name}` }),
+          h('h3', { text: `Zone ${zone.index + 1}: frets ${zone.startFret}–${zone.highFret}` }),
+          h('p', { text: scale.sound }),
+          h('p', { class: 'muted', text: `Notes: ${noteNames.join(' · ')}. The highlighted roots are ${ROOTS[rootPc]} — your “home” landmarks.` }),
         ),
-      );
-    };
-    drawLead();
-
-    return h('article', { class: 'lab-progression-card' },
-      h('span', { class: 'muted', text: fromLive ? 'FROM LIVE COACH · WHAT YOU PLAYED' : label }),
-      h('strong', { text: chordLabels }),
-      h('p', { class: 'muted', text: fromLive ? 'These are the chord roots the app heard from you. Now use them as the harmony under a riff.' : 'Hear the chords first, then hear how a lead can target chord tones without leaving the scale.' }),
-      h('div', { class: 'lab-progression-actions' },
-        button('Hear chords', () => { void context.player.play(progressionNotes(chords)); }, 'btn-primary'),
-        button('Hear chords → lead', async () => {
-          const lead = leadOverProgression(chords, scaleNotes, variant);
-          await context.player.play(progressionNotes(chords));
-          await context.player.play(lead);
+        h('div', { class: 'riff-root-locations' },
+          h('strong', { text: `${ROOTS[rootPc]} roots through fret 12` }),
+          h('div', { class: 'known-skill-strip' },
+            ...roots.map((root) =>
+              h('span', { class: 'badge', text: `string ${root.stringNumber} · fret ${root.fret}` })),
+          ),
+        ),
+      ),
+      h('div', { class: 'riff-zone-diagram' }, scaleDiagram(zone.box, context.session.tuning)),
+      h('div', { class: 'practice-actions' },
+        button('Hear this zone up + down', () => { void context.player.play(runEvents); }, 'btn-primary'),
+        button('Previous zone', () => {
+          zoneIndex = (zoneIndex - 1 + zones.length) % zones.length;
+          revealStudy = false;
+          renderMap();
+          renderStudy();
+        }, 'btn-quiet'),
+        button('Move one zone up →', () => {
+          zoneIndex = (zoneIndex + 1) % zones.length;
+          revealStudy = false;
+          renderMap();
+          renderStudy();
         }, 'btn-quiet'),
       ),
-      leadHost,
+      h('details', { class: 'section riff-whole-neck' },
+        h('summary', { text: 'Show the whole first 12 frets' }),
+        h('p', { class: 'muted', text: 'Do not memorize this as one giant picture. Use it to notice how the small zones overlap and where the roots repeat.' }),
+        scaleDiagram(scaleBox(rootPc, scale, context.session.tuning, 0, 12), context.session.tuning),
+      ),
     );
   }
 
-  function renderProgressions(): void {
-    clear(progressionsHost);
-    const scaleNotes = scaleMidis(rootPc, scale.degrees, context.session.tuning.strings[0]!);
-    const labels = ['Big familiar loop', 'A little heavier', 'Keep it moving'];
-    const grid = h('div', { class: 'lab-progression-grid' });
+  // ---- original phrase curriculum ----------------------------------------
 
-    if (incomingProgression.length >= 2) {
-      grid.appendChild(progressionCard(incomingProgression, 'What you played', true, scaleNotes));
-    }
-    progressions(rootPc, scale.minor).forEach((chords, index) => {
-      grid.appendChild(progressionCard(chords, labels[index] ?? 'Progression', false, scaleNotes));
+  function renderLessons(): void {
+    clear(lessonHost);
+    const pool = filteredLessons();
+    lessonHost.appendChild(h('div', { class: 'riff-lesson-strip' },
+      ...pool.map((lesson) =>
+        h('button', {
+          class: `riff-lesson-chip${lesson.id === selectedLessonId ? ' is-on' : ''}`,
+          type: 'button',
+          onClick: () => {
+            selectedLessonId = lesson.id;
+            revealStudy = false;
+            renderLessons();
+            renderStudy();
+          },
+        },
+        h('span', { class: 'riff-lesson-level', text: lesson.level }),
+        h('strong', { text: lesson.name }),
+        h('span', { text: lesson.focus }))),
+    ));
+  }
+
+  function playWithRow(events: NoteEvent[], row: HTMLElement, speed = 1): void {
+    void context.player.play(events, {
+      speed,
+      onNote: (index) => highlightNote(row, index),
+      onEnd: () => highlightNote(row, null),
     });
-    progressionsHost.appendChild(grid);
   }
 
-  function render(): void {
-    renderScale();
-    renderRiffs();
-    renderProgressions();
+  async function startAttempt(target: NoteEvent[], label: string): Promise<void> {
+    if (!context.listening) await context.startListening();
+    attemptStartMs = context.session.currentTimeMs;
+    attemptTarget = target;
+    attemptLabel = label;
+    replace(feedbackHost,
+      h('p', { class: 'coaching', text: `Listening for ${label}. Play it once, leave a short pause, then press Check my take.` }),
+    );
   }
 
-  render();
-  return { element, update: render };
+  function checkAttempt(): void {
+    if (attemptStartMs === null || !attemptTarget) {
+      replace(feedbackHost, h('p', { class: 'muted', text: 'Start an attempt first.' }));
+      return;
+    }
+
+    const attempt = context.session.memory.all()
+      .filter((note) => note.startMs >= attemptStartMs!);
+    const result = practiceAttempt(attemptTarget, attempt, {
+      requiredAccuracy: .82,
+      tempoTolerance: .28,
+    });
+    const passed = result.accuracy >= .82 && Math.abs(result.tempoRatio - 1) <= .32;
+
+    clear(feedbackHost);
+    feedbackHost.append(
+      h('p', { class: `coaching${passed ? ' is-nailed' : ''}`,
+        text: `${Math.round(result.accuracy * 100)}% note match. ${result.feedback.join(' ')}` }),
+    );
+
+    if (passed) {
+      feedbackHost.appendChild(h('p', { class: 'muted', text: 'Good. Do not grind it to death — now move it, change it, or use it.' }));
+      if (linkedSkillId && curriculum) {
+        curriculum.record([{
+          skillId: linkedSkillId,
+          quality: Math.max(.82, result.accuracy),
+          at: Date.now(),
+          source: 'drill',
+        }]);
+      }
+    }
+
+    attemptStartMs = null;
+    attemptTarget = null;
+    attemptLabel = '';
+  }
+
+  function variationCard(variant: DevelopedRiff, source: RiffStudy): HTMLElement {
+    const row = noteRow(variant.events);
+    return h('article', { class: 'riff-development-card' },
+      h('strong', { text: variant.label }),
+      h('p', { class: 'muted', text: variant.why }),
+      row,
+      h('div', { class: 'practice-actions' },
+        button('Hear it', () => playWithRow(variant.events, row), 'btn-quiet'),
+        button('Practice this version', () => { void startAttempt(variant.events, variant.label); }, 'btn-quiet'),
+        button('Save as my riff', async () => {
+          const riff = await context.library.saveRiff(variant.events, {
+            name: null,
+            comment: `Riff School · ${ROOTS[rootPc]} ${scale.name} · ${source.lesson.name} → ${variant.label}`,
+            tags: ['riff-school', scale.id],
+          });
+          context.say('Saved the changed version. That is the point: keep the branch you actually like.');
+          selectedMyRiffId = riff.id;
+          void renderMyRiffs();
+        }, 'btn-primary'),
+        button('Make A/B song seed', async () => {
+          const a = await context.library.saveRiff(source.events, {
+            comment: `Riff School · A section · ${source.lesson.name}`,
+            tags: ['riff-school', scale.id],
+          });
+          const b = await context.library.saveRiff(variant.events, {
+            comment: `Riff School · B section · ${variant.label}`,
+            tags: ['riff-school', scale.id],
+          });
+          const name = window.prompt('Name the song seed?', 'New two-section idea');
+          if (name === null || !name.trim()) return;
+          const song = await context.library.createSong(name.trim());
+          await context.library.addToSong(song.id, 'A section', a.id, a.currentVersionId);
+          await context.library.addToSong(song.id, 'B section', b.id, b.currentVersionId);
+          context.say('Made a two-section song seed from one motif and one deliberate change.');
+          context.navigate('seeds');
+        }, 'btn-quiet'),
+      ),
+    );
+  }
+
+  function renderStudy(): void {
+    clear(studyHost);
+    const study = activeStudy();
+    const zone = activeZone();
+    if (!study.events.length) return;
+
+    const row = noteRow(study.events);
+    const tab = renderTab(study.positions, context.session.tuning);
+    const nextZone = zones[(zoneIndex + 1) % zones.length];
+    const moved = nextZone
+      ? buildRiffStudy(study.lesson, nextZone, rootPc, scale, 88)
+      : null;
+    const variants = developStudy(study, scale, rootPc);
+
+    const reveal = h('div', { class: 'riff-reveal-host' });
+    const drawReveal = () => {
+      clear(reveal);
+      if (!revealStudy) {
+        reveal.appendChild(h('div', { class: 'riff-ear-first' },
+          h('strong', { text: 'Ear first.' }),
+          h('p', { class: 'muted', text: 'Hear it a few times, try to find the first couple notes yourself, then reveal the route. This is how sound starts connecting to the neck.' }),
+          button('Reveal exact route', () => { revealStudy = true; drawReveal(); }, 'btn-quiet'),
+        ));
+        return;
+      }
+      reveal.append(
+        h('p', { class: 'muted', text: 'This is the exact route for this study. The microphone can verify the pitches; it cannot prove which duplicate fret you used.' }),
+        fretboardDiagram(study.positions, context.session.tuning),
+        tabBlock(tab),
+        h('div', { class: 'riff-role-row' },
+          ...study.noteNames.map((name, index) =>
+            h('span', { class: 'riff-role-chip', text: `${name} · ${study.roles[index] ?? 'color'}` })),
+        ),
+      );
+    };
+    drawReveal();
+
+    const movedHost = h('div', { class: 'riff-moved-host' });
+
+    studyHost.appendChild(h('article', { class: 'riff-study-card' },
+      h('div', { class: 'riff-study-head' },
+        h('div', {},
+          h('span', { class: 'badge', text: `${study.lesson.level} · Zone ${zone.index + 1}` }),
+          h('h3', { text: study.lesson.name }),
+          h('p', { class: 'lede', text: study.lesson.focus }),
+        ),
+        h('span', { class: 'riff-fret-badge', text: `frets ${zone.startFret}–${zone.highFret}` }),
+      ),
+      h('div', { class: 'riff-teacher-copy' },
+        h('p', {}, h('strong', { text: 'Do this: ' }), study.lesson.instruction),
+        h('p', {}, h('strong', { text: 'Listen for: ' }), study.lesson.listenFor),
+      ),
+      row,
+      h('div', { class: 'practice-actions riff-hear-actions' },
+        button('Hear it', () => playWithRow(study.events, row), 'btn-primary'),
+        button('75%', () => playWithRow(study.events, row, .75), 'btn-quiet'),
+        button('50%', () => playWithRow(study.events, row, .5), 'btn-quiet'),
+        button('Try it by ear', () => { void startAttempt(study.events, study.lesson.name); }, 'btn-quiet'),
+        button('Check my take', checkAttempt, 'btn-quiet'),
+      ),
+      reveal,
+      nextZone ? h('div', { class: 'riff-connect-callout' },
+        h('p', { class: 'eyebrow', text: 'CONNECT THE NECK' }),
+        h('h4', { text: `Now move the same musical idea to Zone ${nextZone.index + 1}.` }),
+        h('p', { class: 'muted', text: `Same concept, new neighborhood around fret ${nextZone.startFret}. This is how a box turns into a fretboard.` }),
+        h('div', { class: 'practice-actions' },
+          button(`Show Zone ${nextZone.index + 1} version`, () => {
+            clear(movedHost);
+            if (!moved) return;
+            const movedRow = noteRow(moved.events);
+            movedHost.append(
+              scaleDiagram(nextZone.box, context.session.tuning),
+              fretboardDiagram(moved.positions, context.session.tuning),
+              tabBlock(renderTab(moved.positions, context.session.tuning)),
+              movedRow,
+              h('div', { class: 'practice-actions' },
+                button('Hear moved version', () => playWithRow(moved.events, movedRow), 'btn-primary'),
+                button('Practice moved version', () => { void startAttempt(moved.events, `${study.lesson.name} in Zone ${nextZone.index + 1}`); }, 'btn-quiet'),
+                button('Make this my active zone', () => {
+                  zoneIndex = nextZone.index;
+                  revealStudy = true;
+                  renderMap();
+                  renderStudy();
+                }, 'btn-quiet'),
+              ),
+            );
+          }, 'btn-primary'),
+        ),
+        movedHost,
+      ) : null,
+      h('div', { class: 'riff-development' },
+        h('p', { class: 'eyebrow', text: 'SONGWRITING MOVE' }),
+        h('h4', { text: 'Change one thing. Keep the identity.' }),
+        h('p', { class: 'muted', text: 'This is motif development: rhythm, ending, space, or register. Audition the branches instead of generating a totally unrelated riff.' }),
+        h('div', { class: 'riff-development-grid' },
+          ...variants.map((variant) => variationCard(variant, study)),
+        ),
+      ),
+    ));
+  }
+
+  // ---- player's own riffs -------------------------------------------------
+
+  async function renderMyRiffs(): Promise<void> {
+    clear(myRiffsHost);
+    const riffs = await context.library.listRiffs();
+    if (disposed) return;
+
+    if (!riffs.length) {
+      myRiffsHost.append(
+        h('p', { class: 'muted', text: 'No saved riffs yet. In Coach, play an idea and use “Practice this riff,” or save one of the original studies above.' }),
+        button('Go play into Coach', () => context.navigate('session'), 'btn-primary'),
+      );
+      return;
+    }
+
+    if (!selectedMyRiffId || !riffs.some((riff) => riff.id === selectedMyRiffId)) {
+      selectedMyRiffId = riffs[0]!.id;
+    }
+
+    const select = h('select', { class: 'select my-riff-select' }) as HTMLSelectElement;
+    riffs.forEach((riff) => select.appendChild(h('option', {
+      value: riff.id,
+      text: riff.name ?? `unnamed riff · ${riff.versions.length} version${riff.versions.length === 1 ? '' : 's'}`,
+      selected: riff.id === selectedMyRiffId,
+    })));
+    select.value = selectedMyRiffId;
+    select.addEventListener('change', () => {
+      selectedMyRiffId = select.value;
+      void renderMyRiffs();
+    });
+
+    const riff = riffs.find((item) => item.id === selectedMyRiffId)!;
+    const notes = currentRiffNotes(riff);
+    const positions = inferFingering(notes.map((note) => note.midi), {
+      tuning: context.session.tuning,
+      maxFret: 18,
+    });
+    const row = noteRow(notes);
+
+    myRiffsHost.append(
+      h('div', { class: 'my-riff-picker' },
+        h('label', { class: 'field' }, 'Practice ', select),
+        h('span', { class: 'badge', text: `${notes.length} notes` }),
+      ),
+      h('div', { class: 'my-riff-workbench' },
+        row,
+        h('div', { class: 'practice-actions' },
+          button('Hear it', () => playWithRow(notes, row), 'btn-primary'),
+          button('75%', () => playWithRow(notes, row, .75), 'btn-quiet'),
+          button('50%', () => playWithRow(notes, row, .5), 'btn-quiet'),
+          button('Start my attempt', () => { void startAttempt(notes, riff.name ?? 'your saved riff'); }, 'btn-quiet'),
+          button('Check my take', checkAttempt, 'btn-quiet'),
+        ),
+        h('details', { class: 'section' },
+          h('summary', { text: 'Show a probable low-travel fingering + tab' }),
+          h('p', { class: 'muted', text: 'Pitch alone cannot reveal the exact string you originally used. This is one playable route for practicing the phrase.' }),
+          fretboardDiagram(positions, context.session.tuning),
+          tabBlock(renderTab(positions, context.session.tuning)),
+        ),
+        button('Open version history', () => context.navigate('library', { riff: riff.id }), 'btn-quiet'),
+      ),
+    );
+  }
+
+  // ---- progression from Live Coach ---------------------------------------
+
+  function renderLiveHarmony(): void {
+    clear(liveHarmonyHost);
+    if (incomingProgression.length < 2) {
+      liveHarmonyHost.append(
+        h('div', { class: 'riff-coach-bridge' },
+          h('p', { text: 'This section stays empty on purpose until the harmony comes from your own playing.' }),
+          button('Open Live Coach', () => context.navigate('session'), 'btn-primary'),
+        ),
+      );
+      return;
+    }
+
+    const labels = incomingProgression.map((chord) => chord.label).join(' → ');
+    const scaleMidis = scaleBox(rootPc, scale, context.session.tuning, activeZone().startFret, 7)
+      .positions
+      .map((position) => position.midi)
+      .filter((midi, index, all) => all.indexOf(midi) === index)
+      .sort((a, b) => a - b);
+
+    const leadHost = h('div', { class: 'riff-live-lead' });
+    let variant = 0;
+
+    const drawLead = () => {
+      clear(leadHost);
+      const lead = leadOverProgression(incomingProgression, scaleMidis, variant);
+      const row = noteRow(lead);
+      const positions = inferFingering(lead.map((note) => note.midi), {
+        tuning: context.session.tuning,
+        maxFret: 18,
+      });
+      leadHost.append(
+        h('div', { class: 'riff-live-lead-head' },
+          h('strong', { text: `Lead idea ${String.fromCharCode(65 + variant)}` }),
+          h('span', { class: 'muted', text: variant === 0
+            ? 'Targets roots and strong chord notes.'
+            : variant === 1
+              ? 'Starts higher and leans into chord color.'
+              : 'Uses more space and answers downward.' }),
+        ),
+        row,
+        h('div', { class: 'practice-actions' },
+          button('Hear progression', () => { void context.player.play(progressionNotes(incomingProgression)); }, 'btn-quiet'),
+          button('Hear lead', () => playWithRow(lead, row), 'btn-primary'),
+          button('Another lead', () => { variant = (variant + 1) % 3; drawLead(); }, 'btn-quiet'),
+          button('Practice this lead', () => { void startAttempt(lead, `lead over ${labels}`); }, 'btn-quiet'),
+          button('Save this lead', async () => {
+            const riff = await context.library.saveRiff(lead, {
+              comment: `Riff School · written over ${labels}`,
+              tags: ['riff-school', 'harmony'],
+            });
+            selectedMyRiffId = riff.id;
+            context.say('Saved the lead. Now change it until it stops sounding like the app and starts sounding like you.');
+            void renderMyRiffs();
+          }, 'btn-quiet'),
+        ),
+        h('details', { class: 'section' },
+          h('summary', { text: 'Show a playable route' }),
+          fretboardDiagram(positions, context.session.tuning),
+          tabBlock(renderTab(positions, context.session.tuning)),
+        ),
+      );
+    };
+
+    liveHarmonyHost.append(
+      h('div', { class: 'riff-live-progression' },
+        h('strong', { text: labels }),
+        h('p', { class: 'muted', text: `Using ${ROOTS[rootPc]} ${scale.name} as the current melodic palette.` }),
+      ),
+      leadHost,
+    );
+    drawLead();
+  }
+
+  // ---- initial render -----------------------------------------------------
+
+  replace(feedbackHost,
+    h('p', { class: 'muted', text: 'Choose a phrase, hear it, then start an attempt when you want the microphone to compare your take.' }),
+  );
+  renderMap();
+  renderLessons();
+  renderStudy();
+  void renderMyRiffs();
+  renderLiveHarmony();
+
+  return {
+    element,
+    update() {},
+    onNotes() {},
+    dispose() { disposed = true; },
+  };
 }

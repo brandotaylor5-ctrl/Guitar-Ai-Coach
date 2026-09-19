@@ -38,12 +38,28 @@ export const SCALES: Scale[] = [
     sound: 'Minor pentatonic with one extra note squeezed in. That extra note is the whole sound of the blues.',
   },
   {
+    id: 'dorian-pent', name: 'Dorian pentatonic', degrees: [0, 3, 5, 7, 9], minor: true,
+    sound: 'Minor pentatonic with the warmer sixth instead of the flat seventh. Moody, but with more lift and motion.',
+  },
+  {
+    id: 'dominant-pent', name: 'dominant pentatonic', degrees: [0, 2, 4, 7, 10], minor: false,
+    sound: 'A bright pentatonic with a bluesy seventh. Useful when a major sound needs more grit and less sweetness.',
+  },
+  {
     id: 'major', name: 'major scale', degrees: [0, 2, 4, 5, 7, 9, 11], minor: false,
     sound: 'The seven notes everything else is described against. Doh re mi.',
   },
   {
     id: 'minor', name: 'natural minor', degrees: [0, 2, 3, 5, 7, 8, 10], minor: true,
     sound: 'The seven-note minor sound. Sadder than major, and the home of a great many songs.',
+  },
+  {
+    id: 'dorian', name: 'Dorian', degrees: [0, 2, 3, 5, 7, 9, 10], minor: true,
+    sound: 'Minor with a brighter sixth. It keeps the darker center but adds forward motion instead of pure melancholy.',
+  },
+  {
+    id: 'mixolydian', name: 'Mixolydian', degrees: [0, 2, 4, 5, 7, 9, 10], minor: false,
+    sound: 'Major with a lowered seventh. Open, rootsy and slightly unresolved — common in rock, folk, funk and jam music.',
   },
 ];
 

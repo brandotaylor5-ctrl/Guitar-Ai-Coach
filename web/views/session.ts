@@ -697,6 +697,24 @@ export function sessionView(context: AppContext): View {
             });
           }, 'btn-quiet'),
           button('Save this riff', () => { void savePhrase(phrase, 'Caught by Live Coach'); }, 'btn-primary'),
+          button('Practice this riff', async () => {
+            const riff = await context.session.saveRiff(phrase, { comment: 'Live Coach → My Riff Trainer' });
+            await context.keepClipFor(riff.versions[0]?.audioRef);
+            const scaleIds: Record<string, string> = {
+              'minor pentatonic': 'minor-pent',
+              'major pentatonic': 'major-pent',
+              'blues': 'blues',
+              'minor': 'minor',
+              'major': 'major',
+              'dorian': 'dorian',
+              'mixolydian': 'mixolydian',
+            };
+            context.navigate('lab', {
+              riff: riff.id,
+              root: String(analysis.scale.confidence >= .35 ? analysis.scale.tonicPc : analysis.homePc),
+              scale: scaleIds[analysis.scale.scale] ?? 'minor-pent',
+            });
+          }, 'btn-quiet'),
           button('Full breakdown', () => { void showPhrase(phrase); }, 'btn-quiet'),
         ),
       ),
