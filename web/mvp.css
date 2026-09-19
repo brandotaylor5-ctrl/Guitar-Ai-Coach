@@ -685,3 +685,27 @@
   .riff-lesson-strip { grid-template-columns:1fr; }
   .riff-lesson-chip { min-height:0; }
 }
+
+
+/* ---- Song Workshop: development before replacement ---- */
+.songwriting-branch-grid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:.65rem;
+  margin:.7rem 0 1rem;
+}
+.songwriting-branch {
+  min-width:0;
+  border-color:color-mix(in srgb,var(--accent-dim) 35%,var(--line));
+}
+.songwriting-branch > strong {
+  display:block;
+  margin-bottom:.35rem;
+  color:var(--accent);
+}
+.songwriting-branch > p {
+  line-height:1.4;
+}
+@media (max-width:900px) {
+  .songwriting-branch-grid { grid-template-columns:1fr; }
+}
