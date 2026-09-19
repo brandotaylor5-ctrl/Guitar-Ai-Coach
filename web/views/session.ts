@@ -1,74 +1,47 @@
 /**
- * Live Coach is the front door. The hierarchy is intentionally simple:
- * what I hear -> what it probably means -> one thing worth trying next.
+ * Live Coach — the musician/teacher sitting across from you.
+ *
+ * The screen is deliberately organised around four musical questions:
+ * Harmony: what chord is that and where do my fingers go?
+ * Melody: what shape did my line make?
+ * Time: where is the pulse and am I holding it?
+ * Create: what can I turn this into?
+ *
+ * The detector never gets to masquerade as eyesight. Chord/string evidence is
+ * scored where the microphone can honestly help; hand mechanics stay concrete
+ * physical instructions rather than fake AI confidence.
  */
 
 import type { Frame } from '../../src/audio/noteTracker.ts';
-import type { Phrase, RecognitionMatch } from '../../src/types.ts';
+import type { Phrase, PhraseAnalysis, RecognitionMatch } from '../../src/types.ts';
 import { frequencyToMidi, midiToName, pcToName } from '../../src/music/notes.ts';
-import { suggestEndings } from '../../src/create/suggest.ts';
+import { suggestAnswer, suggestChords, suggestEndings } from '../../src/create/suggest.ts';
 import { diffTakes } from '../../src/phrase/diff.ts';
 import { motifContaining } from '../../src/phrase/motif.ts';
-import type { ChordDetection } from '../audio/chordDetect.ts';
+import type { ChordDetection, ChordExplanation } from '../audio/chordDetect.ts';
 import { observeFreePlay, CurriculumStore } from '../../src/curriculum/watch.ts';
+import { masteryMap, levelOf, WORKABLE } from '../../src/curriculum/mastery.ts';
+import { SKILLS } from '../../src/curriculum/skills.ts';
+import { checkChordShape } from '../../src/audio/chordCheck.ts';
+import type { ChordCheck } from '../../src/audio/chordCheck.ts';
 import { chordDoctor } from '../ui/chordDoctor.ts';
 import { stringCheckPanel } from '../ui/stringCheck.ts';
-import { beginnerChordShapes } from '../../src/music/chordShapes.ts';
+import { beginnerChordShapes, chordShape, chordShapeMidis } from '../../src/music/chordShapes.ts';
+import { inferFingering, renderTab } from '../../src/music/fretboard.ts';
+import {
+  compactChordLabel, inferHarmonyCenter, nextPlayableChord, normalizeChordLabel,
+  qualityFamily, readMelody, readTime, readTouch,
+} from '../../src/coach/liveTutor.ts';
+import { chordDiagram, chordTeachingCard } from '../ui/chordCard.ts';
 import { h, clear, relativeTime, replace } from '../ui/dom.ts';
-import { button, empty, noteRow, highlightNote } from '../ui/render.ts';
+import {
+  button, empty, fretboardDiagram, noteRow, highlightNote, tabBlock,
+} from '../ui/render.ts';
 import { recallPanel } from './recall.ts';
 import type { AppContext, View } from './context.ts';
 
 const MOTIF_HUES = [168, 38, 280, 200, 12, 320, 90];
 interface HeardChord extends ChordDetection { heardAt: number; }
-interface CenterGuess { rootPc: number; minor: boolean; confidence: number; }
-
-const MAJOR_CHORDS: Array<[number, 'major'|'minor']> = [[0,'major'],[2,'minor'],[4,'minor'],[5,'major'],[7,'major'],[9,'minor']];
-const MINOR_CHORDS: Array<[number, 'major'|'minor']> = [[0,'minor'],[3,'major'],[5,'minor'],[7,'minor'],[8,'major'],[10,'major']];
-
-function qualityFamily(q: ChordDetection['quality']): 'major'|'minor'|'open' {
-  if (q === 'minor' || q === 'm7') return 'minor';
-  if (q === 'major' || q === '7' || q === 'maj7') return 'major';
-  return 'open';
-}
-
-function inferCenter(chords: HeardChord[]): CenterGuess | null {
-  const recent = chords.slice(-6);
-  if (recent.length < 2) return null;
-  let best: CenterGuess & { score: number } | null = null;
-  for (let rootPc = 0; rootPc < 12; rootPc++) {
-    for (const minor of [false, true]) {
-      const map = minor ? MINOR_CHORDS : MAJOR_CHORDS;
-      let score = 0;
-      for (let i = 0; i < recent.length; i++) {
-        const chord = recent[i]!;
-        const rel = (chord.rootPc - rootPc + 12) % 12;
-        const expected = map.find(([pc]) => pc === rel)?.[1];
-        if (!expected) { score -= .55; continue; }
-        score += 1;
-        const family = qualityFamily(chord.quality);
-        if (family === expected) score += .45;
-        else if (family !== 'open') score -= .2;
-        if (rel === 0) score += i === recent.length - 1 ? .5 : .25;
-      }
-      const confidence = Math.max(0, Math.min(1, score / Math.max(2, recent.length * 1.35)));
-      if (!best || score > best.score) best = { rootPc, minor, confidence, score };
-    }
-  }
-  return best && best.confidence >= .42 ? best : null;
-}
-
-function nextChordIdea(center: CenterGuess | null, last: HeardChord | undefined): string | null {
-  if (!center || !last) return null;
-  const rel = (last.rootPc - center.rootPc + 12) % 12;
-  if (center.minor) {
-    const options = rel === 0 ? [8,10] : rel === 8 ? [10,0] : rel === 10 ? [0,8] : [0,10];
-    return `${pcToName((center.rootPc + options[0]!) % 12)}${options[0] === 0 ? 'm' : ''}`;
-  }
-  const options = rel === 0 ? [5,7] : rel === 5 ? [7,0] : rel === 7 ? [0,9] : [0,7];
-  const next = options[0]!;
-  return `${pcToName((center.rootPc + next) % 12)}${next === 9 ? 'm' : ''}`;
-}
 
 function lowerFirst(sentence: string): string {
   if (!sentence) return sentence;
@@ -79,57 +52,20 @@ export function sessionView(context: AppContext): View {
   let recallHost = h('div', { class: 'recall-host' });
   let lastPhraseSignature = '';
   let lastCoachedPhraseId = '';
-  /** When a note was last heard, so the coach can tell playing from pausing. */
   let lastNoteAt = 0;
-  /** Chords heard while simply playing, waiting to be read for evidence. */
   let freeplay: Array<{ label: string; confidence: number; at: number }> = [];
   let voiceEnabled = false;
   let lastSpokenAt = 0;
+  let pendingVoice: { text: string; kind: string } | null = null;
   let disposed = false;
   let checking = false;
+  let previousAnalysis: PhraseAnalysis | null = null;
+  let targetChord: string | null = null;
+  let targetBestScore = -1;
+  let targetCleanAnnounced = false;
+  let targetFeedbackHost: HTMLElement | null = null;
+  const shownChordLessons = new Set<string>();
   const chordHistory: HeardChord[] = [];
-
-  const noteReadout = h('div', { class: 'readout-note', text: '—' });
-  const chordReadout = h('div', { class: 'live-chord-value', text: '—' });
-  const chordConfidence = h('span', { class: 'muted', text: 'waiting for a chord' });
-  const centerReadout = h('div', { class: 'live-center-value', text: '—' });
-  const centerHint = h('span', { class: 'muted', text: 'I need a couple chord changes first.' });
-  const progression = h('div', { class: 'live-progression muted', text: 'Your chord progression will build here.' });
-  const tryNext = h('div', { class: 'live-try-next muted', text: 'Play an idea. When there is something useful to try, I’ll put it here.' });
-  const centsBar = h('div', { class: 'cents-fill' });
-  const centsLabel = h('div', { class: 'cents-label', text: '' });
-  const levelFill = h('div', { class: 'level-fill' });
-  const timeline = h('div', { class: 'timeline' });
-  const timelineNote = h('p', { class: 'timeline-note muted' });
-  const coachFeed = h('div', { class: 'live-coach-feed', 'aria-live': 'polite' });
-  const echoHost = h('div', { class: 'echo-host' });
-  const noteStream = h('div', { class: 'note-stream' });
-
-  const listenButton = button(context.listening ? 'Stop listening' : 'Start Live Coach', async () => {
-    if (context.listening) await context.stopListening(); else await context.startListening();
-  }, 'btn-primary btn-listen');
-
-  const voiceButton = button('Voice feedback: off', () => {
-    voiceEnabled = !voiceEnabled;
-    voiceButton.textContent = `Voice feedback: ${voiceEnabled ? 'on' : 'off'}`;
-    voiceButton.classList.toggle('is-live', voiceEnabled);
-    // Spoken directly rather than through the gate: this one is a reply to a
-    // button press, so it should be immediate and is not an interruption.
-    if (voiceEnabled && 'speechSynthesis' in window) {
-      lastSpokenAt = Date.now();
-      window.speechSynthesis.speak(new SpeechSynthesisUtterance(
-        'Voice coach on. I will listen while you play and speak when you pause.',
-      ));
-    }
-    else if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-  }, 'btn-quiet');
-
-  const askButton = button('Break down what I just played', async () => {
-    const recall = await context.session.whatDidIJustPlay();
-    if (!recall) { context.say('Nothing to go on yet — play a few notes first.'); return; }
-    replace(recallHost, recallPanel(context, recall));
-    recallHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 'btn-primary btn-ask');
 
   const curriculum = new CurriculumStore(
     (() => {
@@ -139,15 +75,89 @@ export function sessionView(context: AppContext): View {
         return window.localStorage;
       } catch {
         const memory = new Map<string, string>();
-        return { getItem: (k: string) => memory.get(k) ?? null, setItem: (k: string, v: string) => { memory.set(k, v); } };
+        return {
+          getItem: (k: string) => memory.get(k) ?? null,
+          setItem: (k: string, v: string) => { memory.set(k, v); },
+        };
       }
     })(),
   );
 
-  // Opening the panel is what switches diagnostics on, so the detector is not
-  // explaining itself eight times a second to nobody.
-  // Checking a chord needs the same per-frame evidence the doctor uses, so it
-  // turns diagnostics on the same way.
+  // ---- the four things a musician actually wants to know -----------------
+
+  const noteReadout = h('span', { class: 'live-now-note', text: '—' });
+  const centsBar = h('div', { class: 'cents-fill' });
+  const centsLabel = h('span', { class: 'cents-label', text: '' });
+  const levelFill = h('div', { class: 'level-fill' });
+
+  const chordReadout = h('div', { class: 'live-chord-value', text: '—' });
+  const chordConfidence = h('span', { class: 'muted', text: 'waiting for a chord' });
+  const chordShow = button('Show me the hand', () => {
+    const chord = chordHistory.at(-1);
+    if (!chord) return;
+    openChordTutor(chord.label, `That chord was ${chord.label}. Here is the physical shape.`, false);
+  }, 'btn-quiet');
+  chordShow.disabled = true;
+
+  const melodyValue = h('div', { class: 'live-musical-value', text: 'Play a short line' });
+  const melodyDetail = h('p', { class: 'muted live-musical-detail', text: 'I will read the shape after you leave a small pause.' });
+  const melodyNotes = h('div', { class: 'live-mini-notes' });
+
+  const tempoValue = h('div', { class: 'live-musical-value', text: '—' });
+  const tempoDetail = h('p', { class: 'muted live-musical-detail', text: 'Repeat a figure and I can estimate your pulse.' });
+
+  const centerReadout = h('div', { class: 'live-center-value', text: '—' });
+  const centerHint = h('span', { class: 'muted', text: 'I need a couple chord changes or a settled melody first.' });
+
+  const progression = h('div', { class: 'live-progression live-progression-chips' });
+  const harmonyNext = h('div', { class: 'live-harmony-next muted', text: 'Play two chord changes and I can suggest a teachable next move.' });
+
+  const tryNext = h('div', { class: 'live-try-next muted', text: 'Play something. I will give you one musical thing to try, not ten.' });
+  const chordTutorHost = h('div', { class: 'live-chord-tutor' });
+  const createHost = h('div', { class: 'live-create-host' });
+  const coachFeed = h('div', { class: 'live-coach-feed', 'aria-live': 'polite' });
+  const echoHost = h('div', { class: 'echo-host' });
+  const noteStream = h('div', { class: 'note-stream' });
+  const timeline = h('div', { class: 'timeline' });
+  const timelineNote = h('p', { class: 'timeline-note muted' });
+
+  const listenButton = button(context.listening ? 'Stop listening' : 'Start Live Coach', async () => {
+    if (context.listening) await context.stopListening();
+    else await context.startListening();
+  }, 'btn-primary btn-listen');
+
+  const voiceButton = button('Voice coach: off', () => {
+    voiceEnabled = !voiceEnabled;
+    voiceButton.textContent = `Voice coach: ${voiceEnabled ? 'on' : 'off'}`;
+    voiceButton.classList.toggle('is-live', voiceEnabled);
+
+    if (voiceEnabled && 'speechSynthesis' in window) {
+      lastSpokenAt = Date.now();
+      pendingVoice = null;
+      const utterance = new SpeechSynthesisUtterance(
+        'Voice coach on. Keep playing. I will wait for a pause before I talk.',
+      );
+      utterance.rate = 1.02;
+      utterance.pitch = 0.96;
+      window.speechSynthesis.speak(utterance);
+    } else if ('speechSynthesis' in window) {
+      pendingVoice = null;
+      window.speechSynthesis.cancel();
+    }
+  }, 'btn-quiet');
+
+  const askButton = button('Break down the last idea', async () => {
+    const recall = await context.session.whatDidIJustPlay();
+    if (!recall) {
+      context.say('Nothing to go on yet — play a few notes first.');
+      return;
+    }
+    replace(recallHost, recallPanel(context, recall));
+    recallHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 'btn-primary btn-ask');
+
+  // The manual checker and detector diagnostics are useful tools, not the
+  // front door. Keep them available without making the whole interface a lab.
   const checker = stringCheckPanel({
     chords: beginnerChordShapes().map((shape) => shape.chord),
     tuning: context.session.tuning,
@@ -158,89 +168,146 @@ export function sessionView(context: AppContext): View {
 
   const doctor = chordDoctor();
   doctor.element.addEventListener('toggle', () => {
-    context.setChordDiagnostics?.((doctor.element as HTMLDetailsElement).open);
+    context.setChordDiagnostics?.((doctor.element as HTMLDetailsElement).open || Boolean(targetChord));
   });
+
+  const deepTools = h('details', { class: 'panel live-tools' },
+    h('summary', { text: 'Chord cleanup + detector tools' }),
+    h('p', { class: 'muted', text: 'Use these when you want to inspect one chord string-by-string or see why the detector made a decision.' }),
+    checker.element,
+    doctor.element,
+  );
 
   const element = h('div', { class: 'view view-session live-coach-view' },
     h('section', { class: 'panel live-coach-hero' },
       h('div', { class: 'live-coach-copy' },
         h('p', { class: 'lab-kicker', text: 'LIVE COACH' }),
-        h('h2', { text: 'Play. I’ll keep up.' }),
-        h('p', { class: 'muted', text: 'I listen for notes, chords, repeated ideas and the tiny changes between takes — then give you one thing worth trying.' }),
+        h('h2', { text: 'Play. I’ll teach from what you actually do.' }),
+        h('p', { class: 'muted', text: 'Chords become hand shapes. Melodies become phrases. Rhythm becomes a pulse. Good accidents can become riffs and songs.' }),
       ),
-      h('div', { class: 'live-coach-actions' }, listenButton, voiceButton, button('Find a song to play', () => context.navigate('songs'), 'btn-quiet')),
+      h('div', { class: 'live-coach-actions' },
+        listenButton,
+        voiceButton,
+        button('Open the course', () => context.navigate('path'), 'btn-quiet'),
+      ),
     ),
 
-    h('section', { class: 'live-hearing-grid live-hearing-grid-v3' },
-      h('article', { class: 'panel live-hearing-card' },
-        h('span', { class: 'live-hearing-label', text: 'NOTE' }),
-        h('div', { class: 'readout' }, noteReadout, h('div', { class: 'cents' }, h('div', { class: 'cents-track' }, centsBar), centsLabel)),
-        h('div', { class: 'level' }, levelFill),
+    h('section', { class: 'live-hearing-grid live-hearing-grid-tutor' },
+      h('article', { class: 'panel live-hearing-card chord-card' },
+        h('span', { class: 'live-hearing-label', text: 'HARMONY · CHORD' }),
+        chordReadout,
+        chordConfidence,
+        h('div', { class: 'live-card-action' }, chordShow),
       ),
-      h('article', { class: 'panel live-hearing-card chord-card' }, h('span', { class: 'live-hearing-label', text: 'CHORD' }), chordReadout, chordConfidence),
-      h('article', { class: 'panel live-hearing-card center-card' }, h('span', { class: 'live-hearing-label', text: 'KEY / CENTER' }), centerReadout, centerHint),
-      h('article', { class: 'panel live-hearing-card progression-card' }, h('span', { class: 'live-hearing-label', text: 'PROGRESSION' }), progression),
+      h('article', { class: 'panel live-hearing-card melody-card' },
+        h('span', { class: 'live-hearing-label', text: 'MELODY' }),
+        melodyValue,
+        melodyDetail,
+        melodyNotes,
+        h('div', { class: 'live-now-line' },
+          h('span', { class: 'muted', text: 'right now' }),
+          noteReadout,
+          h('div', { class: 'cents live-mini-cents' }, h('div', { class: 'cents-track' }, centsBar)),
+          centsLabel,
+        ),
+        h('div', { class: 'level live-mini-level' }, levelFill),
+      ),
+      h('article', { class: 'panel live-hearing-card time-card' },
+        h('span', { class: 'live-hearing-label', text: 'TIME · TEMPO' }),
+        tempoValue,
+        tempoDetail,
+      ),
+      h('article', { class: 'panel live-hearing-card center-card' },
+        h('span', { class: 'live-hearing-label', text: 'HOME / KEY CLUE' }),
+        centerReadout,
+        centerHint,
+      ),
     ),
 
-    checker.element,
-    doctor.element,
+    h('section', { class: 'panel live-progression-panel' },
+      h('div', { class: 'live-section-head' },
+        h('div', {},
+          h('span', { class: 'live-hearing-label', text: 'YOUR CHORD STORY' }),
+          h('h3', { text: 'Tap any chord and I’ll show you the hand.' }),
+        ),
+        button('Build a riff over these', () => sendHarmonyToLab(), 'btn-quiet'),
+      ),
+      progression,
+      harmonyNext,
+    ),
 
     h('section', { class: 'panel live-next-panel' },
-      h('span', { class: 'live-hearing-label', text: 'TRY THIS NEXT' }),
+      h('span', { class: 'live-hearing-label', text: 'COACH MOVE' }),
       tryNext,
     ),
 
+    chordTutorHost,
+    createHost,
+
     h('section', { class: 'panel live-coach-panel' },
       h('div', { class: 'live-coach-panel-head' },
-        h('div', {}, h('h2', { text: 'Coach' }), h('p', { class: 'muted', text: 'Short reactions after musical pauses — especially when you repeat an idea and change it.' })), askButton,
+        h('div', {},
+          h('h2', { text: 'Coach' }),
+          h('p', { class: 'muted', text: 'I notice while you play, then talk when you leave me room — like a tutor should.' }),
+        ),
+        askButton,
       ),
-      coachFeed, echoHost,
-      h('details', { class: 'section live-details' }, h('summary', { text: 'Raw notes I am hearing' }), noteStream),
+      coachFeed,
+      echoHost,
     ),
 
-    h('section', { class: 'panel' },
-      h('h2', { text: 'Your last minute' }),
-      h('p', { class: 'muted', text: 'Each block is a phrase. Repeated colors mean you came back to a similar idea. Tap one to break it down.' }),
+    deepTools,
+
+    h('details', { class: 'panel live-session-memory' },
+      h('summary', { text: 'Session memory · last minute' }),
+      h('p', { class: 'muted', text: 'Each block is a phrase. Repeated colors mean you came back to a similar idea. Tap one for the full breakdown.' }),
       timeline,
       h('div', { class: 'timeline-scale' }, h('span', { text: 'a minute ago' }), h('span', { text: 'now' })),
       timelineNote,
+      h('details', { class: 'section live-details' },
+        h('summary', { text: 'Raw notes I am hearing' }),
+        noteStream,
+      ),
     ),
     recallHost,
   );
 
-  addCoach('I’m ready. Start Live Coach and play normally. I’ll listen more than I talk.', 'hello');
+  // ---- voice that waits for the musical gap ------------------------------
 
-  /**
-   * How long the coach stays quiet after speaking, by what it has to say.
-   * A remark worth interrupting for is rare; most of what it notices is not.
-   */
   const COOLDOWN_MS: Record<string, number> = {
     memory: 25_000,
-    variation: 30_000,
-    phrase: 45_000,
+    variation: 25_000,
+    phrase: 18_000,
+    teaching: 14_000,
+    success: 8_000,
   };
-  /** Kinds that are never spoken aloud. They still appear in the feed. */
   const SILENT_KINDS = new Set(['chord', 'hello', 'observation']);
-  /** A pause this long means the player has stopped, rather than drawn breath. */
-  const PAUSE_BEFORE_SPEAKING_MS = 1_800;
+  const PAUSE_BEFORE_SPEAKING_MS = 1_550;
 
-  function speak(text: string, kind: string): void {
-    if (!voiceEnabled || !('speechSynthesis' in window)) return;
-    if (SILENT_KINDS.has(kind)) return;
-
+  function trySpeak(text: string, kind: string, force = false): boolean {
+    if (!voiceEnabled || !('speechSynthesis' in window) || SILENT_KINDS.has(kind)) return false;
     const now = Date.now();
-    // Never talk over playing. The whole point is that it listens while you
-    // play and speaks when you stop — a coach in the room would not narrate
-    // your chord changes back to you while your hands are moving.
-    if (now - lastNoteAt < PAUSE_BEFORE_SPEAKING_MS) return;
-    if (now - lastSpokenAt < (COOLDOWN_MS[kind] ?? 45_000)) return;
-    // Already mid-sentence: let it finish rather than stacking up.
-    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) return;
+    if (!force && now - lastNoteAt < PAUSE_BEFORE_SPEAKING_MS) return false;
+    if (!force && now - lastSpokenAt < (COOLDOWN_MS[kind] ?? 18_000)) return false;
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) return false;
 
     lastSpokenAt = now;
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1.02; u.pitch = .96; u.volume = .9;
-    window.speechSynthesis.speak(u);
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.02;
+    utterance.pitch = 0.96;
+    utterance.volume = 0.9;
+    window.speechSynthesis.speak(utterance);
+    return true;
+  }
+
+  function speakOrQueue(text: string, kind: string): void {
+    if (!voiceEnabled || SILENT_KINDS.has(kind)) return;
+    if (!trySpeak(text, kind)) pendingVoice = { text, kind };
+  }
+
+  function flushPendingVoice(): void {
+    if (!pendingVoice) return;
+    if (trySpeak(pendingVoice.text, pendingVoice.kind)) pendingVoice = null;
   }
 
   function addCoach(text: string, kind = 'observation', action?: HTMLElement): void {
@@ -250,40 +317,148 @@ export function sessionView(context: AppContext): View {
     );
     coachFeed.appendChild(turn);
     while (coachFeed.children.length > 7) coachFeed.firstElementChild?.remove();
-    speak(text, kind);
+    coachFeed.scrollTop = coachFeed.scrollHeight;
+    speakOrQueue(text, kind);
   }
 
-  function renderNoteStream(): void {
-    clear(noteStream);
-    const notes = context.session.memory.all().slice(-30);
-    if (!notes.length) { noteStream.appendChild(empty(context.listening ? 'Listening. Play something.' : 'Press Start Live Coach, then play.')); return; }
-    for (const note of notes) noteStream.appendChild(h('span', { class: 'chip', text: midiToName(note.midi) }));
+  addCoach('I’m ready. Start Live Coach and play naturally. I will teach from whatever shows up.', 'hello');
+
+  // ---- exact chord teaching + live string feedback -----------------------
+
+  function chordSkillId(label: string): string | null {
+    const clean = normalizeChordLabel(label);
+    return SKILLS.find((skill) => skill.kind === 'chord' && skill.chord === clean)?.id ?? null;
   }
 
-  function renderTimeline(): void {
-    const phrases = context.session.phrases();
-    const motifs = context.session.motifs();
-    const colourOf = new Map<string, number>();
-    motifs.forEach((motif, index) => motif.takes.forEach((take) => colourOf.set(take.id, motif.takes.length > 1 ? MOTIF_HUES[index % MOTIF_HUES.length]! : -1)));
-    clear(timeline); timelineNote.textContent = '';
-    if (!phrases.length) { timeline.appendChild(empty('No settled phrase yet. Play an idea, then leave a short pause.')); return; }
-    const repeated = motifs.filter((m) => m.takes.length > 1);
-    if (repeated.length) timelineNote.textContent = repeated.map((m) => `One idea came back ${m.takes.length} times.`).join(' ');
-    const now = context.session.currentTimeMs, windowMs = Math.max(1, context.session.memory.windowMs), oldest = now - windowMs;
-    for (const phrase of phrases) {
-      const hue = colourOf.get(phrase.id) ?? -1;
-      const left = ((phrase.startMs - oldest) / windowMs) * 100;
-      const width = Math.max(3, ((phrase.endMs - phrase.startMs) / windowMs) * 100);
-      timeline.appendChild(h('button', {
-        class: `phrase-block${hue >= 0 ? ' is-motif' : ''}`, type: 'button',
-        style: `left:${Math.max(0,left)}%;width:${width}%;${hue >= 0 ? `--hue:${hue}` : ''}`,
-        title: phrase.notes.map((n) => midiToName(n.midi)).join(' → '),
-        onClick: () => { void showPhrase(phrase); },
-      }, h('span', { class: 'phrase-label', text: String(phrase.notes.length) })));
+  function knowsChord(label: string): boolean {
+    const id = chordSkillId(label);
+    if (!id) return false;
+    return levelOf(masteryMap(curriculum.load()), id) >= WORKABLE;
+  }
+
+  function playChord(label: string): void {
+    const shape = chordShape(normalizeChordLabel(label));
+    if (!shape) return;
+    const notes = chordShapeMidis(shape).map((midi, index) => ({
+      midi,
+      startMs: index * 45,
+      durationMs: 1200,
+      confidence: 1,
+      velocity: 0.58,
+    }));
+    void context.player.play(notes);
+  }
+
+  function targetCheckView(check: ChordCheck): HTMLElement {
+    const rows = h('div', { class: 'live-target-strings' });
+    for (const string of [...check.strings].reverse()) {
+      const mark = string.verdict === 'ringing' ? '●'
+        : string.verdict === 'missing' ? '✕'
+          : string.verdict === 'unclear' ? '?'
+            : '×';
+      rows.appendChild(h('span', {
+        class: `live-target-string is-${string.verdict}`,
+        text: `${mark} ${string.stringNumber}`,
+        title: string.fret === 'x'
+          ? `String ${string.stringNumber}: do not play`
+          : `String ${string.stringNumber}: ${string.fret === 0 ? 'open' : `fret ${string.fret}`}`,
+      }));
+    }
+    return h('div', { class: `live-target-check${check.clean ? ' is-clean' : ''}` },
+      h('strong', { text: check.advice[0] ?? (check.clean ? 'That chord is ringing.' : 'Try it again.') }),
+      rows,
+      ...check.advice.slice(1, 3).map((line) => h('p', { class: 'muted', text: line })),
+    );
+  }
+
+  function armChordTarget(label: string): void {
+    const clean = normalizeChordLabel(label);
+    if (!chordShape(clean)) return;
+    targetChord = clean;
+    targetBestScore = -1;
+    targetCleanAnnounced = false;
+    context.setChordDiagnostics?.(true);
+    if (targetFeedbackHost) {
+      replace(targetFeedbackHost,
+        h('p', { class: 'muted', text: `I’m listening specifically for ${clean}. Put the hand down, strum it slowly two or three times, and I’ll tell you which string is fighting you.` }),
+      );
+    }
+    if (!context.listening) void context.startListening();
+  }
+
+  function openChordTutor(label: string, intro: string, arm: boolean): void {
+    const clean = normalizeChordLabel(label);
+    clear(chordTutorHost);
+    targetFeedbackHost = null;
+
+    const shape = chordShape(clean);
+    if (!shape) {
+      targetChord = null;
+      chordTutorHost.appendChild(h('section', { class: 'panel live-chord-teacher' },
+        h('p', { class: 'eyebrow', text: 'CHORD TUTOR' }),
+        h('h3', { text: clean }),
+        h('p', { text: intro }),
+        h('p', { class: 'muted', text: 'I can hear that chord name, but I do not have a safe beginner hand map stored for it yet. I am not going to invent a fingering.' }),
+      ));
+      return;
+    }
+
+    const feedback = h('div', { class: 'live-target-feedback' });
+    targetFeedbackHost = feedback;
+
+    const teach = chordTeachingCard(clean, context.player, { compact: true });
+    const top = h('section', { class: 'panel live-chord-teacher' },
+      h('div', { class: 'live-section-head' },
+        h('div', {},
+          h('p', { class: 'eyebrow', text: 'CHORD TUTOR' }),
+          h('h3', { text: `${shape.name} · ${clean}` }),
+          h('p', { text: intro }),
+        ),
+        h('span', { class: `badge${knowsChord(clean) ? '' : ' is-new'}`, text: knowsChord(clean) ? 'in your vocabulary' : 'new shape' }),
+      ),
+      h('div', { class: 'practice-actions' },
+        button('Hear it', () => playChord(clean), 'btn-quiet'),
+        button(`Try ${clean} now`, () => armChordTarget(clean), 'btn-primary'),
+      ),
+      feedback,
+    );
+
+    chordTutorHost.append(top, teach);
+    chordTutorHost.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (arm) armChordTarget(clean);
+  }
+
+  function updateTargetFromEvidence(explanation: ChordExplanation): void {
+    if (!targetChord || !targetFeedbackHost) return;
+    const shape = chordShape(targetChord);
+    if (!shape) return;
+
+    const check = checkChordShape(explanation.perMidi, shape, context.session.tuning);
+    const score = check.strings.filter((string) =>
+      string.verdict === 'ringing' || string.verdict === 'unclear').length;
+    if (score < targetBestScore) return;
+    targetBestScore = score;
+    replace(targetFeedbackHost, targetCheckView(check));
+
+    if (check.clean && !targetCleanAnnounced) {
+      targetCleanAnnounced = true;
+      const completed = targetChord;
+      const id = chordSkillId(completed);
+      if (id) {
+        curriculum.record([{ skillId: id, quality: 0.9, at: Date.now(), source: 'drill' }]);
+      }
+      addCoach(
+        `Yes — that’s ${completed}. Every string I can judge is ringing. Keep that hand shape, relax the grip, and play it once more so your hand remembers the feeling.`,
+        'success',
+        button('Show me another chord that fits', () => refreshHarmony(true), 'btn-quiet'),
+      );
     }
   }
 
-  function harmonyParams(center: CenterGuess | null): Record<string, string> {
+  // ---- harmony ------------------------------------------------------------
+
+  function harmonyParams(): Record<string, string> {
+    const center = inferHarmonyCenter(chordHistory);
     const recent = chordHistory.slice(-4);
     const fallback = recent[0];
     const rootPc = center?.rootPc ?? fallback?.rootPc ?? 4;
@@ -291,48 +466,363 @@ export function sessionView(context: AppContext): View {
     return {
       root: String(rootPc),
       mode: minor ? 'minor' : 'major',
-      progression: recent.map((chord) => `${chord.rootPc}:${qualityFamily(chord.quality) === 'minor' ? 1 : 0}`).join(','),
+      progression: recent
+        .map((chord) => `${chord.rootPc}:${qualityFamily(chord.quality) === 'minor' ? 1 : 0}`)
+        .join(','),
     };
   }
 
-  function sendHarmonyToLab(center: CenterGuess | null): void {
-    context.navigate('lab', harmonyParams(center));
+  function sendHarmonyToLab(): void {
+    if (chordHistory.length < 2) {
+      context.say('Give me at least two chord changes first.');
+      return;
+    }
+    context.navigate('lab', harmonyParams());
   }
 
-  function refreshHarmony(): void {
-    progression.textContent = chordHistory.length ? chordHistory.map((x) => x.label).join('  →  ') : 'Your chord progression will build here.';
-    progression.classList.toggle('muted', chordHistory.length === 0);
-    const center = inferCenter(chordHistory);
+  function renderProgression(): void {
+    clear(progression);
+    if (!chordHistory.length) {
+      progression.classList.add('muted');
+      progression.appendChild(h('span', { text: 'Your chord progression will build here.' }));
+      return;
+    }
+
+    progression.classList.remove('muted');
+    chordHistory.forEach((chord, index) => {
+      if (index) progression.appendChild(h('span', { class: 'progression-arrow', text: '→' }));
+      const clean = normalizeChordLabel(chord.label);
+      progression.appendChild(button(chord.label, () => {
+        openChordTutor(clean, `You played ${chord.label} here. Tap “Try it now” and I’ll listen string-by-string.`, false);
+      }, `chord-chip${chordShape(clean) ? '' : ' is-unmapped'}`));
+    });
+  }
+
+  function refreshHarmony(announce = false): void {
+    renderProgression();
+    const center = inferHarmonyCenter(chordHistory);
 
     if (center) {
       centerReadout.textContent = `${pcToName(center.rootPc)} ${center.minor ? 'minor' : 'major'}`;
-      centerHint.textContent = `${Math.round(center.confidence*100)}% fit from the recent chords — a clue, not a rule.`;
+      centerHint.textContent = `${Math.round(center.confidence * 100)}% fit from the recent harmony — a clue, not a rule.`;
     } else {
       centerReadout.textContent = '—';
-      centerHint.textContent = chordHistory.length < 2 ? 'I need a couple chord changes first.' : 'The harmony is still ambiguous. Keep playing.';
+      centerHint.textContent = chordHistory.length < 2
+        ? 'I need a couple chord changes first.'
+        : 'The harmony is still ambiguous. Keep the loop going.';
     }
 
-    if (!chordHistory.length) return;
-    clear(tryNext);
-    const next = nextChordIdea(center, chordHistory.at(-1));
-    if (next) {
-      tryNext.appendChild(h('span', {}, 'Try ', h('strong', { text: next }), ` after ${chordHistory.at(-1)!.label}. Repeat it once and hear whether it belongs.`));
-    } else {
-      tryNext.appendChild(h('span', { text: 'Keep the loop going once more so I can hear where it wants to settle.' }));
+    clear(harmonyNext);
+    if (!chordHistory.length) {
+      harmonyNext.classList.add('muted');
+      harmonyNext.appendChild(h('span', { text: 'Play two chord changes and I can suggest a teachable next move.' }));
+      return;
     }
-    if (chordHistory.length >= 2) {
-      tryNext.appendChild(button('Build a riff from these chords', () => sendHarmonyToLab(center), 'btn-primary'));
+
+    const move = nextPlayableChord(
+      center,
+      chordHistory.at(-1),
+      beginnerChordShapes().map((shape) => shape.chord),
+    );
+
+    if (!move) {
+      harmonyNext.classList.add('muted');
+      harmonyNext.appendChild(h('span', { text: center
+        ? 'I hear the key family, but the next diatonic options I would choose do not have safe beginner shapes stored yet.'
+        : 'Keep the loop going once more so I can hear where it wants to settle.' }));
+      return;
+    }
+
+    harmonyNext.classList.remove('muted');
+    const last = chordHistory.at(-1)!;
+    harmonyNext.append(
+      h('div', { class: 'live-harmony-suggestion' },
+        h('div', { class: 'live-harmony-suggestion-copy' },
+          h('span', { class: 'eyebrow', text: 'A CHORD WORTH TRYING' }),
+          h('strong', { text: `${last.label} → ${move.label}` }),
+          h('p', { text: move.reason }),
+        ),
+        h('div', { class: 'live-harmony-mini-shape' }, chordDiagram(move.label)),
+      ),
+      h('div', { class: 'practice-actions' },
+        button(`Show + try ${move.label}`, () => {
+          openChordTutor(move.label, `Try ${move.label} after ${last.label}. ${move.reason}`, true);
+        }, 'btn-primary'),
+        button(`Hear ${move.label}`, () => playChord(move.label), 'btn-quiet'),
+      ),
+    );
+
+    if (announce) {
+      addCoach(
+        `Try ${move.label} after ${last.label}. I put the exact hand shape underneath — play it and I’ll listen for the strings.`,
+        'teaching',
+      );
+    }
+  }
+
+  // ---- melody / time / creative work -------------------------------------
+
+  function renderMusicalRead(analysis: PhraseAnalysis): void {
+    const melody = readMelody(analysis);
+    const time = readTime(analysis, previousAnalysis);
+    const touch = readTouch(analysis.phrase.notes);
+
+    melodyValue.textContent = melody.headline;
+    melodyDetail.textContent = melody.detail;
+    clear(melodyNotes);
+    analysis.phrase.notes.slice(-8).forEach((note) =>
+      melodyNotes.appendChild(h('span', { class: 'chip', text: midiToName(note.midi) })));
+
+    tempoValue.textContent = time.bpm === null ? '—' : `~${time.bpm} BPM`;
+    tempoDetail.textContent = time.bpm === null
+      ? time.detail
+      : `${time.detail} ${touch.headline !== 'Touch still unclear' ? `Touch: ${touch.headline.toLowerCase()}.` : ''}`;
+
+    // A melodic read is another clue about home. Do not overwrite a stronger
+    // multi-chord key inference, but do fill the blank when melody arrives first.
+    if (!inferHarmonyCenter(chordHistory)) {
+      centerReadout.textContent = pcToName(analysis.homePc);
+      centerHint.textContent = analysis.scale.confidence >= 0.55
+        ? `Your line fits ${analysis.scale.label} at ${Math.round(analysis.scale.confidence * 100)}% confidence.`
+        : 'This is the note your melody keeps treating like home. The scale is still ambiguous.';
+    }
+  }
+
+  function suggestionFingering(notes: PhraseAnalysis['phrase']['notes']): HTMLElement {
+    const positions = inferFingering(notes.map((note) => note.midi), {
+      tuning: context.session.tuning,
+      maxFret: 12,
+    });
+    return h('details', { class: 'live-fingering-details' },
+      h('summary', { text: 'Show me one playable fingering' }),
+      h('p', { class: 'muted', text: 'A pitch can live in several places on guitar. This is one low-travel fingering, not a claim about where your hand already was.' }),
+      fretboardDiagram(positions, context.session.tuning),
+      tabBlock(renderTab(positions, context.session.tuning)),
+    );
+  }
+
+  async function savePhrase(phrase: Phrase, comment: string): Promise<void> {
+    const riff = await context.session.saveRiff(phrase, { comment });
+    await context.keepClipFor(riff.versions[0]?.audioRef);
+    context.say('Saved. That one is yours now.');
+  }
+
+  function renderCreateFromRecall(recall: Awaited<ReturnType<AppContext['session']['recallPhrase']>>): void {
+    clear(createHost);
+    if (!recall) return;
+
+    const analysis = recall.analysis;
+    const phrase = recall.phrase;
+    const answer = suggestAnswer(analysis, { tuning: context.session.tuning });
+    const endings = suggestEndings(analysis, { tuning: context.session.tuning });
+    const chords = suggestChords(analysis, 4)
+      .map((chord) => ({ ...chord, symbol: compactChordLabel(chord.label) }))
+      .filter((chord) => chordShape(chord.symbol));
+
+    const ideaRow = noteRow(phrase.notes);
+    const panel = h('section', { class: 'panel live-create-panel' },
+      h('div', { class: 'live-section-head' },
+        h('div', {},
+          h('p', { class: 'eyebrow', text: 'CREATE FROM WHAT YOU JUST PLAYED' }),
+          h('h3', { text: 'Don’t leave the good accident behind.' }),
+          h('p', { class: 'muted', text: 'Keep it, harmonize it, answer it, or turn it into the beginning of a song.' }),
+        ),
+      ),
+      h('div', { class: 'live-own-idea' },
+        ideaRow,
+        h('div', { class: 'practice-actions' },
+          button('Play it back', () => {
+            void context.player.play(phrase.notes, {
+              onNote: (index) => highlightNote(ideaRow, index),
+              onEnd: () => highlightNote(ideaRow, null),
+            });
+          }, 'btn-quiet'),
+          button('Save this riff', () => { void savePhrase(phrase, 'Caught by Live Coach'); }, 'btn-primary'),
+          button('Full breakdown', () => { void showPhrase(phrase); }, 'btn-quiet'),
+        ),
+      ),
+    );
+
+    if (chords.length) {
+      const harmony = h('div', { class: 'live-create-section' },
+        h('h4', { text: 'Put a chord underneath it' }),
+        h('p', { class: 'muted', text: 'These are scored by how much of your melody already lives inside the chord. Tap one and I’ll show you the hand.' }),
+        h('div', { class: 'live-fit-chords' }),
+      );
+      const row = harmony.lastElementChild as HTMLElement;
+      for (const chord of chords) {
+        row.appendChild(button(
+          `${chord.symbol} · ${Math.round(chord.fit * 100)}%`,
+          () => openChordTutor(
+            chord.symbol,
+            `${Math.round(chord.fit * 100)}% of the notes in your melody already live inside ${chord.symbol}. Try holding it, then replay the melody.`,
+            true,
+          ),
+          'chord-chip',
+        ));
+      }
+      panel.appendChild(harmony);
+    }
+
+    if (answer) {
+      const row = noteRow(answer.notes);
+      panel.appendChild(h('div', { class: 'live-create-section' },
+        h('h4', { text: 'Give your phrase an answer' }),
+        h('p', { text: answer.description }),
+        row,
+        suggestionFingering(answer.notes),
+        h('div', { class: 'practice-actions' },
+          button('Hear your phrase → answer', () => { void context.player.play(answer.full); }, 'btn-primary'),
+          button('Keep the two-part riff', async () => {
+            await context.library.saveRiff(answer.full, { comment: 'Live Coach · call and response' });
+            context.say('Saved the call-and-response version as a new riff.');
+          }, 'btn-quiet'),
+        ),
+      ));
+    }
+
+    if (endings.length) {
+      const endingsHost = h('div', { class: 'live-ending-grid' });
+      for (const ending of endings) {
+        endingsHost.appendChild(h('article', { class: 'live-ending-card' },
+          h('strong', { text: ending.label }),
+          h('p', { class: 'muted', text: ending.description }),
+          noteRow(ending.notes),
+          h('div', { class: 'practice-actions' },
+            button('Hear it', () => { void context.player.play(ending.full); }, 'btn-quiet'),
+            button('Keep', async () => {
+              await context.library.saveRiff(ending.full, {
+                comment: `Live Coach · ${ending.label.toLowerCase()} ending`,
+              });
+              context.say(`Saved the ${ending.label.toLowerCase()} version.`);
+            }, 'btn-quiet'),
+          ),
+        ));
+      }
+      panel.appendChild(h('div', { class: 'live-create-section' },
+        h('h4', { text: 'Change only the ending' }),
+        h('p', { class: 'muted', text: 'Same identity, different emotional landing. This is songwriting without throwing away the thing you already liked.' }),
+        endingsHost,
+      ));
+    }
+
+    panel.appendChild(h('div', { class: 'live-create-section live-song-seed-action' },
+      h('h4', { text: 'Make this the start of a song' }),
+      button('Start a song from this idea', async () => {
+        const name = window.prompt('Call this song idea what?', 'New song idea');
+        if (name === null || !name.trim()) return;
+        const riff = await context.session.saveRiff(phrase, { comment: 'Started in Live Coach' });
+        await context.keepClipFor(riff.versions[0]?.audioRef);
+        const song = await context.library.createSong(name.trim());
+        await context.library.addToSong(song.id, 'verse', riff.id, riff.currentVersionId);
+        context.say('Song seed started from the exact phrase you played.');
+        context.navigate('seeds');
+      }, 'btn-primary'),
+    ));
+
+    createHost.appendChild(panel);
+  }
+
+  function renderPhraseCoachMove(analysis: PhraseAnalysis): void {
+    const melody = readMelody(analysis);
+    const time = readTime(analysis, previousAnalysis);
+    const endings = suggestEndings(analysis, { tuning: context.session.tuning });
+    const answer = suggestAnswer(analysis, { tuning: context.session.tuning });
+
+    clear(tryNext);
+    tryNext.classList.remove('muted');
+
+    let headline = melody.next;
+    if (time.bpm !== null && time.steadiness < 0.55) {
+      headline = `Keep those exact notes, but slow the pulse down and make the spacing even. Your melody is fine; time is the thing worth training on this pass.`;
+    }
+
+    tryNext.appendChild(h('div', { class: 'live-coach-move-copy' },
+      h('strong', { text: headline }),
+      time.bpm !== null
+        ? h('span', { class: 'muted', text: ` I’m hearing about ${time.bpm} BPM right now.` })
+        : null,
+    ));
+
+    const suggestion = answer ?? endings[0];
+    if (suggestion) {
+      const row = noteRow(suggestion.notes);
+      tryNext.append(
+        row,
+        suggestionFingering(suggestion.notes),
+        h('div', { class: 'practice-actions' },
+          button('Hear the idea', () => { void context.player.play(suggestion.notes); }, 'btn-quiet'),
+          button('Hear it after mine', () => { void context.player.play(suggestion.full); }, 'btn-primary'),
+        ),
+      );
+    }
+  }
+
+  // ---- timeline / memory --------------------------------------------------
+
+  function renderNoteStream(): void {
+    clear(noteStream);
+    const notes = context.session.memory.all().slice(-30);
+    if (!notes.length) {
+      noteStream.appendChild(empty(context.listening ? 'Listening. Play something.' : 'Press Start Live Coach, then play.'));
+      return;
+    }
+    for (const note of notes) noteStream.appendChild(h('span', { class: 'chip', text: midiToName(note.midi) }));
+  }
+
+  function renderTimeline(): void {
+    const phrases = context.session.phrases();
+    const motifs = context.session.motifs();
+    const colourOf = new Map<string, number>();
+    motifs.forEach((motif, index) =>
+      motif.takes.forEach((take) =>
+        colourOf.set(take.id, motif.takes.length > 1 ? MOTIF_HUES[index % MOTIF_HUES.length]! : -1)));
+
+    clear(timeline);
+    timelineNote.textContent = '';
+    if (!phrases.length) {
+      timeline.appendChild(empty('No settled phrase yet. Play an idea, then leave a short pause.'));
+      return;
+    }
+
+    const repeated = motifs.filter((motif) => motif.takes.length > 1);
+    if (repeated.length) {
+      timelineNote.textContent = repeated.map((motif) =>
+        `One idea came back ${motif.takes.length} times.`).join(' ');
+    }
+
+    const now = context.session.currentTimeMs;
+    const windowMs = Math.max(1, context.session.memory.windowMs);
+    const oldest = now - windowMs;
+
+    for (const phrase of phrases) {
+      const hue = colourOf.get(phrase.id) ?? -1;
+      const left = ((phrase.startMs - oldest) / windowMs) * 100;
+      const width = Math.max(3, ((phrase.endMs - phrase.startMs) / windowMs) * 100);
+      timeline.appendChild(h('button', {
+        class: `phrase-block${hue >= 0 ? ' is-motif' : ''}`,
+        type: 'button',
+        style: `left:${Math.max(0, left)}%;width:${width}%;${hue >= 0 ? `--hue:${hue}` : ''}`,
+        title: phrase.notes.map((note) => midiToName(note.midi)).join(' → '),
+        onClick: () => { void showPhrase(phrase); },
+      }, h('span', { class: 'phrase-label', text: String(phrase.notes.length) })));
     }
   }
 
   function showEcho(match: RecognitionMatch): void {
-    addCoach(`Hold on — that sounded a lot like ${match.riffName ?? 'a riff you saved'} from ${relativeTime(match.createdAt)}. You found the same shape again without asking for it.`, 'memory',
-      button('Open that riff', () => context.navigate('library', { riff: match.riffId }), 'btn-quiet'));
+    addCoach(
+      `Hold on — that sounded a lot like ${match.riffName ?? 'a riff you saved'} from ${relativeTime(match.createdAt)}. You found the same shape again without asking for it.`,
+      'memory',
+      button('Open that riff', () => context.navigate('library', { riff: match.riffId }), 'btn-quiet'),
+    );
   }
 
   async function showPhrase(phrase: Phrase): Promise<void> {
     const recall = await context.session.recallPhrase(phrase.id);
-    if (!recall) { context.say('That idea has aged out of session memory.'); return; }
+    if (!recall) {
+      context.say('That idea has aged out of session memory.');
+      return;
+    }
     replace(recallHost, recallPanel(context, recall));
     recallHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -345,7 +835,7 @@ export function sessionView(context: AppContext): View {
 
     const diff = diffTakes(prior.notes, latest.notes);
     const changedCount = diff.changes.filter((change) => change.kind !== 'kept').length;
-    const tempoChanged = Math.abs(diff.tempoRatio - 1) >= .08;
+    const tempoChanged = Math.abs(diff.tempoRatio - 1) >= 0.08;
     if (changedCount > 4 && !tempoChanged) return false;
 
     const text = diff.identical && !tempoChanged
@@ -353,19 +843,10 @@ export function sessionView(context: AppContext): View {
       : `There — same basic idea, different take: ${lowerFirst(diff.summary)}`;
 
     const actions = h('div', { class: 'live-coach-inline-action' },
-      button('Hear the earlier take', () => { void context.player.play(prior.notes); }, 'btn-quiet'),
-      button('Hear this take', () => { void context.player.play(latest.notes); }, 'btn-quiet'),
+      button('Earlier take', () => { void context.player.play(prior.notes); }, 'btn-quiet'),
+      button('This take', () => { void context.player.play(latest.notes); }, 'btn-quiet'),
     );
 
-    clear(tryNext);
-    tryNext.append(
-      h('span', { text: changedCount <= 2 ? 'Do it once more and make that change deliberate.' : 'Play both versions once. Keep the part that feels like the hook.' }),
-      button('A/B the two takes', async () => {
-        await context.player.play(prior.notes);
-        await new Promise((resolve) => window.setTimeout(resolve, 280));
-        await context.player.play(latest.notes);
-      }, 'btn-primary'),
-    );
     addCoach(text, 'variation', actions);
     return true;
   }
@@ -375,65 +856,66 @@ export function sessionView(context: AppContext): View {
     if (!latest || latest.id === lastCoachedPhraseId || latest.notes.length < 3) return;
     lastCoachedPhraseId = latest.id;
 
-    if (variationReaction(latest)) return;
-
     const recall = await context.session.recallPhrase(latest.id);
     if (!recall || disposed) return;
-    const a = recall.analysis;
-    const home = pcToName(a.homePc);
-    let text = `Yep — I heard that. ${home} is acting like home.`;
-    if (a.scale.confidence >= .55) text += ` Those notes fit ${a.scale.label} pretty comfortably.`;
-    if (a.resolution === 'up') text += ' You climbed at the end, so it still feels like it wants an answer.';
-    else if (a.resolution === 'down') text += ' You came down at the end, which makes it feel more settled.';
-    else text += ' You ended close to where you started, so it wants to loop.';
 
-    const endings = suggestEndings(a, { tuning: context.session.tuning });
-    const idea = endings.find((x) => x.kind === 'darker') ?? endings[0];
-    let action: HTMLElement | undefined;
-    if (idea) {
-      const row = noteRow(idea.notes);
-      action = h('div', { class: 'live-coach-inline-action' },
-        button('Hear what I mean', async () => { await context.player.play(idea.notes, { onNote:(i)=>highlightNote(row,i), onEnd:()=>highlightNote(row,null) }); }, 'btn-quiet'), row);
-      text += ' I made one tiny answer from your own musical context — not a random lick.';
-      clear(tryNext);
-      tryNext.append(
-        h('strong', { text: 'Answer the phrase: ' }),
-        row,
-        button('Hear it', () => { void context.player.play(idea.notes); }, 'btn-quiet'),
-      );
+    const analysis = recall.analysis;
+    const melody = readMelody(analysis);
+    const time = readTime(analysis, previousAnalysis);
+
+    renderMusicalRead(analysis);
+    renderPhraseCoachMove(analysis);
+    renderCreateFromRecall(recall);
+
+    if (!variationReaction(latest)) {
+      let text = `I heard a ${melody.headline.toLowerCase()}.`;
+      if (time.bpm !== null) text += ` You’re around ${time.bpm} BPM and the pulse is ${Math.round(time.steadiness * 100)}% consistent.`;
+      if (analysis.scale.confidence >= 0.55) text += ` It sits comfortably in ${analysis.scale.label}.`;
+      text += ` ${melody.next}`;
+      addCoach(text, 'phrase');
     }
-    addCoach(text, 'phrase', action);
+
+    previousAnalysis = analysis;
   }
+
+  // ---- live input ---------------------------------------------------------
 
   function update(): void {
     listenButton.textContent = context.listening ? 'Stop listening' : 'Start Live Coach';
     listenButton.classList.toggle('is-live', context.listening);
     askButton.disabled = context.session.memory.size === 0;
     renderNoteStream();
-    const sig = context.session.phrases().map((p) => p.id).join('|');
-    if (sig !== lastPhraseSignature) { lastPhraseSignature = sig; renderTimeline(); void coachLatestPhrase(); }
+
+    const signature = context.session.phrases().map((phrase) => phrase.id).join('|');
+    if (signature !== lastPhraseSignature) {
+      lastPhraseSignature = signature;
+      renderTimeline();
+      void coachLatestPhrase();
+    }
   }
 
   function onFrame(frame: Frame): void {
-    // Any sound at all counts as still playing, not just clean notes — a
-    // muted strum or a scrape means their hands are moving.
     if (frame.rms > 0.02) lastNoteAt = Date.now();
-    if (frame.hz > 0 && frame.clarity > .7) {
-      const midi = frequencyToMidi(frame.hz), cents = Math.round((midi - Math.round(midi))*100);
+
+    if (frame.hz > 0 && frame.clarity > 0.7) {
+      const midi = frequencyToMidi(frame.hz);
+      const cents = Math.round((midi - Math.round(midi)) * 100);
       noteReadout.textContent = midiToName(Math.round(midi));
-      centsBar.style.left = `${50 + Math.max(-50,Math.min(50,cents))}%`;
+      centsBar.style.left = `${50 + Math.max(-50, Math.min(50, cents))}%`;
       centsBar.style.transform = 'translateX(-50%)';
-      centsLabel.textContent = Math.abs(cents) <= 5 ? 'in tune' : `${Math.abs(cents)}¢ ${cents > 0 ? 'sharp' : 'flat'}`;
+      centsLabel.textContent = Math.abs(cents) <= 5
+        ? 'in tune'
+        : `${Math.abs(cents)}¢ ${cents > 0 ? 'sharp' : 'flat'}`;
       centsLabel.classList.toggle('is-good', Math.abs(cents) <= 5);
-    } else { noteReadout.textContent = '—'; centsLabel.textContent = ''; centsLabel.classList.remove('is-good'); }
-    levelFill.style.width = `${Math.min(100, frame.rms*320)}%`;
+    } else {
+      noteReadout.textContent = '—';
+      centsLabel.textContent = '';
+      centsLabel.classList.remove('is-good');
+    }
+
+    levelFill.style.width = `${Math.min(100, frame.rms * 320)}%`;
   }
 
-  /**
-   * Ordinary playing teaches the curriculum what this player can do, so the
-   * lesson plan is already right the first time they open it. Batched rather
-   * than written per chord: this runs while they are playing.
-   */
   function learnFromPlaying(): void {
     if (freeplay.length < 4) return;
     const observations = observeFreePlay(freeplay);
@@ -443,25 +925,83 @@ export function sessionView(context: AppContext): View {
 
   function onChord(chord: ChordDetection): void {
     chordReadout.textContent = chord.label;
-    chordConfidence.textContent = `${Math.round(chord.confidence*100)}% · likely chord`;
+    chordConfidence.textContent = `${Math.round(chord.confidence * 100)}% · likely chord · tap to learn it`;
+    chordShow.disabled = !chordShape(normalizeChordLabel(chord.label));
+
     const previous = chordHistory.at(-1);
     if (previous?.label === chord.label) return;
+
     const heard: HeardChord = { ...chord, heardAt: Date.now() };
-    chordHistory.push(heard); while (chordHistory.length > 8) chordHistory.shift();
+    chordHistory.push(heard);
+    while (chordHistory.length > 8) chordHistory.shift();
+
     refreshHarmony();
-    freeplay.push({ label: chord.label.replace('♯', '#'), confidence: chord.confidence, at: heard.heardAt });
+
+    const clean = normalizeChordLabel(chord.label);
+    freeplay.push({ label: clean, confidence: chord.confidence, at: heard.heardAt });
     if (freeplay.length >= 12) learnFromPlaying();
+
+    if (targetChord && clean === targetChord && targetFeedbackHost && !targetCleanAnnounced) {
+      replace(targetFeedbackHost,
+        h('p', { class: 'muted', text: `Yes — I hear ${clean}. Hold the shape and give me another slow strum so I can check the individual strings.` }),
+      );
+    }
+
     if (!previous) addCoach(`That sounds like ${chord.label}.`, 'chord');
     else if (Date.now() - previous.heardAt > 450) addCoach(`${previous.label} → ${chord.label}.`, 'chord');
+
+    if (chordShape(clean) && !knowsChord(clean) && !shownChordLessons.has(clean)) {
+      shownChordLessons.add(clean);
+      openChordTutor(
+        clean,
+        `You just found ${chord.label}. If that name means nothing to your hand yet, this is the shape.`,
+        false,
+      );
+      addCoach(
+        `That chord is ${chord.label}. I put the hand position on screen because naming a chord you do not know is not teaching it.`,
+        'teaching',
+      );
+    }
+  }
+
+  function onChordExplain(explanation: ChordExplanation): void {
+    checker.update(explanation);
+    doctor.update(explanation);
+    updateTargetFromEvidence(explanation);
   }
 
   const timer = window.setInterval(async () => {
-    if (checking) return; checking = true;
-    try { renderTimeline(); await coachLatestPhrase(); const echoes = await context.session.newEchoes(); if (!disposed) echoes.forEach(showEcho); }
-    catch (error) { if (!disposed) context.say((error as Error).message, 'error'); }
-    finally { checking = false; }
+    if (checking) return;
+    checking = true;
+    try {
+      renderTimeline();
+      await coachLatestPhrase();
+      const echoes = await context.session.newEchoes();
+      if (!disposed) echoes.forEach(showEcho);
+      flushPendingVoice();
+    } catch (error) {
+      if (!disposed) context.say((error as Error).message, 'error');
+    } finally {
+      checking = false;
+    }
   }, 650);
 
-  update(); refreshHarmony();
-  return { element, update, onNotes:update, onFrame, onChord, onChordExplain: (explanation) => { checker.update(explanation); doctor.update(explanation); }, dispose(){ context.setChordDiagnostics?.(false); learnFromPlaying(); disposed=true; window.clearInterval(timer); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } };
+  update();
+  refreshHarmony();
+
+  return {
+    element,
+    update,
+    onNotes: update,
+    onFrame,
+    onChord,
+    onChordExplain,
+    dispose() {
+      context.setChordDiagnostics?.(false);
+      learnFromPlaying();
+      disposed = true;
+      window.clearInterval(timer);
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    },
+  };
 }
