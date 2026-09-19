@@ -597,7 +597,7 @@ export const PATH: PathStep[] = [
     ],
     check: 'Somebody in the next room could tell where the loud part started.',
     expect: 'Immediately, and then forever, because it is a habit rather than a skill.',
-    practice: { view: 'session', label: 'Play and watch the level' },
+    practice: { view: 'lessons', params: { skill: 'technique.dynamics', path: 'dynamics' }, label: 'Start a guided dynamics practice' },
   },
   {
     id: 'twelve-bar',
