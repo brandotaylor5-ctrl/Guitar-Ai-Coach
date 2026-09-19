@@ -14,8 +14,13 @@
 
 import { PATH, loadProgress, saveDone } from '../../src/curriculum/path.ts';
 import type { PathStep } from '../../src/curriculum/path.ts';
+import { chordShape, chordShapeMidis } from '../../src/music/chordShapes.ts';
+import { inferFingering } from '../../src/music/fretboard.ts';
+import { SCALES, rootPositionFret, scaleBox, scaleRun } from '../../src/music/scales.ts';
+import { degreeRole } from '../../src/music/scales.ts';
+import { pcToName } from '../../src/music/notes.ts';
 import { h, clear } from '../ui/dom.ts';
-import { button } from '../ui/render.ts';
+import { button, fretboardDiagram, scaleDiagram } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
 
 function storage() {
@@ -42,6 +47,59 @@ export function pathView(context: AppContext): View {
   const store = storage();
   const element = h('div', { class: 'view view-path' });
 
+  /**
+   * Show the shape, and let them hear it.
+   *
+   * A step that says "your first chord is E minor" and then describes it in
+   * five sentences of prose is asking a beginner to build a picture in their
+   * head from words. That is the hardest possible way to learn a shape, and it
+   * is what made this course read as basic — the app already knew how to draw
+   * every one of these and was not doing it.
+   */
+  function chordBlock(chord: string): HTMLElement {
+    const shape = chordShape(chord);
+    if (!shape) return h('span');
+    const midis = chordShapeMidis(shape);
+    const strum = midis.map((midi, i) => ({
+      midi, startMs: i * 55, durationMs: 1800, confidence: 1, velocity: 0.55,
+    }));
+    return h('div', { class: 'step-shape' },
+      h('span', { class: 'step-shape-name', text: chord }),
+      fretboardDiagram(inferFingering(midis, { tuning: context.session.tuning, maxFret: 5 }), context.session.tuning),
+      h('div', { class: 'row-actions' },
+        button('Hear it', () => { void context.player.play(strum); }, 'btn-quiet'),
+        button('One string at a time', () => {
+          void context.player.play(midis.map((midi, i) => ({
+            midi, startMs: i * 650, durationMs: 600, confidence: 1, velocity: 0.55,
+          })));
+        }, 'btn-quiet'),
+      ),
+    );
+  }
+
+  function scaleBlock(tonicPc: number, scaleId: string): HTMLElement {
+    const scale = SCALES.find((item) => item.id === scaleId);
+    if (!scale) return h('span');
+    const tuning = context.session.tuning;
+    const startFret = rootPositionFret(tonicPc, tuning);
+    const box = scaleBox(tonicPc, scale, tuning, startFret);
+    const run = scaleRun(tonicPc, scale, tuning, startFret).map((position, i) => ({
+      midi: position.midi, startMs: i * 330, durationMs: 300, confidence: 1, velocity: 0.6,
+    }));
+    return h('div', { class: 'step-shape' },
+      h('span', { class: 'step-shape-name', text: `${pcToName(tonicPc)} ${scale.name}` }),
+      scaleDiagram(box, tuning),
+      h('ul', { class: 'note-roles' }, ...scale.degrees.map((degree) => h('li', {},
+        h('span', { class: 'pitch', text: pcToName((tonicPc + degree) % 12) }),
+        h('span', { class: 'why', text: degreeRole(degree).role }),
+      ))),
+      h('div', { class: 'row-actions' },
+        button('Hear it', () => { void context.player.play(run); }, 'btn-quiet'),
+        button('Slowly', () => { void context.player.play(run, { speed: 0.55 }); }, 'btn-quiet'),
+      ),
+    );
+  }
+
   function stepCard(step: PathStep, index: number, state: 'done' | 'current' | 'ahead'): HTMLElement {
     const number = h('span', { class: 'step-number', text: String(index + 1) });
     const head = h('button', {
@@ -58,8 +116,15 @@ export function pathView(context: AppContext): View {
       ),
     );
 
+    const shapes = h('div', { class: 'step-shapes' });
+    for (const chord of step.chords ?? (step.chord ? [step.chord] : [])) {
+      shapes.appendChild(chordBlock(chord));
+    }
+    if (step.scale) shapes.appendChild(scaleBlock(step.scale.tonicPc, step.scale.scaleId));
+
     const body = h('div', { class: 'step-body' },
       h('p', { class: 'step-outcome', text: step.outcome }),
+      shapes,
 
       h('h4', { text: 'Do this' }),
       h('ol', { class: 'step-steps' }, ...step.steps.map((line) => h('li', { text: line }))),

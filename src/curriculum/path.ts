@@ -39,6 +39,18 @@ export interface PathStep {
   expect: string;
   /** Where in the app to actually do it. */
   practice?: { view: 'lessons' | 'session' | 'songs' | 'song'; params?: Record<string, string>; label: string };
+  /**
+   * The chord this step teaches, so the screen can draw it and play it.
+   *
+   * Writing "Your first chord: E minor" and then not showing E minor is the
+   * whole reason this course read as a wall of text. A step about a shape has
+   * to show the shape.
+   */
+  chord?: string;
+  /** The scale this step teaches, same reason. */
+  scale?: { tonicPc: number; scaleId: string };
+  /** Several chords, for the steps that teach more than one. */
+  chords?: string[];
 }
 
 export const PATH: PathStep[] = [
@@ -93,6 +105,7 @@ export const PATH: PathStep[] = [
     watchFor: 'If it buzzes, you are usually too far back from the fret, or pressing with the flat pad of your finger instead of the tip.',
     expect: 'One session to get it once. A week before it is reliable.',
     practice: { view: 'session', label: 'Let the app listen and tell you if it is clean' },
+    chord: 'G',
   },
   {
     id: 'chord-em',
@@ -111,6 +124,7 @@ export const PATH: PathStep[] = [
     watchFor: 'The 3rd string (G) going dead is the usual one. Your middle finger is leaning on it — curl it more.',
     expect: 'Most people get a clean E minor within two or three sessions.',
     practice: { view: 'lessons', label: 'Learn it with the app listening' },
+    chord: 'Em',
   },
   {
     id: 'strum',
@@ -129,6 +143,7 @@ export const PATH: PathStep[] = [
     watchFor: 'Speeding up is the default. It is a sign of tension, not enthusiasm.',
     expect: 'A week to stop rushing. Longer to stop noticing that you are not rushing.',
     practice: { view: 'lessons', label: 'Drill it against a click' },
+    chord: 'Em',
   },
   {
     id: 'chord-g',
@@ -147,6 +162,7 @@ export const PATH: PathStep[] = [
     watchFor: 'If the thin E is dead, your ring finger is too flat. Come up onto its tip.',
     expect: 'Harder than E minor. Give it a week.',
     practice: { view: 'lessons', label: 'Learn it with the app listening' },
+    chord: 'G',
   },
   {
     id: 'change',
@@ -165,6 +181,7 @@ export const PATH: PathStep[] = [
     watchFor: 'Landing fingers one at a time. It feels faster and it is the thing that keeps you slow.',
     expect: 'Two to four weeks to make it feel automatic. This is the real hump.',
     practice: { view: 'lessons', label: 'The app counts your changes' },
+    chords: ['Em', 'G'],
   },
   {
     id: 'first-song',
@@ -198,6 +215,7 @@ export const PATH: PathStep[] = [
     watchFor: 'On D, hitting the two thick strings. Aim your strum at the thin four only.',
     expect: 'C is the hardest of the open chords for most people. Two to three weeks.',
     practice: { view: 'lessons', label: 'Learn them with the app listening' },
+    chords: ['C', 'D'],
   },
   {
     id: 'more-songs',
@@ -267,6 +285,7 @@ export const PATH: PathStep[] = [
     watchFor: 'Running up and down forever. The scale is the alphabet, not the sentence.',
     expect: 'The shape in a week. Making music out of it is the rest of your life, and it starts immediately.',
     practice: { view: 'lessons', label: 'Learn the shape and make a riff from it' },
+    scale: { tonicPc: 4, scaleId: 'minor-pent' },
   },
   {
     id: 'scale-major-pent',
@@ -283,6 +302,7 @@ export const PATH: PathStep[] = [
     check: 'You can play both over the same root and say which is which with your eyes closed.',
     expect: 'A week for the shape, given you already have the minor one.',
     practice: { view: 'lessons', label: 'Learn the shape and make a riff from it' },
+    scale: { tonicPc: 7, scaleId: 'major-pent' },
   },
   {
     id: 'first-riff',
