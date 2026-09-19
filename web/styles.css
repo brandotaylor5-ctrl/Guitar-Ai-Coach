@@ -5,16 +5,16 @@
  */
 
 :root {
-  --bg: #12141a;
-  --bg-raised: #191c24;
-  --bg-sunken: #0d0f14;
-  --line: #262a35;
-  --text: #e8eaf0;
-  --text-dim: #9aa1b3;
-  --accent: #5ee0b0;
-  --accent-dim: #2d8f70;
-  --warm: #f0b866;
-  --danger: #ef7a7a;
+  --bg: #090b12;
+  --bg-raised: #101522;
+  --bg-sunken: #070911;
+  --line: #283149;
+  --text: #f6f0e7;
+  --text-dim: #9da8bc;
+  --accent: #a78bfa;
+  --accent-dim: #6d5bd0;
+  --warm: #f0bd64;
+  --danger: #f07878;
   --radius: 14px;
   --radius-sm: 9px;
   --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px -12px rgb(0 0 0 / .5);
@@ -24,16 +24,16 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #f4f6f8;
-    --bg-raised: #ffffff;
-    --bg-sunken: #eef1f5;
-    --line: #d5dae2;
-    --text: #171a21;
-    --text-dim: #596072;
-    --accent: #0c7a5a;
-    --accent-dim: #0c7a5a;
-    --warm: #9a6212;
-    --danger: #b93b3b;
+    --bg: #f4efe7;
+    --bg-raised: #fffaf2;
+    --bg-sunken: #ebe4da;
+    --line: #d2c6b8;
+    --text: #201c25;
+    --text-dim: #6c6473;
+    --accent: #6650c9;
+    --accent-dim: #6650c9;
+    --warm: #9a5d16;
+    --danger: #b33e49;
   }
   .note.is-playing { color: #fff; }
   .fb-dotnum { fill: #fff; }
@@ -44,7 +44,9 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 18% -10%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 34rem),
+    var(--bg);
   color: var(--text);
   font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;

@@ -1,530 +1,473 @@
 /**
- * One-room Live Coach.
+ * Live Coach — deliberately one screen, one instruction, one active task.
  *
- * The player should never have to leave this screen to understand a chord,
- * learn a phrase, practise a hard transition, connect it to the fretboard, or
- * turn it into music. Other views may still exist as storage/reference, but
- * this is the product.
+ * The app can know a lot without showing a lot. This view keeps recognition
+ * and analysis in the background and reveals only what the player needs next.
  */
 
 import type { Frame } from '../../src/audio/noteTracker.ts';
 import type { NoteEvent, Phrase, PhraseAnalysis } from '../../src/types.ts';
-import { frequencyToMidi, midiToName, pcToName, pitchClass } from '../../src/music/notes.ts';
-import { chordShape, chordShapeMidis, beginnerChordShapes } from '../../src/music/chordShapes.ts';
+import { frequencyToMidi, midiToName } from '../../src/music/notes.ts';
+import { chordShape, chordShapeMidis } from '../../src/music/chordShapes.ts';
 import { inferFingering, renderTab } from '../../src/music/fretboard.ts';
-import { scaleById, scaleBox, degreeRole } from '../../src/music/scales.ts';
+import { scaleById, scaleBox } from '../../src/music/scales.ts';
 import { suggestChords } from '../../src/create/suggest.ts';
 import { motifBranches } from '../../src/create/songwriting.ts';
 import { practiceAttempt } from '../../src/practice/practice.ts';
 import { checkChordShape } from '../../src/audio/chordCheck.ts';
 import type { ChordCheck } from '../../src/audio/chordCheck.ts';
 import type { ChordDetection, ChordExplanation } from '../audio/chordDetect.ts';
-import {
-  compactChordLabel, inferHarmonyCenter, nextPlayableChord, normalizeChordLabel,
-  qualityFamily, readMelody, readTime, readTouch,
-} from '../../src/coach/liveTutor.ts';
-import {
-  PlayerModelStore, buildPlayerProfile, phraseObservation, practiceObservation,
-  recommendAdaptiveTask,
-} from '../../src/coach/playerModel.ts';
+import { compactChordLabel, normalizeChordLabel, readMelody, readTime } from '../../src/coach/liveTutor.ts';
+import { PlayerModelStore, phraseObservation, practiceObservation } from '../../src/coach/playerModel.ts';
 import { hardPartTarget, learningWindow, planPhrase } from '../../src/coach/oneRoom.ts';
 import { audioContext, audioOutput, unlockAudio } from '../audio/context.ts';
-import { chordDiagram, chordTeachingCard } from '../ui/chordCard.ts';
+import { chordTeachingCard } from '../ui/chordCard.ts';
 import { h, clear, replace } from '../ui/dom.ts';
-import {
-  button, fretboardDiagram, highlightNote, noteRow, scaleDiagram, tabBlock,
-} from '../ui/render.ts';
+import { button, fretboardDiagram, highlightNote, noteRow, scaleDiagram, tabBlock } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
 
-interface HeardChord extends ChordDetection { heardAt: number; }
-
-function memoryStorage(): Storage | {
-  getItem(key:string):string|null;
-  setItem(key:string,value:string):void;
-} {
+function storage(): Storage | { getItem(key:string):string|null; setItem(key:string,value:string):void } {
   try {
-    window.localStorage.setItem('__coach_probe__','1');
-    window.localStorage.removeItem('__coach_probe__');
+    window.localStorage.setItem('__coach_storage_probe__', '1');
+    window.localStorage.removeItem('__coach_storage_probe__');
     return window.localStorage;
   } catch {
-    const memory=new Map<string,string>();
+    const memory = new Map<string,string>();
     return {
-      getItem:(key)=>memory.get(key)??null,
-      setItem:(key,value)=>{memory.set(key,value);},
+      getItem: (key) => memory.get(key) ?? null,
+      setItem: (key, value) => { memory.set(key, value); },
     };
   }
 }
 
 function scaleId(name:string):string {
-  const normalized=name.toLowerCase();
-  if(normalized.includes('minor pentatonic')) return 'minor-pent';
-  if(normalized.includes('major pentatonic')) return 'major-pent';
-  if(normalized.includes('blues')) return 'blues';
-  if(normalized.includes('mixolydian')) return 'mixolydian';
-  if(normalized.includes('dorian')) return 'dorian';
-  if(normalized.includes('natural minor')||normalized==='minor') return 'minor';
-  if(normalized.includes('major')) return 'major';
+  const normalized = name.toLowerCase();
+  if (normalized.includes('minor pentatonic')) return 'minor-pent';
+  if (normalized.includes('major pentatonic')) return 'major-pent';
+  if (normalized.includes('blues')) return 'blues';
+  if (normalized.includes('mixolydian')) return 'mixolydian';
+  if (normalized.includes('dorian')) return 'dorian';
+  if (normalized.includes('minor')) return 'minor';
+  if (normalized.includes('major')) return 'major';
   return 'minor-pent';
 }
 
-function compactNotes(notes:NoteEvent[], max=9):string {
-  const names=notes.slice(0,max).map((note)=>midiToName(note.midi));
-  return names.join(' → ')+(notes.length>max?' …':'');
+function rebase(notes:NoteEvent[]):NoteEvent[] {
+  if (!notes.length) return [];
+  const origin = notes[0]!.startMs;
+  return notes.map((note) => ({ ...note, startMs: note.startMs - origin }));
 }
 
-function cloneRebased(notes:NoteEvent[]):NoteEvent[] {
-  if(!notes.length) return [];
-  const origin=notes[0]!.startMs;
-  return notes.map((note)=>({...note,startMs:note.startMs-origin}));
+function preferredVoice():SpeechSynthesisVoice|null {
+  if (!('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices().filter((voice) => /^en(-|_)/i.test(voice.lang));
+  const preferred = [
+    /samantha/i, /alex/i, /daniel/i, /aaron/i, /ava/i,
+    /natural/i, /google us english/i, /microsoft.*english/i,
+  ];
+  for (const pattern of preferred) {
+    const hit = voices.find((voice) => pattern.test(voice.name));
+    if (hit) return hit;
+  }
+  return voices[0] ?? null;
 }
 
 export function coachView(context:AppContext):View {
-  let disposed=false;
-  let checking=false;
-  let lastPhraseId='';
-  let previousAnalysis:PhraseAnalysis|null=null;
-  let lastNoteAt=0;
-  let voiceEnabled=false;
-  let pendingVoice:string|null=null;
-  let lastSpokenAt=0;
+  let disposed = false;
+  let checking = false;
+  let lastPhraseId = '';
+  let lastNoteAt = 0;
+  let lastSpokenAt = 0;
+  let pendingVoice:string|null = null;
+  let voiceEnabled = true;
 
-  let currentPhrase:Phrase|null=null;
-  let currentAnalysis:PhraseAnalysis|null=null;
-  let activeTarget:NoteEvent[]|null=null;
-  let activeTargetLabel='';
-  let attemptStartMs:number|null=null;
+  let currentAnalysis:PhraseAnalysis|null = null;
+  let activeTarget:NoteEvent[]|null = null;
+  let activeTargetLabel = '';
+  let attemptStartMs:number|null = null;
 
-  let chordTarget:string|null=null;
-  let chordTargetHost:HTMLElement|null=null;
-  let chordTargetBest=-1;
-  let chordTargetClean=false;
+  let chordTarget:string|null = null;
+  let chordTargetHost:HTMLElement|null = null;
+  let chordTargetBest = -1;
+  let chordTargetClean = false;
 
-  let tempoTimer=0;
-  let currentTempo=0;
-  const chordHistory:HeardChord[]=[];
+  let tempoTimer = 0;
+  const model = new PlayerModelStore(storage());
 
-  const model=new PlayerModelStore(memoryStorage());
+  const stageKicker = h('p', { class:'coach-stage-kicker', text:'START HERE' });
+  const stageTitle = h('h1', { text:'Pick up your guitar.' });
+  const stageText = h('p', {
+    class:'coach-stage-text',
+    text:'Press Start. Play anything you know for about 15 seconds. Chords, notes, a riff — it does not matter. I’ll choose one thing to work on.',
+  });
+  const stageActions = h('div', { class:'coach-stage-actions' });
 
-  // --- compact "now" ------------------------------------------------------
-  const nowChord=h('strong',{class:'coach-now-value',text:'—'});
-  const nowChordShape=h('div',{class:'coach-now-chord-shape'});
-  const nowNote=h('strong',{class:'coach-now-value',text:'—'});
-  const nowTempo=h('strong',{class:'coach-now-value',text:'—'});
-  const nowHome=h('strong',{class:'coach-now-value',text:'—'});
-  const nowDetail=h('span',{class:'muted coach-now-detail',text:'Start listening and play normally.'});
-
-  const coachFeed=h('div',{class:'coach-conversation','aria-live':'polite'});
-  const workbench=h('div',{class:'coach-workbench'});
-  const progression=h('div',{class:'coach-progression muted'});
-  const memoryLine=h('div',{class:'coach-memory-line muted'});
-
-  const listenButton=button(context.listening?'Stop listening':'Start Coach',async()=>{
-    if(context.listening) await context.stopListening();
-    else await context.startListening();
-  },'btn-primary coach-listen');
-
-  const voiceButton=button('Voice: off',()=>{
-    voiceEnabled=!voiceEnabled;
-    voiceButton.textContent=`Voice: ${voiceEnabled?'on':'off'}`;
-    voiceButton.classList.toggle('is-live',voiceEnabled);
-    if(!voiceEnabled&&'speechSynthesis' in window){
-      pendingVoice=null;
-      window.speechSynthesis.cancel();
-    } else if(voiceEnabled) {
-      speak('Voice coach on. Play. I will wait for a pause before I talk.',true);
-    }
-  },'btn-quiet');
-
-  const whatWasThat=button('What did I just play?',async()=>{
-    const recall=await context.session.whatDidIJustPlay();
-    if(!recall){
-      addCoach('I need a few notes and a short pause first.','teach');
-      return;
-    }
-    currentPhrase=recall.phrase;
-    currentAnalysis=recall.analysis;
-    renderPhraseWorkbench(recall.phrase,recall.analysis,true);
-  },'btn-quiet');
-
-  const element=h('div',{class:'view coach-one-room'},
-    h('section',{class:'panel coach-hero'},
-      h('div',{},
-        h('p',{class:'lab-kicker',text:'LIVE COACH'}),
-        h('h1',{text:'Play guitar. I’ll stay with you.'}),
-        h('p',{class:'muted',text:'I’ll name what I hear, show the hand when a chord matters, teach the phrase you just played, isolate mistakes, explain the fretboard around it, and help you turn good accidents into music — without sending you somewhere else.'}),
-      ),
-      h('div',{class:'coach-hero-actions'},listenButton,voiceButton,whatWasThat),
-    ),
-
-    h('section',{class:'panel coach-now'},
-      h('div',{class:'coach-now-grid'},
-        h('article',{class:'coach-now-item'},
-          h('span',{class:'live-hearing-label',text:'CHORD'}),
-          nowChord,
-          nowChordShape,
-        ),
-        h('article',{class:'coach-now-item'},
-          h('span',{class:'live-hearing-label',text:'NOTE'}),
-          nowNote,
-        ),
-        h('article',{class:'coach-now-item'},
-          h('span',{class:'live-hearing-label',text:'TEMPO'}),
-          nowTempo,
-        ),
-        h('article',{class:'coach-now-item'},
-          h('span',{class:'live-hearing-label',text:'HOME'}),
-          nowHome,
-        ),
-      ),
-      nowDetail,
-      progression,
-    ),
-
-    h('section',{class:'panel coach-talk'},
-      h('div',{class:'coach-section-heading'},
-        h('div',{},
-          h('p',{class:'eyebrow',text:'COACH'}),
-          h('h2',{text:'One thing at a time.'}),
-        ),
-      ),
-      coachFeed,
-    ),
-
-    workbench,
-
-    h('details',{class:'panel coach-memory'},
-      h('summary',{text:'What Coach remembers about my playing'}),
-      memoryLine,
-      h('div',{class:'practice-actions'},
-        button('Open saved ideas',()=>context.navigate('library'),'btn-quiet'),
-        button('Open structured course',()=>context.navigate('path'),'btn-quiet'),
-      ),
-    ),
+  const heardNote = h('span', { text:'—' });
+  const heardChord = h('button', { class:'coach-heard-chord', type:'button', text:'—' });
+  const heardTempo = h('span', { text:'—' });
+  const heardLine = h('div', { class:'coach-heard-line' },
+    h('span', { class:'coach-heard-label', text:'I hear' }),
+    h('span', {}, h('small', { text:'note' }), heardNote),
+    h('span', {}, h('small', { text:'chord' }), heardChord),
+    h('span', {}, h('small', { text:'tempo' }), heardTempo),
   );
 
-  // --- conversation --------------------------------------------------------
+  const workbench = h('div', { class:'coach-workbench-minimal' });
 
-  function speak(text:string,force=false):void {
-    if(!voiceEnabled||!('speechSynthesis' in window)) return;
-    const now=Date.now();
-    if(!force&&now-lastNoteAt<1400){pendingVoice=text;return;}
-    if(!force&&now-lastSpokenAt<7000){pendingVoice=text;return;}
-    if(window.speechSynthesis.speaking||window.speechSynthesis.pending){pendingVoice=text;return;}
-    lastSpokenAt=now;
-    pendingVoice=null;
-    const utterance=new SpeechSynthesisUtterance(text);
-    utterance.rate=1.02;
-    utterance.pitch=.96;
-    utterance.volume=.9;
+  const voiceButton = button('Voice on', () => {
+    voiceEnabled = !voiceEnabled;
+    voiceButton.textContent = voiceEnabled ? 'Voice on' : 'Voice off';
+    voiceButton.classList.toggle('is-off', !voiceEnabled);
+    if (!voiceEnabled && 'speechSynthesis' in window) {
+      pendingVoice = null;
+      window.speechSynthesis.cancel();
+    } else if (voiceEnabled) {
+      speak('Voice coach is on.', true);
+    }
+  }, 'coach-voice-toggle');
+
+  const startButton = button('Start Coach', () => { void toggleListening(); }, 'btn-primary coach-start');
+
+  stageActions.append(startButton, voiceButton);
+
+  const element = h('div', { class:'view coach-minimal' },
+    h('section', { class:'coach-stage' },
+      h('div', { class:'coach-stage-copy' }, stageKicker, stageTitle, stageText),
+      stageActions,
+      heardLine,
+    ),
+    workbench,
+  );
+
+  heardChord.addEventListener('click', () => {
+    if (heardChord.textContent && heardChord.textContent !== '—') {
+      teachChord(heardChord.textContent, 'You played this chord. Here is the hand shape, then I’ll listen to your version.');
+    }
+  });
+
+  function setStage(kicker:string, title:string, text:string, speakIt=false):void {
+    stageKicker.textContent = kicker;
+    stageTitle.textContent = title;
+    stageText.textContent = text;
+    if (speakIt) speak(`${title} ${text}`);
+  }
+
+  function speak(text:string, force=false):void {
+    if (!voiceEnabled || !('speechSynthesis' in window)) return;
+    const now = Date.now();
+    if (!force && now - lastNoteAt < 1350) {
+      pendingVoice = text;
+      return;
+    }
+    if (!force && now - lastSpokenAt < 4500) {
+      pendingVoice = text;
+      return;
+    }
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      pendingVoice = text;
+      return;
+    }
+
+    lastSpokenAt = now;
+    pendingVoice = null;
+    if (force) {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
+    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.98;
+    utterance.pitch = 0.92;
+    utterance.volume = 1;
+    utterance.voice = preferredVoice();
+    utterance.onerror = (event) => {
+      if (event.error === 'canceled' || event.error === 'interrupted') return;
+      context.say('Voice output is blocked in this browser. Tap Voice on once to retry.', 'error');
+    };
     window.speechSynthesis.speak(utterance);
   }
 
   function flushVoice():void {
-    if(!pendingVoice) return;
-    if(Date.now()-lastNoteAt<1400) return;
-    const text=pendingVoice;
-    pendingVoice=null;
-    speak(text);
+    if (!pendingVoice || Date.now() - lastNoteAt < 1350) return;
+    const next = pendingVoice;
+    pendingVoice = null;
+    speak(next);
   }
 
-  function addCoach(text:string,kind:'hear'|'teach'|'success'|'create'='hear',action?:HTMLElement):void {
-    coachFeed.appendChild(h('article',{class:`coach-turn is-${kind}`},
-      h('span',{class:'coach-avatar',text:'✦'}),
-      h('div',{class:'coach-turn-body'},
-        h('p',{text}),
-        action??null,
-      ),
-    ));
-    while(coachFeed.children.length>5) coachFeed.firstElementChild?.remove();
-    coachFeed.scrollTop=coachFeed.scrollHeight;
-    if(kind!=='hear') speak(text);
-  }
-
-  addCoach('Start Coach and play anything. I’ll teach from the guitar that is actually in your hands.','hear');
-
-  // --- memory summary ------------------------------------------------------
-
-  function renderMemory():void {
-    const profile=buildPlayerProfile(model.load());
-    clear(memoryLine);
-    if(!profile.phraseCount&&!profile.practiceCount){
-      memoryLine.appendChild(h('p',{text:'Nothing permanent yet. I’ll build this from phrases you play and practice attempts I can actually measure.'}));
-      return;
-    }
-    const adaptive=recommendAdaptiveTask(profile);
-    memoryLine.append(
-      h('p',{text:`${profile.phraseCount} phrases remembered · ${profile.practiceCount} measured attempts${profile.tempo.median?` · usual pulse ~${Math.round(profile.tempo.median)} BPM`:''}.`}),
-      h('p',{},h('strong',{text:'What I’d work on next: '}),adaptive.title),
-      h('p',{class:'muted',text:adaptive.reason}),
-    );
-  }
-
-  // --- chord coaching ------------------------------------------------------
-
-  function playChord(label:string):void {
-    const shape=chordShape(normalizeChordLabel(label));
-    if(!shape) return;
-    const events=chordShapeMidis(shape).map((midi,index)=>({
-      midi,startMs:index*42,durationMs:1150,confidence:1,velocity:.62,
-    }));
-    void context.player.play(events);
-  }
-
-  function chordCheckView(check:ChordCheck):HTMLElement {
-    return h('div',{class:`coach-chord-check${check.clean?' is-clean':''}`},
-      h('strong',{text:check.advice[0]??(check.clean?'That chord is ringing.':'Try it again.')}),
-      h('div',{class:'coach-string-row'},
-        ...[...check.strings].reverse().map((string)=>h('span',{
-          class:`coach-string is-${string.verdict}`,
-          text:`${string.verdict==='ringing'?'●':string.verdict==='missing'?'✕':string.verdict==='unclear'?'?':'×'} ${string.stringNumber}`,
-        })),
-      ),
-      ...check.advice.slice(1,3).map((line)=>h('p',{class:'muted',text:line})),
-    );
-  }
-
-  function teachChord(label:string,reason:string):void {
-    const clean=normalizeChordLabel(label);
-    const shape=chordShape(clean);
-    clear(workbench);
-    stopTempo();
-
-    if(!shape){
-      workbench.appendChild(h('section',{class:'panel coach-focus'},
-        h('p',{class:'eyebrow',text:'WORK ON THIS'}),
-        h('h2',{text:clean}),
-        h('p',{text:reason}),
-        h('p',{class:'muted',text:'I can name that sound, but I do not have a beginner-safe physical map stored for it. I will not invent one.'}),
-      ));
+  async function toggleListening():Promise<void> {
+    if (context.listening) {
+      await context.stopListening();
+      startButton.textContent = 'Start Coach';
+      setStage('READY WHEN YOU ARE', 'Pick the guitar back up.', 'Press Start and I’ll listen again.');
       return;
     }
 
-    const feedback=h('div',{class:'coach-inline-feedback'});
-    chordTargetHost=feedback;
-    chordTarget=clean;
-    chordTargetBest=-1;
-    chordTargetClean=false;
-    context.setChordDiagnostics?.(true);
+    voiceEnabled = true;
+    voiceButton.textContent = 'Voice on';
+    voiceButton.classList.remove('is-off');
 
-    workbench.append(
-      h('section',{class:'panel coach-focus'},
-        h('p',{class:'eyebrow',text:'WORK ON THIS · CHORD'}),
-        h('h2',{text:`${shape.name} · ${clean}`}),
-        h('p',{text:reason}),
-        h('div',{class:'practice-actions'},
-          button('Hear the chord',()=>playChord(clean),'btn-quiet'),
-          button(`Listen to my ${clean}`,async()=>{
-            if(!context.listening) await context.startListening();
-            replace(feedback,h('p',{class:'muted',text:`I’m listening specifically for ${clean}. Put the hand down and give me two slow strums.`}));
-          },'btn-primary'),
-        ),
-        feedback,
-      ),
-      chordTeachingCard(clean,context.player,{compact:true}),
-    );
-    workbench.scrollIntoView({behavior:'smooth',block:'nearest'});
-  }
+    // Speak while this click is still a direct user gesture; mobile browsers
+    // are much more reliable about allowing speech here than after async work.
+    speak('I’m here. Play anything you know for about fifteen seconds. Don’t perform for me. I’m just figuring out where to start.', true);
+    await unlockAudio();
+    await context.startListening();
 
-  function updateChordTarget(explanation:ChordExplanation):void {
-    if(!chordTarget||!chordTargetHost) return;
-    const shape=chordShape(chordTarget);
-    if(!shape) return;
-    const check=checkChordShape(explanation.perMidi,shape,context.session.tuning);
-    const score=check.strings.filter((s)=>s.verdict==='ringing'||s.verdict==='unclear').length;
-    if(score<chordTargetBest) return;
-    chordTargetBest=score;
-    replace(chordTargetHost,chordCheckView(check));
-    if(check.clean&&!chordTargetClean){
-      chordTargetClean=true;
-      addCoach(`Yep. That’s ${chordTarget}. Keep the hand relaxed and make it ring once more before you leave it.`,'success');
-    }
-  }
-
-  function renderProgression():void {
-    clear(progression);
-    if(!chordHistory.length){
-      progression.classList.add('muted');
-      progression.appendChild(h('span',{text:'Your chord story will build here as you play.'}));
-      return;
-    }
-    progression.classList.remove('muted');
-    progression.appendChild(h('span',{class:'coach-progression-label',text:'you played ' }));
-    chordHistory.slice(-5).forEach((chord,index)=>{
-      if(index) progression.appendChild(h('span',{text:' → ',class:'muted'}));
-      progression.appendChild(button(chord.label,()=>teachChord(chord.label,`You played ${chord.label}. Here is the exact beginner hand shape I know for it.`),'coach-chord-pill'));
-    });
-
-    const center=inferHarmonyCenter(chordHistory);
-    const move=nextPlayableChord(center,chordHistory.at(-1),beginnerChordShapes().map((shape)=>shape.chord));
-    if(move&&chordShape(move.label)){
-      progression.append(
-        h('span',{class:'coach-progression-label',text:' · try '}),
-        button(move.label,()=>teachChord(move.label,`${move.reason} Try it after ${chordHistory.at(-1)!.label}.`),'coach-chord-pill is-suggested'),
+    if (context.listening) {
+      startButton.textContent = 'Stop';
+      clear(workbench);
+      setStage(
+        'I’M LISTENING',
+        'Play anything for about 15 seconds.',
+        'Chords, single notes, a riff, mistakes — all useful. Leave a short pause when you’re done and I’ll choose the first thing to work on.',
       );
     }
   }
 
-  // --- tempo ---------------------------------------------------------------
+  function playChord(label:string):void {
+    const shape = chordShape(normalizeChordLabel(label));
+    if (!shape) return;
+    const notes = chordShapeMidis(shape).map((midi, index) => ({
+      midi,
+      startMs: index * 45,
+      durationMs: 1200,
+      confidence: 1,
+      velocity: .62,
+    }));
+    void context.player.play(notes);
+  }
+
+  function chordFeedback(check:ChordCheck):HTMLElement {
+    return h('div', { class:`coach-chord-feedback${check.clean ? ' is-clean' : ''}` },
+      h('strong', { text:check.advice[0] ?? (check.clean ? 'That is ringing cleanly.' : 'Try it once more.') }),
+      h('div', { class:'coach-string-status' },
+        ...[...check.strings].reverse().map((string) => h('span', {
+          class:`is-${string.verdict}`,
+          text:`${string.verdict === 'ringing' ? '●' : string.verdict === 'missing' ? '✕' : string.verdict === 'unclear' ? '?' : '×'} ${string.stringNumber}`,
+        })),
+      ),
+      ...check.advice.slice(1, 2).map((line) => h('p', { class:'muted', text:line })),
+    );
+  }
+
+  function teachChord(label:string, reason:string):void {
+    const clean = normalizeChordLabel(label);
+    const shape = chordShape(clean);
+    stopTempo();
+    clear(workbench);
+
+    if (!shape) {
+      setStage('CHORD', clean, 'I can hear the chord name, but I do not have a beginner-safe hand map for it. I will not invent one.', true);
+      return;
+    }
+
+    setStage('CHORD LESSON', `Learn ${clean}`, reason, true);
+    const feedback = h('div', { class:'coach-inline-feedback' });
+    chordTarget = clean;
+    chordTargetHost = feedback;
+    chordTargetBest = -1;
+    chordTargetClean = false;
+    context.setChordDiagnostics?.(true);
+
+    workbench.append(
+      chordTeachingCard(clean, context.player, { compact:true }),
+      h('section', { class:'coach-task' },
+        h('p', { class:'coach-task-title', text:'Now you.' }),
+        h('p', { class:'muted', text:'Put the shape down and give me two slow strums.' }),
+        h('div', { class:'coach-task-actions' },
+          button('Hear it once', () => playChord(clean), 'btn-quiet'),
+          button(`Listen to my ${clean}`, async () => {
+            if (!context.listening) await context.startListening();
+            replace(feedback, h('p', { class:'muted', text:'Listening. Two slow strums.' }));
+          }, 'btn-primary'),
+        ),
+        feedback,
+      ),
+    );
+  }
+
+  function updateChordTarget(explanation:ChordExplanation):void {
+    if (!chordTarget || !chordTargetHost) return;
+    const shape = chordShape(chordTarget);
+    if (!shape) return;
+
+    const check = checkChordShape(explanation.perMidi, shape, context.session.tuning);
+    const score = check.strings.filter((string) =>
+      string.verdict === 'ringing' || string.verdict === 'unclear').length;
+    if (score < chordTargetBest) return;
+
+    chordTargetBest = score;
+    replace(chordTargetHost, chordFeedback(check));
+    if (check.clean && !chordTargetClean) {
+      chordTargetClean = true;
+      setStage('YES', `That’s ${chordTarget}.`, 'Play it one more time without squeezing harder. Then go back to whatever you were playing.', true);
+    }
+  }
+
+  function routeFor(notes:NoteEvent[], analysis:PhraseAnalysis|null):HTMLElement {
+    const positions = inferFingering(notes.map((note) => note.midi), {
+      tuning:context.session.tuning,
+      maxFret:18,
+    });
+    const window = learningWindow(positions.map((position) => position.fret), 18);
+
+    const route = h('details', { class:'coach-route-minimal' },
+      h('summary', { text:'Show me exactly where I can play this' }),
+      h('p', { class:'muted', text:'This is one low-travel route. A pitch can exist in several places on guitar, so I am not pretending this is definitely where your hand was.' }),
+      h('span', { class:'badge', text:`frets ${window.startFret}–${window.endFret}` }),
+      fretboardDiagram(positions, context.session.tuning),
+      tabBlock(renderTab(positions, context.session.tuning)),
+    );
+
+    if (analysis && analysis.scale.confidence >= .5) {
+      const scale = scaleById(scaleId(analysis.scale.scale));
+      if (scale) {
+        const box = scaleBox(
+          analysis.scale.tonicPc,
+          scale,
+          context.session.tuning,
+          window.startFret,
+          Math.max(4, window.endFret - window.startFret),
+        );
+        route.appendChild(h('details', { class:'coach-scale-neighborhood' },
+          h('summary', { text:`Show the nearby ${analysis.scale.label} notes` }),
+          h('p', { class:'muted', text:'Do not memorize this whole picture. Find the notes from your phrase first, then notice what is one step away.' }),
+          scaleDiagram(box, context.session.tuning),
+        ));
+      }
+    }
+    return route;
+  }
 
   function stopTempo():void {
-    if(tempoTimer) window.clearInterval(tempoTimer);
-    tempoTimer=0;
+    if (tempoTimer) window.clearInterval(tempoTimer);
+    tempoTimer = 0;
   }
 
   async function startTempo(bpm:number):Promise<void> {
     stopTempo();
-    currentTempo=bpm;
     await unlockAudio();
-    let beat=0;
-    const click=()=>{
-      const ctx=audioContext();
-      const osc=ctx.createOscillator();
-      const gain=ctx.createGain();
-      osc.frequency.value=beat%4===0?1400:920;
-      gain.gain.setValueAtTime(beat%4===0?.15:.09,ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.045);
-      osc.connect(gain);
+    let beat = 0;
+    const click = () => {
+      const ctx = audioContext();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.frequency.value = beat % 4 === 0 ? 1320 : 880;
+      gain.gain.setValueAtTime(beat % 4 === 0 ? .14 : .08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + .04);
+      oscillator.connect(gain);
       gain.connect(audioOutput());
-      osc.start();
-      osc.stop(ctx.currentTime+.055);
-      beat++;
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + .05);
+      beat += 1;
     };
     click();
-    tempoTimer=window.setInterval(click,60000/bpm);
+    tempoTimer = window.setInterval(click, 60_000 / bpm);
   }
 
-  // --- phrase teaching -----------------------------------------------------
+  function renderPhrase(phrase:Phrase, analysis:PhraseAnalysis):void {
+    currentAnalysis = analysis;
+    activeTarget = null;
+    attemptStartMs = null;
+    chordTarget = null;
+    chordTargetHost = null;
+    stopTempo();
+    context.setChordDiagnostics?.(false);
 
-  function inferredRoute(notes:NoteEvent[]):{positions:ReturnType<typeof inferFingering>;startFret:number;endFret:number} {
-    const positions=inferFingering(notes.map((n)=>n.midi),{tuning:context.session.tuning,maxFret:18});
-    const window=learningWindow(positions.map((p)=>p.fret),18);
-    return {positions,...window};
-  }
+    const melody = readMelody(analysis);
+    const time = readTime(analysis, null);
+    const plan = planPhrase(analysis);
+    heardTempo.textContent = time.bpm ? `~${time.bpm}` : 'free';
 
-  function phraseRouteBlock(analysis:PhraseAnalysis):HTMLElement {
-    const {positions,startFret,endFret}=inferredRoute(analysis.phrase.notes);
-    const scale=scaleById(scaleId(analysis.scale.scale));
-    const tonic=analysis.scale.confidence>=.45?analysis.scale.tonicPc:analysis.homePc;
+    setStage('START HERE', plan.headline, plan.instruction, true);
+    clear(workbench);
 
-    const block=h('div',{class:'coach-route'},
-      h('div',{class:'coach-route-head'},
-        h('div',{},
-          h('h3',{text:'One playable route'}),
-          h('p',{class:'muted',text:'I can hear pitch, not which duplicate fret you used. This is a low-travel route you can actually practise.'}),
-        ),
-        h('span',{class:'badge',text:`frets ${startFret}–${endFret}`}),
-      ),
-      fretboardDiagram(positions,context.session.tuning),
-      tabBlock(renderTab(positions,context.session.tuning)),
-    );
+    const row = noteRow(phrase.notes);
+    const taskActions = h('div', { class:'coach-task-actions' });
 
-    if(scale&&analysis.scale.confidence>=.45){
-      const box=scaleBox(tonic,scale,context.session.tuning,startFret,Math.max(4,endFret-startFret));
-      const roles=[...new Set(analysis.phrase.notes.map((note)=>{
-        const degree=((pitchClass(note.midi)-tonic)%12+12)%12;
-        return degreeRole(degree).short;
-      }))];
-      block.append(
-        h('details',{class:'coach-neighborhood'},
-          h('summary',{text:`Show the nearby ${pcToName(tonic)} ${scale.name} notes`}),
-          h('p',{class:'muted',text:`Your phrase fits this sound at ${Math.round(analysis.scale.confidence*100)}% confidence. Treat the root as home; the rest are choices around it. Roles you used: ${roles.join(', ')}.`}),
-          scaleDiagram(box,context.session.tuning),
-        ),
+    if (plan.priority === 'timing' && analysis.rhythm.bpm > 0) {
+      const target = Math.max(45, Math.round(analysis.rhythm.bpm * .82));
+      taskActions.append(
+        button(`Start ${target} BPM`, () => { void startTempo(target); }, 'btn-primary'),
+        button('Practice this phrase', () => practicePhrase(phrase.notes, 'your phrase'), 'btn-quiet'),
+      );
+    } else {
+      taskActions.append(
+        button('Practice this phrase', () => practicePhrase(phrase.notes, 'your phrase'), 'btn-primary'),
       );
     }
-    return block;
-  }
 
-  function renderCoachPlan(analysis:PhraseAnalysis):HTMLElement {
-    const profile=buildPlayerProfile(model.load());
-    const plan=planPhrase(analysis,profile);
-    const wrap=h('div',{class:'coach-plan'},
-      h('p',{class:'eyebrow',text:'COACH MOVE'}),
-      h('h3',{text:plan.headline}),
-      h('p',{text:plan.reason}),
-      h('p',{class:'coach-plan-do',text:plan.instruction}),
-    );
-
-    if(plan.priority==='timing'&&analysis.rhythm.bpm>0){
-      const target=Math.max(45,Math.round(analysis.rhythm.bpm*.82));
-      wrap.appendChild(h('div',{class:'practice-actions'},
-        button(`Give me ${target} BPM`,()=>{void startTempo(target);},'btn-primary'),
-        button('Stop click',stopTempo,'btn-quiet'),
-      ));
-    }
-    return wrap;
-  }
-
-  function practiceTargetView(target:NoteEvent[],label:string):void {
-    activeTarget=cloneRebased(target);
-    activeTargetLabel=label;
-    attemptStartMs=null;
-    stopTempo();
-
-    const row=noteRow(activeTarget);
-    clear(workbench);
-    workbench.appendChild(h('section',{class:'panel coach-focus coach-practice'},
-      h('p',{class:'eyebrow',text:'WORK ON THIS · RIFF'}),
-      h('h2',{text:label}),
-      h('p',{class:'muted',text:'Do not restart the whole session. This exact phrase is the target now.'}),
-      row,
-      h('div',{class:'practice-actions'},
-        button('Hear it',()=>{void context.player.play(activeTarget!,{
-          onNote:(index)=>highlightNote(row,index),
-          onEnd:()=>highlightNote(row,null),
-        });},'btn-primary'),
-        button('75%',()=>{void context.player.play(activeTarget!,{speed:.75});},'btn-quiet'),
-        button('50%',()=>{void context.player.play(activeTarget!,{speed:.5});},'btn-quiet'),
-        button('Start my take',async()=>{
-          if(!context.listening) await context.startListening();
-          attemptStartMs=context.session.currentTimeMs;
-          addCoach(`I’m listening for ${label}. Play it once, then leave a pause and hit Check my take.`,'teach');
-        },'btn-quiet'),
-        button('Check my take',checkPractice,'btn-quiet'),
+    workbench.appendChild(h('section', { class:'coach-task' },
+      h('div', { class:'coach-idea-head' },
+        h('div', {},
+          h('p', { class:'coach-task-title', text:melody.headline }),
+          h('p', { class:'muted', text:melody.detail }),
+        ),
+        time.bpm ? h('span', { class:'badge', text:`~${time.bpm} BPM` }) : null,
       ),
-      phraseRouteBlock({
-        ...(currentAnalysis??({} as PhraseAnalysis)),
-        phrase:{
-          id:'practice-target',
-          notes:activeTarget,
-          startMs:activeTarget[0]?.startMs??0,
-          endMs:(activeTarget.at(-1)?.startMs??0)+(activeTarget.at(-1)?.durationMs??0),
-        },
-      } as PhraseAnalysis),
-      h('div',{class:'coach-inline-feedback',id:'coach-practice-feedback'}),
+      row,
+      taskActions,
+      routeFor(phrase.notes, analysis),
+      h('div', { class:'coach-after-task' },
+        button('Make music from this', () => openCreate(phrase, analysis), 'coach-text-action'),
+        button('Save this idea', () => { void savePhrase(phrase); }, 'coach-text-action'),
+      ),
     ));
   }
 
-  function feedbackNode():HTMLElement|null {
-    return workbench.querySelector('#coach-practice-feedback');
+  function practicePhrase(notes:NoteEvent[], label:string):void {
+    stopTempo();
+    activeTarget = rebase(notes);
+    activeTargetLabel = label;
+    attemptStartMs = null;
+    clear(workbench);
+    setStage('PRACTICE', 'Play this back to me.', 'Hear it once. Slow it down if you need to. Then press Start my take and play it one time.', true);
+
+    const row = noteRow(activeTarget);
+    const feedback = h('div', { class:'coach-inline-feedback', id:'coach-practice-feedback' });
+
+    workbench.appendChild(h('section', { class:'coach-task' },
+      row,
+      h('div', { class:'coach-task-actions' },
+        button('Hear it', () => { void context.player.play(activeTarget!, {
+          onNote:(index) => highlightNote(row, index),
+          onEnd:() => highlightNote(row, null),
+        }); }, 'btn-primary'),
+        button('75%', () => { void context.player.play(activeTarget!, { speed:.75 }); }, 'btn-quiet'),
+        button('50%', () => { void context.player.play(activeTarget!, { speed:.5 }); }, 'btn-quiet'),
+      ),
+      routeFor(activeTarget, currentAnalysis),
+      h('div', { class:'coach-practice-capture' },
+        button('Start my take', async () => {
+          if (!context.listening) await context.startListening();
+          attemptStartMs = context.session.currentTimeMs;
+          setStage('YOUR TURN', 'I’m listening.', 'Play the phrase once. Leave a short pause, then press Check my take.', true);
+        }, 'btn-primary'),
+        button('Check my take', () => checkTake(feedback), 'btn-quiet'),
+      ),
+      feedback,
+      h('div', { class:'coach-after-task' },
+        button('Back to my idea', () => {
+          if (currentAnalysis) renderPhrase(currentAnalysis.phrase, currentAnalysis);
+        }, 'coach-text-action'),
+      ),
+    ));
   }
 
-  function loopTarget(notes:NoteEvent[],times:number,speed:number):void {
-    void (async()=>{
-      for(let i=0;i<times;i++){
-        await context.player.play(notes,{speed});
-        if(i<times-1) await new Promise((resolve)=>window.setTimeout(resolve,180));
-      }
-    })();
-  }
+  function checkTake(feedback:HTMLElement):void {
+    if (!activeTarget || attemptStartMs === null) {
+      replace(feedback, h('p', { class:'muted', text:'Press Start my take first.' }));
+      return;
+    }
 
-  function checkPractice():void {
-    const host=feedbackNode();
-    if(!host||!activeTarget){
-      addCoach('Choose Practice this phrase first.','teach');
-      return;
-    }
-    if(attemptStartMs===null){
-      replace(host,h('p',{class:'muted',text:'Hit Start my take first so I know which notes belong to the attempt.'}));
-      return;
-    }
-    const attempt=context.session.memory.all().filter((note)=>note.startMs>=attemptStartMs!);
-    const result=practiceAttempt(activeTarget,attempt,{requiredAccuracy:.82,tempoTolerance:.28});
-    const passed=result.accuracy>=.82&&Math.abs(result.tempoRatio-1)<=.32;
+    const attempt = context.session.memory.all().filter((note) => note.startMs >= attemptStartMs!);
+    const result = practiceAttempt(activeTarget, attempt, {
+      requiredAccuracy:.82,
+      tempoTolerance:.28,
+    });
+    const passed = result.accuracy >= .82 && Math.abs(result.tempoRatio - 1) <= .32;
 
     model.recordPractice(practiceObservation({
       source:'live-coach',
-      targetId:activeTargetLabel||'live phrase',
+      targetId:activeTargetLabel,
       reference:activeTarget,
       attempt,
       accuracy:result.accuracy,
@@ -532,218 +475,153 @@ export function coachView(context:AppContext):View {
       passed,
       firstMistakeIndex:result.firstMistakeIndex,
     }));
-    renderMemory();
 
-    clear(host);
-    host.append(
-      h('p',{class:`coaching${passed?' is-nailed':''}`,text:`${Math.round(result.accuracy*100)}% note match. ${result.feedback.join(' ')}`}),
-    );
+    clear(feedback);
+    feedback.appendChild(h('p', {
+      class:passed ? 'coach-good' : '',
+      text:`${Math.round(result.accuracy * 100)}% note match. ${result.feedback.join(' ')}`,
+    }));
 
-    if(passed){
-      host.appendChild(h('p',{class:'coach-success',text:'Good. Now stop drilling it. Play it musically again, or make one deliberate change.'}));
-      addCoach(`That take is close enough to stop treating it like an exercise. Play it once like music now.`,'success');
-    } else if(result.firstMistakeIndex!==null) {
-      const hard=hardPartTarget(activeTarget,result.firstMistakeIndex);
-      if(hard.length>=2){
-        const hardRow=noteRow(hard);
-        host.appendChild(h('div',{class:'coach-hard-part'},
-          h('strong',{text:'Here. This is the breakdown.'}),
-          h('p',{class:'muted',text:'Note before the miss → miss → note after. Fix this transition instead of restarting the whole riff.'}),
+    if (passed) {
+      setStage('GOOD', 'Stop drilling it.', 'Now play the same phrase like music instead of an exercise.', true);
+    } else if (result.firstMistakeIndex !== null) {
+      const hard = hardPartTarget(activeTarget, result.firstMistakeIndex);
+      if (hard.length >= 2) {
+        const hardRow = noteRow(hard);
+        feedback.appendChild(h('div', { class:'coach-hard-part-minimal' },
+          h('strong', { text:'This transition is the problem.' }),
+          h('p', { class:'muted', text:'Do not restart the whole riff. Loop only these notes.' }),
           hardRow,
-          h('div',{class:'practice-actions'},
-            button('Loop it 4× at 50%',()=>loopTarget(hard,4,.5),'btn-primary'),
-            button('Loop it 4× at 75%',()=>loopTarget(hard,4,.75),'btn-quiet'),
-            button('Make this chunk my target',()=>practiceTargetView(hard,`${activeTargetLabel} · hard part`),'btn-quiet'),
+          h('div', { class:'coach-task-actions' },
+            button('Loop 4× · 50%', () => loop(hard, 4, .5), 'btn-primary'),
+            button('Loop 4× · 75%', () => loop(hard, 4, .75), 'btn-quiet'),
+            button('Practice only this', () => practicePhrase(hard, `${activeTargetLabel} · hard part`), 'btn-quiet'),
           ),
         ));
+        setStage('FOUND IT', 'This is where it breaks.', 'Fix the tiny transition below. Then put it back into the full phrase.', true);
       }
     }
-    attemptStartMs=null;
+
+    attemptStartMs = null;
   }
 
-  function renderCreate(phrase:Phrase,analysis:PhraseAnalysis):void {
-    stopTempo();
-    const branches=motifBranches(phrase.notes);
-    const chords=suggestChords(analysis,4)
-      .map((item)=>({...item,symbol:compactChordLabel(item.label)}))
-      .filter((item)=>chordShape(item.symbol));
+  function loop(notes:NoteEvent[], times:number, speed:number):void {
+    void (async () => {
+      for (let i = 0; i < times; i += 1) {
+        await context.player.play(notes, { speed });
+        if (i < times - 1) await new Promise((resolve) => window.setTimeout(resolve, 160));
+      }
+    })();
+  }
 
+  function openCreate(phrase:Phrase, analysis:PhraseAnalysis):void {
+    stopTempo();
+    const branches = motifBranches(phrase.notes);
+    const bestChord = suggestChords(analysis, 4)
+      .map((item) => ({ ...item, symbol:compactChordLabel(item.label) }))
+      .find((item) => chordShape(item.symbol));
+
+    setStage('MAKE MUSIC', 'Keep your idea. Change one thing.', 'Pick one experiment. A/B it against what you played. Keep it only if your ear likes it.', true);
     clear(workbench);
-    const panel=h('section',{class:'panel coach-focus coach-create'},
-      h('p',{class:'eyebrow',text:'MAKE MUSIC FROM THIS'}),
-      h('h2',{text:'Keep the identity. Change one thing.'}),
-      h('p',{class:'muted',text:'No generated “song.” Your phrase stays the source material. Audition one deliberate change and keep only what sounds like you.'}),
-      h('div',{class:'coach-original-idea'},
-        h('strong',{text:'Your idea'}),
-        h('p',{text:compactNotes(phrase.notes)}),
-        h('div',{class:'practice-actions'},
-          button('Hear mine',()=>{void context.player.play(phrase.notes);},'btn-primary'),
-          button('Save mine',()=>{void savePhrase(phrase,'Caught by Live Coach');},'btn-quiet'),
-        ),
-      ),
+
+    const previewHost = h('div', { class:'coach-variant-preview' },
+      h('p', { class:'muted', text:'Choose one change below.' }),
     );
 
-    if(branches.length){
-      const grid=h('div',{class:'coach-branch-grid'});
-      for(const branch of branches){
-        grid.appendChild(h('article',{class:'coach-branch'},
-          h('strong',{text:branch.label}),
-          h('p',{text:branch.principle}),
-          h('div',{class:'practice-actions'},
-            button('A/B it',()=>{void (async()=>{
-              await context.player.play(phrase.notes);
-              await new Promise((resolve)=>window.setTimeout(resolve,220));
-              await context.player.play(branch.notes);
-            })();},'btn-primary'),
-            button('Practice this version',()=>practiceTargetView(branch.notes,branch.label),'btn-quiet'),
-            button('Keep it',async()=>{
-              await context.library.saveRiff(branch.notes,{comment:`Live Coach · ${branch.label}`});
-              model.recordCreative(branch.kind,'live-coach');
-              renderMemory();
-              context.say('Kept. Your original is untouched.');
-            },'btn-quiet'),
-          ),
-        ));
-      }
-      panel.append(
-        h('h3',{text:'Three controlled experiments'}),
-        grid,
-      );
+    const experimentRow = h('div', { class:'coach-experiment-row' });
+    for (const branch of branches) {
+      experimentRow.appendChild(button(
+        branch.kind === 'rhythm' ? 'Change rhythm'
+          : branch.kind === 'space' ? 'Add space'
+            : 'Lift the second half',
+        () => showVariation(branch.label, branch.principle, branch.notes, phrase.notes, previewHost),
+        'btn-quiet',
+      ));
     }
 
-    if(chords.length){
-      panel.append(
-        h('h3',{text:'Try harmony underneath it'}),
-        h('p',{class:'muted',text:'These chords contain a lot of the notes you already played. Tap one and I’ll teach your hand the chord right here.'}),
-        h('div',{class:'coach-harmony-options'},
-          ...chords.map((item)=>button(
-            `${item.symbol} · ${Math.round(item.fit*100)}% fit`,
-            ()=>teachChord(item.symbol,`${Math.round(item.fit*100)}% of your melody’s notes already live inside ${item.symbol}. Learn the hand, then play your phrase again over the feeling of that chord.`),
-            'coach-chord-pill',
-          )),
-        ),
-      );
-    }
-
-    workbench.appendChild(panel);
-    workbench.scrollIntoView({behavior:'smooth',block:'nearest'});
-  }
-
-  async function savePhrase(phrase:Phrase,comment:string):Promise<void> {
-    const riff=await context.session.saveRiff(phrase,{comment});
-    await context.keepClipFor(riff.versions[0]?.audioRef);
-    context.say('Saved. That idea is yours.');
-  }
-
-  function renderPhraseWorkbench(phrase:Phrase,analysis:PhraseAnalysis,scroll=false):void {
-    currentPhrase=phrase;
-    currentAnalysis=analysis;
-    stopTempo();
-    chordTarget=null;
-    chordTargetHost=null;
-
-    const melody=readMelody(analysis);
-    const time=readTime(analysis,previousAnalysis);
-    const touch=readTouch(analysis.phrase.notes);
-    const row=noteRow(phrase.notes);
-
-    clear(workbench);
-    workbench.appendChild(h('section',{class:'panel coach-focus'},
-      h('p',{class:'eyebrow',text:'WORK ON THIS · YOUR PHRASE'}),
-      h('div',{class:'coach-phrase-head'},
-        h('div',{},
-          h('h2',{text:melody.headline}),
-          h('p',{text:melody.detail}),
-        ),
-        h('span',{class:'badge',text:time.bpm?`~${time.bpm} BPM`:'free time'}),
+    workbench.appendChild(h('section', { class:'coach-task' },
+      h('div', { class:'coach-original' },
+        h('span', { class:'coach-heard-label', text:'YOUR IDEA' }),
+        noteRow(phrase.notes),
+        button('Hear mine', () => { void context.player.play(phrase.notes); }, 'coach-text-action'),
       ),
-      row,
-      h('p',{class:'muted',text:touch.headline==='Touch still unclear'
-        ? 'Play it again if you want me to compare the attack/dynamics too.'
-        : `${touch.headline}. ${touch.detail}`}),
-      renderCoachPlan(analysis),
-      h('div',{class:'coach-primary-actions'},
-        button('Teach me this phrase',()=>{
-          const existing=workbench.querySelector('.coach-route');
-          if(existing) existing.scrollIntoView({behavior:'smooth',block:'nearest'});
-        },'btn-primary'),
-        button('Practice this exact phrase',()=>practiceTargetView(phrase.notes,'your phrase'),'btn-primary'),
-        button('Make music from it',()=>renderCreate(phrase,analysis),'btn-primary'),
-        button('Save it',()=>{void savePhrase(phrase,'Caught by Live Coach');},'btn-quiet'),
+      experimentRow,
+      previewHost,
+      bestChord ? h('div', { class:'coach-one-harmony' },
+        h('span', { class:'coach-heard-label', text:'ONE HARMONY IDEA' }),
+        h('p', {}, `Try ${bestChord.symbol} underneath it. ${Math.round(bestChord.fit * 100)}% of your melody notes already fit inside that chord.`),
+        button(`Teach me ${bestChord.symbol}`, () => teachChord(
+          bestChord.symbol,
+          `This is one harmonic color that fits the melody you actually played.`,
+        ), 'btn-quiet'),
+      ) : null,
+      h('div', { class:'coach-after-task' },
+        button('Back to learning this phrase', () => renderPhrase(phrase, analysis), 'coach-text-action'),
       ),
-      phraseRouteBlock(analysis),
     ));
-
-    if(scroll) workbench.scrollIntoView({behavior:'smooth',block:'nearest'});
   }
 
-  // --- live updates --------------------------------------------------------
+  function showVariation(
+    label:string,
+    principle:string,
+    variation:NoteEvent[],
+    original:NoteEvent[],
+    host:HTMLElement,
+  ):void {
+    clear(host);
+    const row = noteRow(variation);
+    host.append(
+      h('p', { class:'coach-task-title', text:label }),
+      h('p', { class:'muted', text:principle }),
+      row,
+      h('div', { class:'coach-task-actions' },
+        button('A/B it', () => { void (async () => {
+          await context.player.play(original);
+          await new Promise((resolve) => window.setTimeout(resolve, 180));
+          await context.player.play(variation);
+        })(); }, 'btn-primary'),
+        button('Practice this version', () => practicePhrase(variation, label), 'btn-quiet'),
+        button('Keep this version', async () => {
+          await context.library.saveRiff(variation, { comment:`Live Coach · ${label}` });
+          context.say('Saved. Your original is untouched.');
+        }, 'btn-quiet'),
+      ),
+    );
+  }
 
-  function updateNowFromAnalysis(analysis:PhraseAnalysis):void {
-    const time=readTime(analysis,previousAnalysis);
-    nowTempo.textContent=time.bpm?`~${time.bpm}`:'—';
-    currentTempo=time.bpm??0;
-
-    const harmony=inferHarmonyCenter(chordHistory);
-    if(harmony){
-      nowHome.textContent=`${pcToName(harmony.rootPc)} ${harmony.minor?'minor':'major'}`;
-    } else if(analysis.scale.confidence>=.5) {
-      nowHome.textContent=analysis.scale.label;
-    } else {
-      nowHome.textContent=pcToName(analysis.homePc);
-    }
-
-    nowDetail.textContent=`${analysis.phrase.notes.length} notes · ${Math.round(analysis.quality.timingSteadiness*100)}% pulse consistency · ${analysis.scale.confidence>=.5?analysis.scale.label:'tonal center still forming'}`;
+  async function savePhrase(phrase:Phrase):Promise<void> {
+    const riff = await context.session.saveRiff(phrase, { comment:'Caught by Live Coach' });
+    await context.keepClipFor(riff.versions[0]?.audioRef);
+    context.say('Saved.');
   }
 
   async function coachLatestPhrase():Promise<void> {
-    if(attemptStartMs!==null) return;
-    const latest=context.session.phrases().at(-1);
-    if(!latest||latest.id===lastPhraseId||latest.notes.length<3) return;
-    lastPhraseId=latest.id;
-    const recall=await context.session.recallPhrase(latest.id);
-    if(!recall||disposed) return;
+    if (attemptStartMs !== null) return;
+    const latest = context.session.phrases().at(-1);
+    if (!latest || latest.id === lastPhraseId || latest.notes.length < 3) return;
+    lastPhraseId = latest.id;
 
-    currentPhrase=latest;
-    currentAnalysis=recall.analysis;
-    model.recordPhrase(phraseObservation(latest.id,recall.analysis));
-    renderMemory();
-    updateNowFromAnalysis(recall.analysis);
+    const recall = await context.session.recallPhrase(latest.id);
+    if (!recall || disposed) return;
 
-    const plan=planPhrase(recall.analysis,buildPlayerProfile(model.load()));
-    addCoach(`${plan.headline} ${plan.instruction}`,'teach');
-    renderPhraseWorkbench(latest,recall.analysis,false);
-    previousAnalysis=recall.analysis;
+    currentAnalysis = recall.analysis;
+    model.recordPhrase(phraseObservation(latest.id, recall.analysis));
+    renderPhrase(latest, recall.analysis);
   }
 
   function onFrame(frame:Frame):void {
-    if(frame.rms>.02) lastNoteAt=Date.now();
-    if(frame.hz>0&&frame.clarity>.7){
-      const midi=frequencyToMidi(frame.hz);
-      nowNote.textContent=midiToName(Math.round(midi));
+    if (frame.rms > .02) lastNoteAt = Date.now();
+    if (frame.hz > 0 && frame.clarity > .7) {
+      const midi = frequencyToMidi(frame.hz);
+      heardNote.textContent = midiToName(Math.round(midi));
     } else {
-      nowNote.textContent='—';
+      heardNote.textContent = '—';
     }
   }
 
   function onChord(chord:ChordDetection):void {
-    nowChord.textContent=chord.label;
-    clear(nowChordShape);
-    const clean=normalizeChordLabel(chord.label);
-    if(chordShape(clean)) nowChordShape.appendChild(chordDiagram(clean));
-
-    const previous=chordHistory.at(-1);
-    if(previous?.label===chord.label) return;
-
-    chordHistory.push({...chord,heardAt:Date.now()});
-    while(chordHistory.length>7) chordHistory.shift();
-    renderProgression();
-
-    if(!previous){
-      addCoach(`That chord sounds like ${chord.label}. The hand shape is sitting right above if you need it.`,'hear');
-    } else {
-      addCoach(`${previous.label} → ${chord.label}. I’m keeping that progression in mind.`,'hear');
-    }
+    heardChord.textContent = normalizeChordLabel(chord.label);
+    heardChord.classList.toggle('is-known', Boolean(chordShape(normalizeChordLabel(chord.label))));
   }
 
   function onChordExplain(explanation:ChordExplanation):void {
@@ -751,24 +629,21 @@ export function coachView(context:AppContext):View {
   }
 
   function update():void {
-    listenButton.textContent=context.listening?'Stop listening':'Start Coach';
-    listenButton.classList.toggle('is-live',context.listening);
+    startButton.textContent = context.listening ? 'Stop' : 'Start Coach';
   }
 
-  const timer=window.setInterval(async()=>{
-    if(checking) return;
-    checking=true;
-    try{
+  const timer = window.setInterval(async () => {
+    if (checking) return;
+    checking = true;
+    try {
       await coachLatestPhrase();
       flushVoice();
     } finally {
-      checking=false;
+      checking = false;
     }
-  },650);
+  }, 650);
 
   update();
-  renderMemory();
-  renderProgression();
 
   return {
     element,
@@ -777,12 +652,12 @@ export function coachView(context:AppContext):View {
     onFrame,
     onChord,
     onChordExplain,
-    dispose(){
-      disposed=true;
+    dispose() {
+      disposed = true;
       window.clearInterval(timer);
       stopTempo();
       context.setChordDiagnostics?.(false);
-      if('speechSynthesis' in window) window.speechSynthesis.cancel();
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     },
   };
 }
