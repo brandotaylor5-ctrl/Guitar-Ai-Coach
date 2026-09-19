@@ -15,12 +15,12 @@
 import { PATH, loadProgress, saveDone } from '../../src/curriculum/path.ts';
 import type { PathStep } from '../../src/curriculum/path.ts';
 import { chordShape, chordShapeMidis } from '../../src/music/chordShapes.ts';
-import { inferFingering } from '../../src/music/fretboard.ts';
+import { chordDiagram } from '../ui/chordCard.ts';
 import { SCALES, rootPositionFret, scaleBox, scaleRun } from '../../src/music/scales.ts';
 import { degreeRole } from '../../src/music/scales.ts';
 import { pcToName } from '../../src/music/notes.ts';
 import { h, clear } from '../ui/dom.ts';
-import { button, fretboardDiagram, scaleDiagram } from '../ui/render.ts';
+import { button, scaleDiagram } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
 
 function storage() {
@@ -65,7 +65,7 @@ export function pathView(context: AppContext): View {
     }));
     return h('div', { class: 'step-shape' },
       h('span', { class: 'step-shape-name', text: chord }),
-      fretboardDiagram(inferFingering(midis, { tuning: context.session.tuning, maxFret: 5 }), context.session.tuning),
+      chordDiagram(chord),
       h('div', { class: 'row-actions' },
         button('Hear it', () => { void context.player.play(strum); }, 'btn-quiet'),
         button('One string at a time', () => {
