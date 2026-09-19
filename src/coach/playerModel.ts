@@ -270,10 +270,13 @@ export function practiceObservation(input: {
 }
 
 export class PlayerModelStore {
-  constructor(
-    private readonly storage: PlayerModelStorage,
-    private readonly key = PLAYER_MODEL_KEY,
-  ) {}
+  private readonly storage: PlayerModelStorage;
+  private readonly key: string;
+
+  constructor(storage: PlayerModelStorage, key = PLAYER_MODEL_KEY) {
+    this.storage = storage;
+    this.key = key;
+  }
 
   load(): PlayerModelData {
     const raw = this.storage.getItem(this.key);
