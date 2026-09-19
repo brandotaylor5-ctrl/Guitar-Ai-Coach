@@ -709,3 +709,116 @@
 @media (max-width:900px) {
   .songwriting-branch-grid { grid-template-columns:1fr; }
 }
+
+
+/* ============================================================
+   Adaptive Coach memory — visible evidence, not black-box scores
+   ============================================================ */
+
+.live-adaptive-host:empty { display:none; }
+.live-adaptive-panel {
+  border-color:color-mix(in srgb,var(--accent) 42%,var(--line));
+  background:
+    radial-gradient(circle at 90% 10%,color-mix(in srgb,var(--accent) 10%,transparent),transparent 38%),
+    var(--bg-raised);
+}
+.live-adaptive-panel h3 {
+  margin:.2rem 0 .4rem;
+  font-size:clamp(1.15rem,2.7vw,1.5rem);
+}
+.live-adaptive-instruction {
+  max-width:68ch;
+  line-height:1.5;
+  padding:.75rem .85rem;
+  border-radius:10px;
+  background:var(--bg-sunken);
+  border-left:3px solid var(--accent);
+}
+.live-adaptive-stats {
+  display:flex;
+  gap:.35rem;
+  flex-wrap:wrap;
+  margin:.75rem 0;
+}
+
+.riff-adaptive-assignment {
+  border-color:color-mix(in srgb,var(--warm) 50%,var(--line));
+  background:linear-gradient(135deg,var(--bg-raised),color-mix(in srgb,var(--warm) 6%,var(--bg-raised)));
+}
+.riff-adaptive-assignment h3 { margin:.15rem 0 .35rem; }
+
+.riff-hard-part {
+  margin-top:.8rem;
+  padding:.85rem;
+  border-radius:10px;
+  border:1px solid color-mix(in srgb,var(--danger) 32%,var(--line));
+  background:color-mix(in srgb,var(--danger) 4%,var(--bg-sunken));
+}
+.riff-hard-part > strong {
+  display:block;
+  margin-bottom:.3rem;
+}
+.riff-hard-part p { margin:.3rem 0 .6rem; }
+
+.player-model-panel {
+  border-color:color-mix(in srgb,var(--accent-dim) 50%,var(--line));
+}
+.player-model-stats {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:.55rem;
+  margin:.85rem 0 1rem;
+}
+.player-model-stats article {
+  display:grid;
+  gap:.3rem;
+  min-width:0;
+  padding:.75rem;
+  border-radius:10px;
+  border:1px solid var(--line);
+  background:var(--bg-sunken);
+}
+.player-model-stats strong {
+  font:800 clamp(1.15rem,2.8vw,1.6rem)/1 var(--mono);
+  color:var(--accent);
+}
+.player-model-stats small {
+  color:var(--text-dim);
+  line-height:1.35;
+}
+.player-zone-grid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:.5rem;
+  margin:.6rem 0 1rem;
+}
+.player-zone-stat {
+  display:grid;
+  gap:.28rem;
+  padding:.7rem;
+  border-radius:10px;
+  border:1px solid var(--line);
+  background:var(--bg-sunken);
+}
+.player-zone-stat.is-strong { border-color:color-mix(in srgb,var(--accent) 55%,var(--line)); }
+.player-zone-stat.is-weak { border-color:color-mix(in srgb,var(--warm) 55%,var(--line)); }
+.player-zone-stat span { font-size:.82rem; }
+.adaptive-departure {
+  margin-top:1rem;
+  border-left:3px solid var(--warm);
+}
+
+.today-adaptive-card {
+  border-color:color-mix(in srgb,var(--warm) 44%,var(--line));
+  background:linear-gradient(145deg,var(--bg-raised),color-mix(in srgb,var(--warm) 5%,var(--bg-raised)));
+}
+.today-adaptive-card h3 { margin:.2rem 0 .4rem; }
+
+@media (max-width:900px) {
+  .player-model-stats { grid-template-columns:1fr 1fr; }
+  .player-zone-grid { grid-template-columns:1fr 1fr; }
+}
+@media (max-width:560px) {
+  .player-model-stats,
+  .player-zone-grid { grid-template-columns:1fr; }
+}
