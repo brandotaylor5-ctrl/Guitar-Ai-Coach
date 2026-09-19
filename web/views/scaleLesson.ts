@@ -28,6 +28,8 @@ import { pcToName } from '../../src/music/notes.ts';
 import { inferFingering, renderTab } from '../../src/music/fretboard.ts';
 import { h, replace } from '../ui/dom.ts';
 import { button, scaleDiagram, tabBlock } from '../ui/render.ts';
+import { lickCard } from '../ui/lickCard.ts';
+import { licksForScale, lickToEvents } from '../../src/music/licks.ts';
 import type { AppContext } from './context.ts';
 
 /** Match a curriculum skill's scale to one this module knows how to teach. */
@@ -144,7 +146,19 @@ export function scaleLessonCard(
       }, 'btn-primary'),
     ),
 
-    h('h4', { text: 'Now make something out of it' }),
+    h('h4', { text: 'What people actually play with it' }),
+    h('p', { class: 'muted', text: 'Real licks out of this scale, moved into your key. Generated phrases teach you that a scale is raw material; these are the lines the tradition settled on, and they are worth knowing by heart.' }),
+    ...licksForScale(scale.id, tonicPc).map((lick) => lickCard(lick, {
+      tuning, player: context.player,
+      onKeep: (kept) => {
+        void context.library
+          .saveRiff(lickToEvents(kept), { comment: `${kept.name} · ${pcToName(tonicPc)} ${scale.name}` })
+          .then(() => context.say(`Saved ${kept.name} to You.`))
+          .catch(() => context.say('Could not save that one.', 'error'));
+      },
+    })),
+
+    h('h4', { text: 'Now make something of your own' }),
     h('p', { class: 'muted', text: 'These are built from the five notes above, so they cannot sound wrong. Play one, then change something and see if you like yours better.' }),
     riffHost,
 
