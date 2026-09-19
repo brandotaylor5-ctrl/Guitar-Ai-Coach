@@ -7,6 +7,9 @@
  */
 
 import { buildFingerprint, describeFingerprint, suggestDeparture, MIN_TAKES_FOR_FINGERPRINT } from '../../src/fingerprint/fingerprint.ts';
+import {
+  PlayerModelStore, buildPlayerProfile, recommendAdaptiveTask,
+} from '../../src/coach/playerModel.ts';
 import { pcToName } from '../../src/music/notes.ts';
 import { h, clear } from '../ui/dom.ts';
 import { button, empty } from '../ui/render.ts';
@@ -14,6 +17,21 @@ import type { AppContext, View } from './context.ts';
 
 export function fingerprintView(context: AppContext): View {
   const element = h('div', { class: 'view view-fingerprint' });
+  const modelStore = new PlayerModelStore(
+    (() => {
+      try {
+        window.localStorage.setItem('__fingerprint_model_probe__', '1');
+        window.localStorage.removeItem('__fingerprint_model_probe__');
+        return window.localStorage;
+      } catch {
+        const memory = new Map<string, string>();
+        return {
+          getItem: (k: string) => memory.get(k) ?? null,
+          setItem: (k: string, v: string) => { memory.set(k, v); },
+        };
+      }
+    })(),
+  );
 
   async function render(): Promise<void> {
     clear(element);
@@ -22,6 +40,82 @@ export function fingerprintView(context: AppContext): View {
     const takes = riffs.flatMap((riff) => riff.versions.map((version) => version.notes));
     const sessionTakes = context.session.phrases().map((phrase) => phrase.notes);
     const fingerprint = buildFingerprint([...takes, ...sessionTakes]);
+    const playerProfile = buildPlayerProfile(modelStore.load());
+    const adaptiveTask = recommendAdaptiveTask(playerProfile);
+
+    const modelPanel = h('section', { class: 'panel player-model-panel' },
+      h('p', { class: 'eyebrow', text: 'WHAT COACH ACTUALLY REMEMBERS' }),
+      h('h2', { text: 'Your playing model' }),
+      h('p', { class: 'muted', text: 'This uses heard musical evidence plus measured practice attempts. Fretboard-zone claims only come from exercises where the target hand position was known.' }),
+      h('div', { class: 'player-model-stats' },
+        h('article', {},
+          h('span', { class: 'live-hearing-label', text: 'PHRASES' }),
+          h('strong', { text: String(playerProfile.phraseCount) }),
+          h('small', { text: 'remembered across sessions' }),
+        ),
+        h('article', {},
+          h('span', { class: 'live-hearing-label', text: 'MEASURED ATTEMPTS' }),
+          h('strong', { text: String(playerProfile.practiceCount) }),
+          h('small', { text: 'where the target was known' }),
+        ),
+        h('article', {},
+          h('span', { class: 'live-hearing-label', text: 'USUAL PULSE' }),
+          h('strong', { text: playerProfile.tempo.median ? `~${Math.round(playerProfile.tempo.median)} BPM` : '—' }),
+          h('small', { text: playerProfile.tempo.low && playerProfile.tempo.high
+            ? `roughly ${Math.round(playerProfile.tempo.low)}–${Math.round(playerProfile.tempo.high)} BPM`
+            : 'not enough tempo evidence yet' }),
+        ),
+        h('article', {},
+          h('span', { class: 'live-hearing-label', text: 'TIMING' }),
+          h('strong', { text: playerProfile.timing.tendency }),
+          h('small', { text: playerProfile.timing.meanSteadiness !== null
+            ? `${Math.round(playerProfile.timing.meanSteadiness * 100)}% average pulse consistency`
+            : 'not enough evidence yet' }),
+        ),
+      ),
+    );
+
+    if (playerProfile.intervals.length) {
+      modelPanel.append(
+        h('h3', { text: 'Melodic moves you reach for' }),
+        h('div', { class: 'known-skill-strip' },
+          ...playerProfile.intervals.slice(0, 6).map((entry) =>
+            h('span', { class: 'badge', text: `${entry.label} · ${Math.round(entry.share * 100)}%` })),
+        ),
+      );
+    }
+
+    if (playerProfile.zones.length) {
+      modelPanel.append(
+        h('h3', { text: 'Known physical neck evidence' }),
+        h('div', { class: 'player-zone-grid' },
+          ...playerProfile.zones.map((zone) =>
+            h('article', { class: `player-zone-stat${zone === playerProfile.weakestZone ? ' is-weak' : zone === playerProfile.strongestZone ? ' is-strong' : ''}` },
+              h('strong', { text: `Zone ${zone.zoneIndex + 1}` }),
+              h('span', { text: `${Math.round(zone.meanAccuracy * 100)}% note accuracy` }),
+              h('span', { class: 'muted', text: `${zone.attempts} attempt${zone.attempts === 1 ? '' : 's'}${zone.startFret !== null ? ` · around fret ${Math.round(zone.startFret)}` : ''}` }),
+            )),
+        ),
+      );
+    }
+
+    modelPanel.appendChild(h('div', { class: 'departure adaptive-departure' },
+      h('p', { class: 'eyebrow', text: 'CURRENT ADAPTIVE ASSIGNMENT' }),
+      h('h3', { text: adaptiveTask.title }),
+      h('p', { text: adaptiveTask.reason }),
+      h('p', { class: 'muted', text: adaptiveTask.instruction }),
+      button('Train this in Riff School', () => {
+        const params: Record<string, string> = {
+          lesson: adaptiveTask.lessonId,
+          adaptive: adaptiveTask.kind,
+        };
+        if (adaptiveTask.zoneIndex !== undefined) params.zone = String(adaptiveTask.zoneIndex);
+        if (adaptiveTask.bpm !== undefined) params.bpm = String(adaptiveTask.bpm);
+        context.navigate('lab', params);
+      }, 'btn-primary'),
+    ));
+
+    element.appendChild(modelPanel);
 
     const panel = h('section', { class: 'panel' },
       h('h2', { text: 'Your musical fingerprint' }),
