@@ -273,13 +273,26 @@ export function songView(context: AppContext, params: Record<string, string> = {
 
       h('section', { class: 'panel song-why' }, h('p', { text: song!.why })),
 
+      // Hearing the song never depends on being able to play it. A locked page
+      // with no sound on it is the worst version of this screen: it tells you
+      // what you cannot do and gives you no reason to care.
+      h('div', { class: 'row-actions song-transport' },
+        button('Hear the whole song', () => {
+          const all = song!.sections.flatMap((section) => chordBackingNotes(section, song!.bpm));
+          void context.player.play(all);
+        }, readiness.ready ? 'btn-quiet' : 'btn-primary btn-big'),
+        readiness.ready
+          ? button(playing ? 'Stop' : 'Play along', () => { void playAlong(); }, 'btn-primary btn-big')
+          : h('span'),
+      ),
+
       readiness.ready
-        ? h('div', { class: 'row-actions song-transport' },
-            button(playing ? 'Stop' : 'Play along', () => { void playAlong(); }, 'btn-primary btn-big'),
-          )
+        ? h('span')
         : h('section', { class: 'panel song-blocked' },
-            h('p', { text: `You need ${readiness.missing.join(' and ')} for this one. Everything else in it you already have.` }),
-            button(`Learn ${readiness.missing[0]}`, () => context.navigate('lessons'), 'btn-primary'),
+            h('p', { text: readiness.have.length
+              ? `You have ${readiness.have.join(' and ')} already. ${readiness.missing.join(' and ')} ${readiness.missing.length === 1 ? 'is' : 'are'} what is left before you can play it.`
+              : `This one needs ${readiness.missing.join(' and ')}. You can still hear it and look at the shapes — that is how you know what you are working towards.` }),
+            button(`Learn ${readiness.missing[0]}`, () => context.navigate('path'), 'btn-primary'),
           ),
 
       h('section', { class: 'panel song-chords' },

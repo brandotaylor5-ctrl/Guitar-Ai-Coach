@@ -80,11 +80,16 @@ export function practiceTodayView(context: AppContext): View {
       class: `practice-item is-${item.kind}${isRunning ? ' is-running' : ''}${done.has(index) ? ' is-done' : ''}`,
     },
       h('header', { class: 'item-head' },
-        h('span', { class: 'item-kind', text: KIND_LABEL[item.kind] }),
+        h('span', { class: 'item-kind', text: item.label ?? KIND_LABEL[item.kind] }),
         left,
       ),
       h('h3', { text: item.title }),
       h('p', { class: 'item-what', text: item.what }),
+      // The instructions live here, not behind a button. A session you have to
+      // navigate away from to actually do is a table of contents.
+      item.do?.length
+        ? h('ol', { class: 'step-steps' }, ...item.do.map((line) => h('li', { text: line })))
+        : h('span'),
       h('details', { class: 'theory' },
         h('summary', { text: 'Why this is in today' }),
         h('p', { text: item.because }),
@@ -115,7 +120,12 @@ export function practiceTodayView(context: AppContext): View {
     element.append(
       h('header', { class: 'view-head' },
         h('h2', { text: 'Today' }),
-        h('p', { text: `${session.minutes} minutes, in the order a teacher would put them. Warm up, learn the new thing while you are fresh, keep what is slipping, then play something whole.` }),
+        // Describe the session that was actually built. Promising "then play
+        // something whole" to somebody who cannot play anything yet is how a
+        // front page starts feeling like it was written for somebody else.
+        h('p', { text: `${session.minutes} minutes, in the order a teacher would put them: ${
+          session.items.map((item) => (item.label ?? KIND_LABEL[item.kind]).toLowerCase()).join(', ')
+        }.` }),
       ),
       h('div', { class: 'length-switch' },
         h('span', { class: 'doctor-label', text: 'How long have you got?' }),
