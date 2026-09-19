@@ -200,7 +200,17 @@ export function pathView(context: AppContext): View {
       const state = progress.done.has(step.id) ? 'done' : 'ahead';
       list.appendChild(stepCard(step, index, state));
     });
-    roadmap.appendChild(list);
+    roadmap.append(
+      list,
+      h('div', { class: 'practice-actions' },
+        button('Start the course over', () => {
+          if (!window.confirm('Start the course over from lesson 1? This only resets course checkmarks; it does not delete your saved riffs.')) return;
+          saveDone(store, new Set());
+          render();
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 'btn-quiet'),
+      ),
+    );
     element.appendChild(roadmap);
 
     element.appendChild(h('section', { class: 'panel' },
