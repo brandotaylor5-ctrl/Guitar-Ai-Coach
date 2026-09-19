@@ -1468,3 +1468,84 @@
   .coach-heard-line { gap:.7rem; }
   .coach-idea-head { flex-direction:column; }
 }
+
+
+/* ============================================================
+   Teacher-led Coach
+   ============================================================ */
+
+.coach-teacher-task {
+  border-color: color-mix(in srgb,var(--accent) 32%,var(--line));
+}
+.coach-lesson-steps {
+  display:grid;
+  gap:.58rem;
+  margin:.75rem 0 1rem;
+  padding-left:1.35rem;
+}
+.coach-lesson-steps li {
+  padding-left:.18rem;
+  line-height:1.48;
+}
+.coach-teacher-note,
+.coach-teacher-check {
+  margin:.7rem 0;
+  padding:.72rem .8rem;
+  border-radius:10px;
+  background:var(--bg-sunken);
+  border-left:3px solid var(--line);
+  line-height:1.45;
+}
+.coach-teacher-note { border-left-color:var(--warm); }
+.coach-teacher-check { border-left-color:var(--accent); }
+
+.coach-use-it {
+  display:grid;
+  gap:.38rem;
+  margin-top:1rem;
+  padding:1rem;
+  border-radius:12px;
+  background:color-mix(in srgb,var(--accent) 6%,var(--bg-sunken));
+  border:1px solid color-mix(in srgb,var(--accent) 28%,var(--line));
+}
+.coach-use-it > strong {
+  font-size:1.08rem;
+}
+.coach-use-it > p {
+  margin:.05rem 0;
+  line-height:1.5;
+}
+.coach-use-card {
+  border-color:color-mix(in srgb,var(--warm) 40%,var(--line));
+}
+
+.coach-complete-row {
+  display:flex;
+  flex-wrap:wrap;
+  gap:.45rem;
+  margin-top:1rem;
+  padding-top:.9rem;
+  border-top:1px solid var(--line);
+}
+.coach-complete-row .btn-primary {
+  background:var(--accent);
+  color:#0b0910;
+}
+
+.coach-loop {
+  margin-top:.7rem;
+}
+.coach-loop-chords {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:.35rem;
+  margin-bottom:.55rem;
+}
+.coach-loop-chords .coach-chord-pill {
+  font-size:1rem;
+  min-width:46px;
+}
+.coach-heard-line.is-quiet {
+  opacity:.84;
+}
