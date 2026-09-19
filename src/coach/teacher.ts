@@ -40,9 +40,14 @@ export function chooseTeacherLesson(
   mastery: Map<string, SkillMastery>,
 ): TeacherChoice {
   let index = Math.max(0, PATH.indexOf(progress.current));
+  const hasPlayingEvidence = mastery.size > 0;
 
   while (index < PATH.length - 1) {
     const step = PATH[index]!;
+    if (hasPlayingEvidence && ['hold', 'strings', 'fret'].includes(step.id)) {
+      index += 1;
+      continue;
+    }
     if (progress.done.has(step.id)) {
       index += 1;
       continue;
