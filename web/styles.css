@@ -735,3 +735,18 @@ code { font-family: var(--mono); }
 .check-row.is-not-played { opacity: .45; }
 .check-string { font-weight: 600; text-align: center; }
 .check-fret, .check-word { color: var(--text-dim); }
+
+/* ---- today's session ---- */
+.length-switch { margin-bottom: 1.2rem; }
+.practice-item {
+  background: var(--bg-raised); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1rem 1.1rem; margin-bottom: .7rem;
+}
+.practice-item.is-running { border-color: var(--accent); }
+.practice-item.is-done { opacity: .6; }
+.practice-item h3 { margin: .1rem 0 .4rem; font-size: 1.1rem; }
+.item-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.item-kind { font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+.item-time { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-dim); }
+.practice-item.is-running .item-time { color: var(--accent); font-size: 1.15rem; }
+.item-what { font-size: .96rem; }
