@@ -7,7 +7,7 @@
 
 import type { Frame } from '../../src/audio/noteTracker.ts';
 import type { NoteEvent, Phrase, PhraseAnalysis } from '../../src/types.ts';
-import { frequencyToMidi, midiToName, pitchClass } from '../../src/music/notes.ts';
+import { frequencyToMidi, midiToName } from '../../src/music/notes.ts';
 import { chordShape, chordShapeMidis } from '../../src/music/chordShapes.ts';
 import { inferFingering, renderTab } from '../../src/music/fretboard.ts';
 import { scaleById, scaleBox } from '../../src/music/scales.ts';
@@ -25,8 +25,6 @@ import { chordTeachingCard } from '../ui/chordCard.ts';
 import { h, clear, replace } from '../ui/dom.ts';
 import { button, fretboardDiagram, highlightNote, noteRow, scaleDiagram, tabBlock } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
-
-type CoachMode = 'idle' | 'listening' | 'phrase' | 'practice' | 'create' | 'chord';
 
 function storage(): Storage | { getItem(key:string):string|null; setItem(key:string,value:string):void } {
   try {
@@ -77,14 +75,12 @@ function preferredVoice():SpeechSynthesisVoice|null {
 export function coachView(context:AppContext):View {
   let disposed = false;
   let checking = false;
-  let mode:CoachMode = 'idle';
   let lastPhraseId = '';
   let lastNoteAt = 0;
   let lastSpokenAt = 0;
   let pendingVoice:string|null = null;
   let voiceEnabled = true;
 
-  let currentPhrase:Phrase|null = null;
   let currentAnalysis:PhraseAnalysis|null = null;
   let activeTarget:NoteEvent[]|null = null;
   let activeTargetLabel = '';
@@ -192,7 +188,6 @@ export function coachView(context:AppContext):View {
   async function toggleListening():Promise<void> {
     if (context.listening) {
       await context.stopListening();
-      mode = 'idle';
       startButton.textContent = 'Start Coach';
       setStage('READY WHEN YOU ARE', 'Pick the guitar back up.', 'Press Start and I’ll listen again.');
       return;
@@ -209,7 +204,6 @@ export function coachView(context:AppContext):View {
     await context.startListening();
 
     if (context.listening) {
-      mode = 'listening';
       startButton.textContent = 'Stop';
       clear(workbench);
       setStage(
@@ -249,7 +243,6 @@ export function coachView(context:AppContext):View {
   function teachChord(label:string, reason:string):void {
     const clean = normalizeChordLabel(label);
     const shape = chordShape(clean);
-    mode = 'chord';
     stopTempo();
     clear(workbench);
 
@@ -363,8 +356,6 @@ export function coachView(context:AppContext):View {
   }
 
   function renderPhrase(phrase:Phrase, analysis:PhraseAnalysis):void {
-    mode = 'phrase';
-    currentPhrase = phrase;
     currentAnalysis = analysis;
     activeTarget = null;
     attemptStartMs = null;
@@ -415,7 +406,6 @@ export function coachView(context:AppContext):View {
   }
 
   function practicePhrase(notes:NoteEvent[], label:string):void {
-    mode = 'practice';
     stopTempo();
     activeTarget = rebase(notes);
     activeTargetLabel = label;
@@ -517,7 +507,6 @@ export function coachView(context:AppContext):View {
   }
 
   function openCreate(phrase:Phrase, analysis:PhraseAnalysis):void {
-    mode = 'create';
     stopTempo();
     const branches = motifBranches(phrase.notes);
     const bestChord = suggestChords(analysis, 4)
@@ -607,7 +596,6 @@ export function coachView(context:AppContext):View {
     const recall = await context.session.recallPhrase(latest.id);
     if (!recall || disposed) return;
 
-    currentPhrase = latest;
     currentAnalysis = recall.analysis;
     model.recordPhrase(phraseObservation(latest.id, recall.analysis));
     renderPhrase(latest, recall.analysis);
@@ -634,7 +622,6 @@ export function coachView(context:AppContext):View {
 
   function update():void {
     startButton.textContent = context.listening ? 'Stop' : 'Start Coach';
-    if (context.listening && mode === 'idle') mode = 'listening';
   }
 
   const timer = window.setInterval(async () => {
