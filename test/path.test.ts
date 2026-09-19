@@ -87,6 +87,29 @@ describe('a course that works before it has heard you', () => {
     }
   });
 
+  test('every course button that opens Adaptive lessons names the exact skill', () => {
+    for (const step of PATH) {
+      if (step.practice?.view !== 'lessons') continue;
+      assert.ok(step.practice.params?.skill,
+        `${step.id} opens Adaptive lessons without naming what to teach`);
+      assert.ok(step.practice.params?.path,
+        `${step.id} opens Adaptive lessons without a path id to bring completion back`);
+    }
+  });
+
+  test('the first complete song only arrives after G, D and their change', () => {
+    const index = (id: string) => PATH.findIndex((step) => step.id === id);
+    assert.ok(index('chord-g') < index('first-song'));
+    assert.ok(index('chord-d') < index('first-song'));
+    assert.ok(index('change') < index('first-song'));
+  });
+
+  test('pentatonic comes before legato techniques that depend on it', () => {
+    const index = (id: string) => PATH.findIndex((step) => step.id === id);
+    assert.ok(index('scale-minor-pent') < index('hammer-on'));
+    assert.ok(index('hammer-on') < index('pull-off'));
+  });
+
   test('every chord the course teaches has a concrete beginner finger map', () => {
     for (const step of PATH) {
       if (!step.chord) continue;
