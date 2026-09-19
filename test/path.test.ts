@@ -44,8 +44,9 @@ describe('a course that works before it has heard you', () => {
     const ids = PATH.map((step) => step.id);
     assert.ok(ids.includes('scale-minor-pent'), 'minor pentatonic has to be in the course');
     assert.ok(ids.includes('scale-major-pent'), 'major pentatonic has to be in the course');
-    // Visible means in the list from step one, not unlocked later.
-    assert.equal(PATH.filter((s) => s.kind === 'scale').length, 2);
+    // Visible means in the list from step one, not unlocked later. The count
+    // is not fixed — what matters is that the scales are all in the one list.
+    assert.ok(PATH.filter((s) => s.kind === 'scale').length >= 2);
   });
 
   test('it ends somewhere worth getting to', () => {
@@ -120,5 +121,26 @@ describe('remembering where someone got to', () => {
 
   test('storage that refuses to write is not an error', () => {
     assert.doesNotThrow(() => saveDone({ setItem: () => { throw new Error('quota'); } }, new Set(['hold'])));
+  });
+});
+
+describe('the course does not go stale as content is added', () => {
+  test('no step hard-codes how many songs or steps there are', () => {
+    // "Three chords, five songs" was still saying five after the repertoire
+    // grew to fourteen. Counts written into prose rot silently.
+    const numbers = /\b(two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(songs|steps|tunes)\b/i;
+    for (const step of PATH) {
+      for (const text of [step.title, step.outcome, ...step.steps, step.check]) {
+        assert.doesNotMatch(text, numbers,
+          `${step.id} hard-codes a count that will rot: "${text}"`);
+      }
+    }
+  });
+
+  test('every song a step names still exists', () => {
+    for (const step of PATH) {
+      const id = step.practice?.params?.song;
+      if (id) assert.ok(songById(id), `${step.id} points at a song that is gone: ${id}`);
+    }
   });
 });

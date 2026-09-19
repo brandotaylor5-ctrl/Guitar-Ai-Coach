@@ -320,6 +320,194 @@ export const SONGS: Song[] = [
       },
     ],
   },
+
+  {
+    id: 'down-in-the-valley',
+    title: 'Down in the Valley',
+    origin: 'Traditional American folk waltz, printed in collections by the 1910s.',
+    key: 'G',
+    bpm: 88,
+    difficulty: 1,
+    why: 'Two chords and three beats to a bar instead of four. It is the easiest way to find out that not every song counts to four.',
+    sections: [
+      {
+        id: 'verse',
+        name: 'Verse',
+        bars: [...bars('G', 4), ...bars('D', 4), ...bars('D', 4), ...bars('G', 4)],
+        parts: [
+          STRUM,
+          {
+            level: 'boom-chuck',
+            how: 'Bass note, strum, strum — three to a bar. Count one two three, one two three, and let the bass land on every one.',
+          },
+          {
+            level: 'melody',
+            how: 'The melody. It is a waltz, so let it lean rather than march.',
+            notes: [
+              { midi: 55, beat: 0, beats: 1 }, { midi: 59, beat: 1, beats: 1 },
+              { midi: 62, beat: 2, beats: 1 }, { midi: 64, beat: 3, beats: 2 },
+              { midi: 62, beat: 5, beats: 1 }, { midi: 59, beat: 6, beats: 2 },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 'shady-grove',
+    title: 'Shady Grove',
+    origin: 'Traditional Appalachian tune, related to an older English ballad.',
+    key: 'Am',
+    bpm: 108,
+    difficulty: 2,
+    why: 'A minor tune that uses a G in it, which should sound wrong and is the whole reason it sounds old. Two chords, endless verses.',
+    sections: [
+      {
+        id: 'verse',
+        name: 'Verse',
+        bars: [...bars('Am', 4), ...bars('G', 4), ...bars('Am', 4), ...bars('G', 2), ...bars('Am', 2)],
+        parts: [
+          STRUM,
+          BOOM_CHUCK,
+          {
+            level: 'melody',
+            how: 'The melody, mostly on the middle strings.',
+            notes: [
+              { midi: 57, beat: 0, beats: 0.5 }, { midi: 60, beat: 0.5, beats: 0.5 },
+              { midi: 62, beat: 1, beats: 1 }, { midi: 64, beat: 2, beats: 1 },
+              { midi: 62, beat: 3, beats: 0.5 }, { midi: 60, beat: 3.5, beats: 0.5 },
+              { midi: 57, beat: 4, beats: 2 },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 'banks-of-the-ohio',
+    title: 'Banks of the Ohio',
+    origin: 'Traditional American murder ballad, collected in the nineteenth century.',
+    key: 'G',
+    bpm: 96,
+    difficulty: 2,
+    why: 'Three chords in the plainest possible order. It is the song to practise chord changes on, because the changes arrive exactly where you expect them.',
+    sections: [
+      {
+        id: 'verse',
+        name: 'Verse',
+        bars: [...bars('G', 4), ...bars('C', 4), ...bars('G', 4), ...bars('D', 2), ...bars('G', 2)],
+        parts: [
+          STRUM,
+          BOOM_CHUCK,
+          {
+            level: 'melody',
+            how: 'The melody sits low, around the open strings.',
+            notes: [
+              { midi: 50, beat: 0, beats: 0.5 }, { midi: 55, beat: 0.5, beats: 0.5 },
+              { midi: 55, beat: 1, beats: 1 }, { midi: 59, beat: 2, beats: 1 },
+              { midi: 57, beat: 3, beats: 1 }, { midi: 55, beat: 4, beats: 2 },
+              { midi: 50, beat: 6, beats: 2 },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 'angeline-the-baker',
+    title: 'Angeline the Baker',
+    origin: 'Traditional old-time tune, from a Stephen Foster song of 1850.',
+    key: 'D',
+    bpm: 116,
+    difficulty: 2,
+    why: 'A fiddle tune with only two chords, which makes it the easiest way into old-time playing. Every jam knows it.',
+    sections: [
+      {
+        id: 'a',
+        name: 'A part',
+        bars: [...bars('D', 8), ...bars('G', 4), ...bars('D', 4)],
+        parts: [
+          STRUM,
+          BOOM_CHUCK,
+          {
+            level: 'melody',
+            how: 'The A part. Keep your picking strictly alternating or it will never come up to speed.',
+            notes: [
+              { midi: 62, beat: 0, beats: 0.5 }, { midi: 64, beat: 0.5, beats: 0.5 },
+              { midi: 66, beat: 1, beats: 0.5 }, { midi: 64, beat: 1.5, beats: 0.5 },
+              { midi: 62, beat: 2, beats: 0.5 }, { midi: 59, beat: 2.5, beats: 0.5 },
+              { midi: 57, beat: 3, beats: 1 }, { midi: 62, beat: 4, beats: 2 },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 'wayfaring-stranger',
+    title: 'Wayfaring Stranger',
+    origin: 'Traditional American spiritual, in print by the 1850s.',
+    key: 'Am',
+    bpm: 72,
+    difficulty: 2,
+    why: 'Slow, minor and completely serious. It is the one to play when you want the guitar to sound like it means something.',
+    sections: [
+      {
+        id: 'verse',
+        name: 'Verse',
+        bars: [...bars('Am', 4), ...bars('Dm', 2), ...bars('Am', 2), ...bars('Am', 2), ...bars('E', 2), ...bars('Am', 4)],
+        parts: [
+          STRUM,
+          BOOM_CHUCK,
+          {
+            level: 'melody',
+            how: 'The melody. Let every note ring its full length — the space is the song.',
+            notes: [
+              { midi: 57, beat: 0, beats: 1 }, { midi: 60, beat: 1, beats: 1 },
+              { midi: 62, beat: 2, beats: 2 }, { midi: 60, beat: 4, beats: 1 },
+              { midi: 57, beat: 5, beats: 1 }, { midi: 55, beat: 6, beats: 2 },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 'man-of-constant-sorrow',
+    title: 'Man of Constant Sorrow',
+    origin: 'Traditional, first published 1913; a bluegrass standard ever since.',
+    key: 'G',
+    bpm: 104,
+    difficulty: 2,
+    why: 'Three chords, a famous tune, and the exact changes that half of bluegrass uses. If you can play this you can sit in at a jam.',
+    sections: [
+      {
+        id: 'verse',
+        name: 'Verse',
+        bars: [...bars('G', 4), ...bars('C', 2), ...bars('G', 2), ...bars('G', 2), ...bars('D', 2), ...bars('G', 4)],
+        parts: [
+          STRUM,
+          BOOM_CHUCK,
+          {
+            level: 'melody',
+            how: 'The melody, with the pickup that drags you into the first bar.',
+            notes: [
+              { midi: 55, beat: -0.5, beats: 0.5 }, { midi: 59, beat: 0, beats: 1 },
+              { midi: 62, beat: 1, beats: 1 }, { midi: 64, beat: 2, beats: 1 },
+              { midi: 62, beat: 3, beats: 1 }, { midi: 59, beat: 4, beats: 2 },
+              { midi: 55, beat: 6, beats: 2 },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
 ];
 
 export function songById(id: string): Song | null {
