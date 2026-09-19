@@ -10,6 +10,7 @@ import type { NoteEvent, Riff, SongSeed } from '../../src/types.ts';
 import { explainRelation } from '../../src/explain/explain.ts';
 import { analyzeNotes } from '../../src/phrase/analyze.ts';
 import { suggestAnswer, suggestChords, suggestEndings } from '../../src/create/suggest.ts';
+import { motifBranches } from '../../src/create/songwriting.ts';
 import { chordShape, chordShapeMidis } from '../../src/music/chordShapes.ts';
 import { midiToName, pcToName } from '../../src/music/notes.ts';
 import { h, clear, relativeTime } from '../ui/dom.ts';
@@ -152,6 +153,7 @@ export function songsView(context: AppContext): View {
 
     const analysis = analyzeNotes(notes, { tuning: context.session.tuning });
     const chords = suggestChords(analysis, 4);
+    const branches = motifBranches(notes);
     const answer = suggestAnswer(analysis, { tuning: context.session.tuning });
     const endings = suggestEndings(analysis, { tuning: context.session.tuning });
 
@@ -187,8 +189,40 @@ export function songsView(context: AppContext): View {
 
     const develop = h('div', { class: 'section' },
       h('h3', { text: '2 · Develop the phrase' }),
-      h('p', { class: 'muted', text: 'Keep the identity of your riff, but hear what happens when it gets an answer or a different ending.' }),
+      h('p', { class: 'muted', text: 'Keep enough of the identity that the listener recognizes it. Change one dimension at a time so you can hear what rhythm, space, register and ending actually do.' }),
     );
+
+    if (branches.length) {
+      const branchGrid = h('div', { class: 'songwriting-branch-grid' });
+      for (const branch of branches) {
+        branchGrid.appendChild(h('article', { class: 'suggestion songwriting-branch' },
+          h('strong', { text: branch.label }),
+          h('p', { text: branch.principle }),
+          h('p', { class: 'muted', text: branch.notes.map((note) => midiToName(note.midi)).join(' → ') }),
+          h('div', { class: 'practice-actions' },
+            button('Hear the branch', () => { void context.player.play(branch.notes); }, 'btn-primary'),
+            button('A/B with my original', async () => {
+              await context.player.play(notes);
+              await new Promise((resolve) => window.setTimeout(resolve, 320));
+              await context.player.play(branch.notes);
+            }, 'btn-quiet'),
+            button('Keep as a new version', async () => {
+              await context.library.addVersion(riff.id, branch.notes, {
+                parentId: riff.currentVersionId,
+                comment: `Song Workshop · ${branch.label.toLowerCase()}`,
+              });
+              context.say('Kept as a new version. Your original is untouched.');
+              void render();
+            }, 'btn-quiet'),
+          ),
+        ));
+      }
+      develop.append(
+        h('h4', { text: 'Change one thing' }),
+        h('p', { class: 'muted', text: 'These branches deliberately preserve most of your phrase. The point is to hear development, not replacement.' }),
+        branchGrid,
+      );
+    }
 
     if (answer) {
       const answerBlock = h('article', { class: 'suggestion' },
