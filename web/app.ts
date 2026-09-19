@@ -33,7 +33,7 @@ const state = {
   session: new SketchbookSession(),
   library: new RiffLibrary(),
   listening: false,
-  view: 'practice' as ViewName,
+  view: 'path' as ViewName,
   params: {} as Record<string, string>,
   tuning: STANDARD_TUNING,
   sampleRate: 0,
@@ -49,8 +49,8 @@ const state = {
  * cabinet, and nobody picks up a guitar to file.
  */
 const PRIMARY_TABS: Array<[ViewName, string]> = [
-  ['practice', 'Today'],
   ['path', 'Learn'],
+  ['practice', 'Today'],
   ['songs', 'Songs'],
   ['session', 'Coach'],
 ];
@@ -226,7 +226,7 @@ const context: AppContext = {
     state.view = view;
     state.params = params;
     const query = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-    window.location.hash = view === 'practice' && !query ? '' : `#${view}${query ? `?${query}` : ''}`;
+    window.location.hash = view === 'path' && !query ? '' : `#${view}${query ? `?${query}` : ''}`;
     render();
   },
 
@@ -250,7 +250,7 @@ function buildView(): View {
     case 'seeds': return songsView(context);
     case 'fingerprint': return fingerprintView(context);
     case 'today': return todayView(context);
-    default: return practiceTodayView(context);
+    default: return pathView(context);
   }
 }
 
@@ -274,7 +274,7 @@ function render(): void {
 function readHash(): void {
   const raw = window.location.hash.replace('#', '');
   const [name, query = ''] = raw.split('?');
-  state.view = VIEW_NAMES.includes(name ?? '') ? (name as ViewName) : 'practice';
+  state.view = VIEW_NAMES.includes(name ?? '') ? (name as ViewName) : 'path';
   state.params = Object.fromEntries(
     query.split('&').filter(Boolean).map((pair) => {
       const [key, value = ''] = pair.split('=');
