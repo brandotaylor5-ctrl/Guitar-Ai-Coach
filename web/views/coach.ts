@@ -170,11 +170,19 @@ export function coachView(context:AppContext):View {
 
     lastSpokenAt = now;
     pendingVoice = null;
+    if (force) {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
+    }
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.98;
     utterance.pitch = 0.92;
     utterance.volume = 1;
     utterance.voice = preferredVoice();
+    utterance.onerror = (event) => {
+      if (event.error === 'canceled' || event.error === 'interrupted') return;
+      context.say('Voice output is blocked in this browser. Tap Voice on once to retry.', 'error');
+    };
     window.speechSynthesis.speak(utterance);
   }
 
