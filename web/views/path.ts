@@ -172,25 +172,40 @@ export function pathView(context: AppContext): View {
   function render(): void {
     clear(element);
     const progress = loadProgress(store);
+    const currentIndex = Math.max(0, PATH.indexOf(progress.current));
 
     element.append(
       h('header', { class: 'view-head' },
+        h('p', { class: 'eyebrow', text: 'YOUR COURSE' }),
         h('h2', { text: 'Learn the guitar' }),
         h('p', { text: progress.completed === 0
-          ? 'Start at the top. Every step tells you exactly what to do, how to know you have got it, and roughly how long it takes. Nothing is hidden — scroll down and you can see where this goes.'
-          : `${progress.completed} of ${PATH.length} done. Pick up at step ${PATH.indexOf(progress.current) + 1}.` }),
+          ? 'One lesson at a time. I will show you exactly what to do, then the microphone will check the parts it can honestly hear.'
+          : `${progress.completed} lessons finished. Lesson ${currentIndex + 1} is next.` }),
       ),
+      h('section', { class: 'panel' },
+        h('p', { class: 'eyebrow', text: `LESSON ${currentIndex + 1} OF ${PATH.length}` }),
+        h('h3', { text: 'Do this one now' }),
+        h('p', { class: 'muted', text: 'Do not worry about the rest of the course while you are holding the guitar. Finish this lesson, then I will hand you the next one.' }),
+      ),
+      stepCard(progress.current, currentIndex, 'current'),
     );
 
+    const roadmap = h('details', { class: 'panel course-roadmap' },
+      h('summary', { text: 'See the whole course roadmap' }),
+      h('p', { class: 'muted', text: 'This is here so you can see where the course goes. You do not need to choose the next lesson yourself.' }),
+    );
     const list = h('div', { class: 'step-list' });
     PATH.forEach((step, index) => {
-      const state = progress.done.has(step.id) ? 'done' : step.id === progress.current.id ? 'current' : 'ahead';
+      if (step.id === progress.current.id) return;
+      const state = progress.done.has(step.id) ? 'done' : 'ahead';
       list.appendChild(stepCard(step, index, state));
     });
-    element.appendChild(list);
+    roadmap.appendChild(list);
+    element.appendChild(roadmap);
 
     element.appendChild(h('section', { class: 'panel' },
-      h('p', { class: 'muted', text: 'This course is fixed and the same for everyone. The rest of the app is not — it listens to what you actually play and adapts. Both are useful; this is the one that works before it has heard you.' }),
+      h('strong', { text: 'What the app will and will not pretend to know' }),
+      h('p', { class: 'muted', text: 'It can hear notes, chord guesses, note sequences and chord changes. It can guide rhythm with a click. It cannot reliably see your wrist, pick angle or finger pressure through a microphone, so those lessons use concrete physical checks instead of fake scores.' }),
     ));
   }
 
