@@ -17,10 +17,11 @@ import {
   gradeProgression, gradeScale, observationFrom,
 } from '../../src/curriculum/exercise.ts';
 import { repertoireFor } from '../../src/curriculum/repertoire.ts';
-import { SKILLS } from '../../src/curriculum/skills.ts';
+import { SKILLS, getSkill } from '../../src/curriculum/skills.ts';
 import { chordShape } from '../../src/music/chordShapes.ts';
 import { midiToName } from '../../src/music/notes.ts';
 import { levelOf, WORKABLE } from '../../src/curriculum/mastery.ts';
+import { loadProgress as loadPathProgress, saveDone as savePathDone } from '../../src/curriculum/path.ts';
 import type { Exercise, Grade, HeardChord } from '../../src/curriculum/exercise.ts';
 import { audioContext, audioOutput, unlockAudio } from '../audio/context.ts';
 import { chordTeachingCard } from '../ui/chordCard.ts';
@@ -57,6 +58,15 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
     feed?: HTMLElement;
     stop: () => void;
   } | null = null;
+
+  /** Keep the fixed beginner course and adaptive mastery from drifting apart. */
+  function markCourseStepDone(): void {
+    const pathId = params.path;
+    if (!pathId) return;
+    const progress = loadPathProgress(storage());
+    progress.done.add(pathId);
+    savePathDone(storage(), progress.done);
+  }
 
   function lessonCard(lesson: Lesson): HTMLElement {
     const skill = lesson.skill;
@@ -136,8 +146,12 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
           button(practiceLabel, () => context.navigate(practiceView, { skill: skill.id }), 'btn-primary'),
           button('I understand the move — keep me going', () => {
             store.record([{ skillId: skill.id, quality: 1, at: Date.now(), source: 'lesson' }]);
-            render();
-            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            markCourseStepDone();
+            if (params.path) context.navigate('path');
+            else {
+              render();
+              element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
           }, 'btn-quiet'),
         ),
         h('p', { class: 'muted' }, 'That second button means “I understand what I am practising,” not “I mastered it.” The app can bring it back later.'),
@@ -250,15 +264,21 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
             : gradeHoldChord(exercise, heard, elapsed);
 
       store.record([observationFrom(exercise, grade)]);
+      if (grade.passed) markCourseStepDone();
       const actions = h('div', { class: 'practice-actions' });
       if (grade.passed) {
         const next = planLessons(masteryMap(store.load()), { count: 1 })[0];
         actions.append(
-          button(next ? `Next: ${next.skill.name}` : 'Show me what this unlocked', () => {
-            stopDrill();
-            render();
-            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }, 'btn-primary'),
+          params.path
+            ? button('Back to course · next lesson', () => {
+                stopDrill();
+                context.navigate('path');
+              }, 'btn-primary')
+            : button(next ? `Next: ${next.skill.name}` : 'Show me what this unlocked', () => {
+                stopDrill();
+                render();
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 'btn-primary'),
           button('Do it again', again, 'btn-quiet'),
           button('Use it in a song', () => context.navigate('songs'), 'btn-quiet'),
         );
@@ -407,10 +427,25 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
   function render(): void {
     const mastery = masteryMap(store.load());
     const progress = progressOf(mastery);
-    const lessons = planLessons(mastery, { count: 6 });
+    const requestedSkill = params.skill ? getSkill(params.skill) : null;
+    const lessons: Lesson[] = requestedSkill
+      ? [{
+          skill: requestedSkill,
+          reason: 'next-step',
+          priority: 1,
+          because: 'This is the exact lesson you opened from the course. Learn this one thing, then go back and keep moving.',
+        }]
+      : planLessons(mastery, { count: 6 });
 
     clear(element);
-    element.appendChild(h('section', { class: 'panel' },
+    if (requestedSkill) {
+      element.appendChild(h('section', { class: 'panel' },
+        h('p', { class: 'eyebrow', text: 'COURSE LESSON' }),
+        h('h2', { text: requestedSkill.name }),
+        h('p', { class: 'lede', text: 'One skill. See it, hear it, try it, then go back to the course.' }),
+        button('‹ Back to course', () => context.navigate('path'), 'btn-quiet'),
+      ));
+    } else element.appendChild(h('section', { class: 'panel' },
       h('h2', { text: 'Where you are' }),
       h('p', { class: 'lede', text: describeProgress(mastery) }),
       h('div', { class: 'progress-bar' }, h('span', { class: 'progress-fill', style: `width:${Math.round(progress.fraction * 100)}%` })),
@@ -418,15 +453,17 @@ export function lessonsView(context: AppContext, params: Record<string, string> 
       h('p', { class: 'muted', text: 'Passing one lesson unlocks the next useful branches immediately. Mastery comes from returning to things over time, not being trapped on one card.' }),
     ));
 
-    element.appendChild(learningMap(mastery));
+    if (!requestedSkill) element.appendChild(learningMap(mastery));
 
     element.appendChild(h('div', { class: 'learn-sequence', 'aria-label': 'How a new skill is learned' },
       h('span', { class: 'is-current', text: '1 · See it' }), h('span', { text: '2 · Hear it' }), h('span', { text: '3 · Try it' }), h('span', { text: '4 · Use it' }),
     ));
 
     element.appendChild(h('section', { class: 'panel' },
-      h('h2', { text: 'What I would work on next' }),
-      h('p', { class: 'muted', text: 'The first few are the most useful from what I know about your playing. You are also allowed to wander — guitar is not a checklist.' }),
+      h('h2', { text: requestedSkill ? 'Do this now' : 'What I would work on next' }),
+      h('p', { class: 'muted', text: requestedSkill
+        ? 'This practice is tied to the course step you opened. Passing it advances that course step.'
+        : 'The first few are the most useful from what I know about your playing. You are also allowed to wander — guitar is not a checklist.' }),
       lessons.length === 0
         ? h('div', {}, empty('Nothing is queued from the curriculum right now — that should not leave you stranded.'),
           h('div', { class: 'practice-actions' },
