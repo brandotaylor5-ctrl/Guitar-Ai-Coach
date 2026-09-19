@@ -1,4 +1,4 @@
-const CACHE = 'guitar-ai-coach-v14-live-coach';
+const CACHE = 'guitar-ai-coach-v15-riff-school';
 const SHELL = [
   './index.html',
   './styles.css',
