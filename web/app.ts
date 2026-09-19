@@ -50,22 +50,18 @@ const state = {
  */
 const PRIMARY_TABS: Array<[ViewName, string]> = [
   ['session', 'Coach'],
+  ['lab', 'Riffs'],
   ['path', 'Learn'],
   ['songs', 'Songs'],
-  ['practice', 'Today'],
 ];
 
 /**
- * Riff Lab is gone from here on purpose.
- *
- * It was five thousand pixels of sandbox on a phone — a scale explorer that
- * Learn now does properly, riff shapes, and a lead generator over abstract
- * chord loops — and a player called it what it was: generic. Improvising over
- * changes was the one thing in it worth keeping, and it is worth far more
- * attached to a song you have just played than stranded in a workshop, so
- * that is where it lives now.
+ * Secondary places support the four musical front doors without competing
+ * with them. Riff School is primary now because fretboard vocabulary and
+ * creation are a core part of the product rather than a hidden sandbox.
  */
 const MORE_TABS: Array<[ViewName, string]> = [
+  ['practice', 'Today'],
   ['library', 'Your riffs'],
   ['lessons', 'Adaptive lessons'],
   ['today', 'Start here'],
