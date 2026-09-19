@@ -50,9 +50,7 @@ const state = {
  * the one it belongs to — seven tabs is not a front page, it is a filing
  * cabinet, and nobody picks up a guitar to file.
  */
-const PRIMARY_TABS: Array<[ViewName, string]> = [
-  ['session', 'Coach'],
-];
+const PRIMARY_TABS: Array<[ViewName, string]> = [];
 
 /**
  * Secondary places support the four musical front doors without competing
@@ -60,15 +58,8 @@ const PRIMARY_TABS: Array<[ViewName, string]> = [
  * creation are a core part of the product rather than a hidden sandbox.
  */
 const MORE_TABS: Array<[ViewName, string]> = [
-  ['path', 'Structured course'],
   ['library', 'Saved ideas'],
-  ['songs', 'Song library'],
-  ['fingerprint', 'What Coach remembers'],
-  ['practice', 'Today'],
-  ['lab', 'Old Riff School'],
-  ['lessons', 'Adaptive lessons'],
-  ['today', 'Start here'],
-  ['seeds', 'Old Song Workshop'],
+  ['path', 'Course'],
 ];
 
 /**
@@ -77,9 +68,17 @@ const MORE_TABS: Array<[ViewName, string]> = [
  * choosing one rather than from the navigation.
  */
 const VIEW_NAMES: string[] = [
-  ...PRIMARY_TABS.map(([view]) => view as string),
-  ...MORE_TABS.map(([view]) => view as string),
+  'session',
+  'library',
+  'path',
   'song',
+  'songs',
+  'fingerprint',
+  'practice',
+  'lab',
+  'lessons',
+  'today',
+  'seeds',
 ];
 
 let moreOpen = false;
@@ -369,7 +368,9 @@ function mountChrome(): void {
     }));
   }
   const moreToggle = h('button', {
-    class: 'nav-tab nav-more-toggle', type: 'button', text: 'More',
+    class: 'nav-tab nav-more-toggle', type: 'button', text: '•••',
+    title: 'Saved ideas and course',
+    'aria-label': 'Open saved ideas and course',
     onClick: () => setMoreOpen(!moreOpen),
   });
   moreToggle.setAttribute('aria-controls', 'nav-more');
