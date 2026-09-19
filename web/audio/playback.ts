@@ -1,10 +1,12 @@
 /**
  * Playing a riff back.
  *
- * A plucked string is mostly a handful of decaying partials, so additive
- * synthesis gets close enough to recognise your own idea — which is the only
- * job here. It is not trying to sound like your guitar; it is trying to let you
- * hear the shape of what you played.
+ * Playback needs to be musical enough to judge an idea, not merely prove that
+ * the pitches are correct. Notes therefore use a small Karplus-Strong style
+ * plucked-string model: a noisy string excitation feeds a damped delay loop,
+ * then a little body filtering. It is still synthesis — never presented as a
+ * recording of the player's guitar — but it behaves much more like a string
+ * than the old stack of sine waves.
  */
 
 import type { NoteEvent } from '../../src/types.ts';
@@ -12,14 +14,58 @@ import { midiToFrequency } from '../../src/music/notes.ts';
 import { timeStretch } from '../../src/audio/timeStretch.ts';
 import { audioContext, audioOutput, unlockAudio } from './context.ts';
 
-/** Relative amplitude of each partial, and how fast each one dies away. */
-const PARTIALS = [
-  { harmonic: 1, gain: 0.55, decay: 1.0 },
-  { harmonic: 2, gain: 0.30, decay: 0.7 },
-  { harmonic: 3, gain: 0.16, decay: 0.5 },
-  { harmonic: 4, gain: 0.09, decay: 0.38 },
-  { harmonic: 5, gain: 0.05, decay: 0.3 },
-];
+/** Deterministic noise keeps the same pitch from changing character every play. */
+function seededNoise(seed:number):()=>number {
+  let state=(seed>>>0)||1;
+  return ()=>{
+    state=(state*1664525+1013904223)>>>0;
+    return (state/0xffffffff)*2-1;
+  };
+}
+
+function pluckBuffer(
+  context:AudioContext,
+  frequency:number,
+  seconds:number,
+):AudioBuffer {
+  const sampleRate=context.sampleRate;
+  const length=Math.max(1,Math.ceil(seconds*sampleRate));
+  const period=Math.max(2,Math.round(sampleRate/frequency));
+  const ring=new Float32Array(period);
+  const random=seededNoise(Math.round(frequency*1000)+length);
+
+  // Pick excitation: broad-band at first, slightly softened so the attack
+  // feels like finger/pick on a string rather than white-noise static.
+  let previous=0;
+  for(let i=0;i<period;i++){
+    const noise=random();
+    ring[i]=noise*.74+previous*.26;
+    previous=ring[i]!;
+  }
+
+  // Lower strings lose high-frequency energy more slowly than high strings.
+  const normalized=Math.max(0,Math.min(1,(frequency-82)/(880-82)));
+  const damping=.996-normalized*.0045;
+  const buffer=context.createBuffer(1,length,sampleRate);
+  const out=buffer.getChannelData(0);
+  let smooth=0;
+
+  for(let i=0;i<length;i++){
+    const index=i%period;
+    const next=(index+1)%period;
+    const value=ring[index]!;
+    const averaged=(value+ring[next]!)*.5*damping;
+    ring[index]=averaged;
+
+    // A tiny output smoothing stage removes the brittle digital edge while
+    // retaining the initial pick transient.
+    smooth=value*.88+smooth*.12;
+    const life=Math.exp(-2.8*i/length);
+    const attack=Math.min(1,i/(sampleRate*.0025));
+    out[i]=smooth*life*attack;
+  }
+  return buffer;
+}
 
 export interface PlayOptions {
   /** 1 is the original speed; 0.5 is half speed. Pitch is unaffected. */
@@ -119,30 +165,44 @@ export class RiffPlayer {
     duration: number,
   ): void {
     const frequency = midiToFrequency(note.midi);
-    const velocity = 0.35 + (note.velocity ?? 0.5) * 0.4;
+    const velocity = 0.28 + (note.velocity ?? 0.5) * 0.5;
+    const sustain = Math.max(0.45, Math.min(3.1, duration + 0.7));
 
-    for (const partial of PARTIALS) {
-      const hz = frequency * partial.harmonic;
-      // Anything above the top of hearing is wasted work and can alias.
-      if (hz > context.sampleRate / 2.2) continue;
+    const source = context.createBufferSource();
+    source.buffer = pluckBuffer(context, frequency, sustain);
 
-      const oscillator = context.createOscillator();
-      oscillator.type = 'sine';
-      oscillator.frequency.value = hz;
+    // Guitar body / air: lose sub rumble and the scratchiest top end, then add
+    // a broad little wooden-body bump. Native filters keep this cheap on phone.
+    const highpass = context.createBiquadFilter();
+    highpass.type = 'highpass';
+    highpass.frequency.value = 65;
+    highpass.Q.value = 0.35;
 
-      const gain = context.createGain();
-      const peak = partial.gain * velocity;
-      // A pluck: near-instant attack, then an exponential decay whose length
-      // depends on the partial. Higher partials die first, as on a real string.
-      gain.gain.setValueAtTime(0.0001, at);
-      gain.gain.exponentialRampToValueAtTime(peak, at + 0.006);
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + duration * partial.decay + 0.15);
+    const body = context.createBiquadFilter();
+    body.type = 'peaking';
+    body.frequency.value = frequency < 180 ? 145 : 215;
+    body.Q.value = 0.8;
+    body.gain.value = 2.4;
 
-      oscillator.connect(gain);
-      gain.connect(destination);
-      oscillator.start(at);
-      oscillator.stop(at + duration * partial.decay + 0.25);
-    }
+    const lowpass = context.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.value = Math.max(2600, Math.min(6200, frequency * 16));
+    lowpass.Q.value = 0.45;
+
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(velocity, at + 0.004);
+    gain.gain.setValueAtTime(velocity * 0.92, at + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + sustain);
+
+    source.connect(highpass);
+    highpass.connect(body);
+    body.connect(lowpass);
+    lowpass.connect(gain);
+    gain.connect(destination);
+
+    source.start(at);
+    source.stop(at + sustain + 0.05);
   }
 
   /**

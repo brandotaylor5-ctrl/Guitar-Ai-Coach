@@ -16,7 +16,7 @@ import { armAudioUnlock, audioBlocked, onAudioStateChange, unlockAudio } from '.
 import { RiffPlayer } from './audio/playback.ts';
 import { ClipStore } from './audio/clipStore.ts';
 import { h, clear, qs, replace } from './ui/dom.ts';
-import { sessionView } from './views/session.ts';
+import { coachView } from './views/coach.ts';
 import { labView } from './views/lab.ts';
 import { todayView } from './views/today.ts';
 import { lessonsView } from './views/lessons.ts';
@@ -52,9 +52,6 @@ const state = {
  */
 const PRIMARY_TABS: Array<[ViewName, string]> = [
   ['session', 'Coach'],
-  ['lab', 'Riffs'],
-  ['path', 'Learn'],
-  ['songs', 'Songs'],
 ];
 
 /**
@@ -63,12 +60,15 @@ const PRIMARY_TABS: Array<[ViewName, string]> = [
  * creation are a core part of the product rather than a hidden sandbox.
  */
 const MORE_TABS: Array<[ViewName, string]> = [
+  ['path', 'Structured course'],
+  ['library', 'Saved ideas'],
+  ['songs', 'Song library'],
+  ['fingerprint', 'What Coach remembers'],
   ['practice', 'Today'],
-  ['library', 'Your riffs'],
+  ['lab', 'Old Riff School'],
   ['lessons', 'Adaptive lessons'],
   ['today', 'Start here'],
-  ['seeds', 'Song Workshop'],
-  ['fingerprint', 'Fingerprint'],
+  ['seeds', 'Old Song Workshop'],
 ];
 
 /**
@@ -259,7 +259,7 @@ function buildView(): View {
   switch (state.view) {
     case 'lab': return labView(context, state.params);
     case 'lessons': return lessonsView(context, state.params);
-    case 'session': return sessionView(context);
+    case 'session': return coachView(context);
     case 'library': return libraryView(context, state.params);
     case 'practice': return practiceTodayView(context);
     case 'path': return pathView(context);
@@ -268,7 +268,7 @@ function buildView(): View {
     case 'seeds': return songsView(context);
     case 'fingerprint': return fingerprintView(context);
     case 'today': return todayView(context);
-    default: return sessionView(context);
+    default: return coachView(context);
   }
 }
 
