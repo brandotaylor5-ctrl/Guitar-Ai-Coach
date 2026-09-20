@@ -27,11 +27,15 @@ import { phraseObservation, PlayerModelStore, practiceObservation } from '../../
 import { hardPartTarget, learningWindow, planPhrase } from '../../src/coach/oneRoom.ts';
 import { chooseTeacherLesson, musicalUseFor } from '../../src/coach/teacher.ts';
 import {
-  JOURNEY_STAGES, guidedSessionPlan, journeyStatus,
+  PlacementStore, effectiveProgress, evidenceForPlacement, shouldOfferPlacement,
+  type PlayerPlacement,
+} from '../../src/coach/placement.ts';
+import {
+  JOURNEY_STAGES, guidedSessionPlan, journeyStatus, stageForStep,
 } from '../../src/coach/journey.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
 import { masteryMap } from '../../src/curriculum/mastery.ts';
-import { loadProgress, saveDone } from '../../src/curriculum/path.ts';
+import { PATH, loadProgress, saveDone } from '../../src/curriculum/path.ts';
 import type { PathStep } from '../../src/curriculum/path.ts';
 import { audioContext, audioOutput, unlockAudio } from '../audio/context.ts';
 import { chordTeachingCard } from '../ui/chordCard.ts';
@@ -39,7 +43,11 @@ import { h, clear, replace } from '../ui/dom.ts';
 import { button, fretboardDiagram, highlightNote, noteRow, scaleDiagram, tabBlock } from '../ui/render.ts';
 import type { AppContext, View } from './context.ts';
 
-function appStorage(): Storage | { getItem(key:string):string|null; setItem(key:string,value:string):void } {
+function appStorage(): Storage | {
+  getItem(key:string):string|null;
+  setItem(key:string,value:string):void;
+  removeItem(key:string):void;
+} {
   try {
     window.localStorage.setItem('__coach_storage_probe__', '1');
     window.localStorage.removeItem('__coach_storage_probe__');
@@ -49,6 +57,7 @@ function appStorage(): Storage | { getItem(key:string):string|null; setItem(key:
     return {
       getItem: (key) => memory.get(key) ?? null,
       setItem: (key, value) => { memory.set(key, value); },
+      removeItem: (key) => { memory.delete(key); },
     };
   }
 }
@@ -90,6 +99,7 @@ export function coachView(context:AppContext):View {
   const store = appStorage();
   const curriculum = new CurriculumStore(store);
   const playerModel = new PlayerModelStore(store);
+  const placements = new PlacementStore(store);
 
   let disposed = false;
   let checking = false;
@@ -217,8 +227,20 @@ export function coachView(context:AppContext):View {
     speak(next);
   }
 
+  function currentPlacement():PlayerPlacement|null {
+    return placements.load();
+  }
+
+  function coachMastery() {
+    return masteryMap(evidenceForPlacement(curriculum.load(), currentPlacement()));
+  }
+
+  function courseProgress() {
+    return effectiveProgress(loadProgress(store), currentPlacement());
+  }
+
   function teacherChoice() {
-    return chooseTeacherLesson(loadProgress(store), masteryMap(curriculum.load()));
+    return chooseTeacherLesson(courseProgress(), coachMastery());
   }
 
   function clearSessionTimer():void {
@@ -227,20 +249,25 @@ export function coachView(context:AppContext):View {
   }
 
   function journeyStrip(step:PathStep):HTMLElement {
-    const status = journeyStatus(loadProgress(store), step);
+    const progress = loadProgress(store);
+    const status = journeyStatus(progress, step);
     return h('div', { class:'coach-journey-strip' },
-      ...JOURNEY_STAGES.map((stage, index) =>
-        h('div', {
-          class:`coach-journey-stage${index < status.stageIndex ? ' is-done' : index === status.stageIndex ? ' is-current' : ''}`,
+      ...JOURNEY_STAGES.map((stage, index) => {
+        const complete = PATH
+          .filter((item) => stageForStep(item).id === stage.id)
+          .every((item) => progress.done.has(item.id));
+        return h('div', {
+          class:`coach-journey-stage${complete ? ' is-done' : index === status.stageIndex ? ' is-current' : ''}`,
         },
-          h('span', { class:'coach-journey-dot', text:index < status.stageIndex ? '✓' : String(index + 1) }),
+          h('span', { class:'coach-journey-dot', text:complete ? '✓' : String(index + 1) }),
           h('span', { text:stage.name }),
-        )),
+        );
+      }),
     );
   }
 
   function sessionOverview(step:PathStep):HTMLElement {
-    const mastery = masteryMap(curriculum.load());
+    const mastery = coachMastery();
     const plan = guidedSessionPlan(step, mastery);
     return h('section', { class:'coach-session-overview' },
       h('div', { class:'coach-session-overview-head' },
@@ -270,6 +297,13 @@ export function coachView(context:AppContext):View {
     context.setChordDiagnostics?.(false);
     clear(workbench);
 
+    const rawProgress = loadProgress(store);
+    const observations = curriculum.load();
+    if (shouldOfferPlacement(currentPlacement(), rawProgress, observations.length)) {
+      renderPlacementWelcome();
+      return;
+    }
+
     const choice = teacherChoice();
     const progress = loadProgress(store);
     const status = journeyStatus(progress, choice.step);
@@ -294,8 +328,100 @@ export function coachView(context:AppContext):View {
         h('summary', { text:'Why am I here?' }),
         h('p', { text:choice.reason }),
         h('p', { class:'muted', text:`Lesson ${status.lessonNumber} of ${status.totalLessons}. ${status.stageCompleted} of ${status.stageTotal} finished in this stage.` }),
+        button('Update my starting point', renderPlacementPicker, 'coach-text-action'),
       ),
     );
+  }
+
+  function savePlacement(placement:PlayerPlacement):void {
+    placements.save(placement);
+    renderTeacherHome(true);
+  }
+
+  function renderPlacementWelcome():void {
+    clear(workbench);
+    setStage(
+      'BEFORE I CHOOSE A LESSON',
+      'Meet me where you actually are.',
+      'I only need this once. Tell me whether the guitar is completely new or you already have some playing under your hands.',
+    );
+    setActions(
+      button('I’ve played before', renderPlacementPicker, 'btn-primary coach-start'),
+      button('I’m brand new', () => savePlacement({
+        experience:'new', knownChords:[], knownSteps:[], completedAt:Date.now(),
+      }), 'btn-quiet'),
+    );
+    workbench.appendChild(h('section', { class:'coach-task coach-placement-intro' },
+      h('strong', { text:'No placement test.' }),
+      h('p', { text:'Choose what you can already do without looking it up. I’ll treat it as a starting point, then confirm it naturally while you play.' }),
+      h('p', { class:'muted', text:'This changes the lesson Coach chooses. It does not mark anything as mastered.' }),
+    ));
+  }
+
+  function renderPlacementPicker():void {
+    clear(workbench);
+    const existing = currentPlacement();
+    const chosenChords = new Set(existing?.knownChords ?? []);
+    const chosenSteps = new Set(existing?.knownSteps ?? []);
+    const chordChoices = ['E', 'Em', 'A', 'Am', 'D', 'Dm', 'G', 'C', 'F'];
+    const stepChoices:Array<[string,string]> = [
+      ['strum', 'Keep steady down-strums'],
+      ['strum-updown', 'Use down-up strumming'],
+      ['change', 'Change G ↔ D without stopping'],
+      ['first-song', 'Play a whole song through'],
+      ['strum-pattern', 'Use a full strumming pattern'],
+      ['clean-notes', 'Pick single notes cleanly'],
+      ['scale-minor-pent', 'Know a minor pentatonic box'],
+      ['first-riff', 'Have made my own riff'],
+    ];
+
+    setStage(
+      'YOUR STARTING POINT',
+      'What can your hands already do?',
+      'Only choose things you can do without opening a lesson first. They do not need to be perfect.',
+    );
+    setActions(
+      button('Use this starting point', () => savePlacement({
+        experience:'played',
+        knownChords:[...chosenChords],
+        knownSteps:[...chosenSteps],
+        completedAt:Date.now(),
+      }), 'btn-primary coach-start'),
+      button('Start me from the beginning', () => {
+        saveDone(store, new Set());
+        savePlacement({
+          experience:'new', knownChords:[], knownSteps:[], completedAt:Date.now(),
+        });
+      }, 'btn-quiet'),
+    );
+
+    const toggle = (label:string, chosen:Set<string>, value:string) => {
+      const control = h('button', {
+        class:`chord-pick coach-placement-pick${chosen.has(value) ? ' is-on' : ''}`,
+        type:'button',
+        text:label,
+        onClick:() => {
+          if (chosen.has(value)) chosen.delete(value);
+          else chosen.add(value);
+          control.classList.toggle('is-on', chosen.has(value));
+          control.setAttribute('aria-pressed', String(chosen.has(value)));
+        },
+      });
+      control.setAttribute('aria-pressed', String(chosen.has(value)));
+      return control;
+    };
+
+    workbench.appendChild(h('section', { class:'coach-task coach-placement-card' },
+      h('div', { class:'coach-placement-group' },
+        h('p', { class:'coach-task-title', text:'Chords I can make from memory' }),
+        h('div', { class:'chord-picker' }, ...chordChoices.map((chord) => toggle(chord, chosenChords, chord))),
+      ),
+      h('div', { class:'coach-placement-group' },
+        h('p', { class:'coach-task-title', text:'Things I have actually done' }),
+        h('div', { class:'coach-placement-skills' }, ...stepChoices.map(([value, label]) => toggle(label, chosenSteps, value))),
+      ),
+      h('p', { class:'muted', text:'Coach will skip these for now, not forget them forever. Your real playing can correct this starting point in either direction.' }),
+    ));
   }
 
   function renderWarmupPhase(step:PathStep, index:number):void {
@@ -307,7 +433,7 @@ export function coachView(context:AppContext):View {
     stopTempo();
     clear(workbench);
 
-    const plan = guidedSessionPlan(step, masteryMap(curriculum.load()));
+    const plan = guidedSessionPlan(step, coachMastery());
     setStage(
       'TODAY · 1 OF 4 · WARM UP',
       plan.warmup.title,
@@ -679,7 +805,7 @@ export function coachView(context:AppContext):View {
     context.setChordDiagnostics?.(false);
     clear(workbench);
 
-    const plan = guidedSessionPlan(step, masteryMap(curriculum.load()));
+    const plan = guidedSessionPlan(step, coachMastery());
     setStage(
       'TODAY · 4 OF 4 · PLAY',
       'Put the lesson away.',

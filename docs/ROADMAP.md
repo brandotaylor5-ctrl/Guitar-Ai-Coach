@@ -41,6 +41,7 @@ something you can plug a guitar into.
 | Song Seed workspace | ✅ Arrange, reorder, play through, and what they share | `web/views/songs.ts` |
 | "Practice slowly" on your recording | ✅ WSOLA time-stretch, pitch untouched | `audio/timeStretch.ts` |
 | Typechecked | ✅ `npm run typecheck`, clean across 52 files | `tsconfig.json` |
+| First-run player placement | ✅ Starts from claimed chords and techniques, then lets real playing correct the claim | `coach/placement.ts`, `web/views/coach.ts` |
 
 Run `npm run demo` for the whole vision in the terminal, or `npm start` to use
 it with an actual guitar.

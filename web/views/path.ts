@@ -15,7 +15,10 @@
 import { PATH, loadProgress, saveDone } from '../../src/curriculum/path.ts';
 import { JOURNEY_STAGES, journeyStatus, stageForStep } from '../../src/coach/journey.ts';
 import { chooseTeacherLesson } from '../../src/coach/teacher.ts';
-import { masteryMap } from '../../src/curriculum/mastery.ts';
+import {
+  PlacementStore, effectiveProgress, evidenceForPlacement, placementStepIds,
+} from '../../src/coach/placement.ts';
+import { WORKABLE, levelOf, masteryMap } from '../../src/curriculum/mastery.ts';
 import { CurriculumStore } from '../../src/curriculum/watch.ts';
 import type { PathStep } from '../../src/curriculum/path.ts';
 import { chordShape, chordShapeMidis } from '../../src/music/chordShapes.ts';
@@ -34,7 +37,11 @@ function storage() {
     return window.localStorage;
   } catch {
     const memory = new Map<string, string>();
-    return { getItem: (k: string) => memory.get(k) ?? null, setItem: (k: string, v: string) => { memory.set(k, v); } };
+    return {
+      getItem: (k: string) => memory.get(k) ?? null,
+      setItem: (k: string, v: string) => { memory.set(k, v); },
+      removeItem: (k: string) => { memory.delete(k); },
+    };
   }
 }
 
@@ -104,7 +111,7 @@ export function pathView(context: AppContext): View {
     );
   }
 
-  function stepCard(step: PathStep, index: number, state: 'done' | 'current' | 'ahead'): HTMLElement {
+  function stepCard(step: PathStep, index: number, state: 'done' | 'placed' | 'verified' | 'current' | 'ahead'): HTMLElement {
     const number = h('span', { class: 'step-number', text: String(index + 1) });
     const head = h('button', {
       class: 'step-head', type: 'button',
@@ -117,6 +124,8 @@ export function pathView(context: AppContext): View {
       h('span', { class: 'step-head-text' },
         h('span', { class: 'step-title', text: step.title }),
         h('span', { class: 'step-kind', text: KIND_LABEL[step.kind] }),
+        state === 'placed' ? h('span', { class:'step-placement', text:'From your starting point · not verified yet' }) : null,
+        state === 'verified' ? h('span', { class:'step-placement is-verified', text:'Verified from your playing' }) : null,
       ),
     );
 
@@ -158,7 +167,7 @@ export function pathView(context: AppContext): View {
               context.navigate(step.practice!.view, step.practice!.params ?? {});
             }, 'btn-primary')
           : h('span'),
-        button(state === 'done' ? 'Not done after all' : 'I can do this', () => {
+        button(state === 'done' ? 'Not done after all' : state === 'placed' || state === 'verified' ? 'Confirm this lesson' : 'I can do this', () => {
           const progress = loadProgress(store);
           if (progress.done.has(step.id)) progress.done.delete(step.id);
           else progress.done.add(step.id);
@@ -175,13 +184,17 @@ export function pathView(context: AppContext): View {
 
   function render(): void {
     clear(element);
-    const progress = loadProgress(store);
-    const mastery = masteryMap(new CurriculumStore(store).load());
+    const placement = new PlacementStore(store).load();
+    const rawProgress = loadProgress(store);
+    const progress = effectiveProgress(rawProgress, placement);
+    const observations = new CurriculumStore(store).load();
+    const mastery = masteryMap(evidenceForPlacement(observations, placement));
+    const placed = placementStepIds(placement, new Set(observations.map((item) => item.skillId)));
     const choice = chooseTeacherLesson(progress, mastery);
     const currentStep = choice.step;
     const currentIndex = choice.index;
 
-    const status = journeyStatus(progress, currentStep);
+    const status = journeyStatus(rawProgress, currentStep);
     element.append(
       h('header', { class: 'view-head' },
         h('p', { class: 'eyebrow', text: 'YOUR GUITAR ROADMAP' }),
@@ -190,12 +203,17 @@ export function pathView(context: AppContext): View {
         h('p', { class: 'muted', text: `Lesson ${status.lessonNumber} of ${status.totalLessons} · ${status.stageCompleted} of ${status.stageTotal} finished in this stage.` }),
       ),
       h('div', { class: 'roadmap-stages' },
-        ...JOURNEY_STAGES.map((stage, index) => h('div', {
-          class: `roadmap-stage${index < status.stageIndex ? ' is-done' : index === status.stageIndex ? ' is-current' : ''}`,
-        },
-          h('span', { text: index < status.stageIndex ? '✓' : String(index + 1) }),
-          h('div', {}, h('strong', { text: stage.name }), h('small', { text: stage.promise })),
-        )),
+        ...JOURNEY_STAGES.map((stage, index) => {
+          const complete = PATH
+            .filter((item) => stageForStep(item).id === stage.id)
+            .every((item) => rawProgress.done.has(item.id));
+          return h('div', {
+            class: `roadmap-stage${complete ? ' is-done' : index === status.stageIndex ? ' is-current' : ''}`,
+          },
+            h('span', { text: complete ? '✓' : String(index + 1) }),
+            h('div', {}, h('strong', { text: stage.name }), h('small', { text: stage.promise })),
+          );
+        }),
       ),
       h('section', { class: 'panel roadmap-now' },
         h('p', { class: 'eyebrow', text: 'RIGHT NOW' }),
@@ -217,7 +235,16 @@ export function pathView(context: AppContext): View {
       PATH.forEach((step, index) => {
         if (stageForStep(step).id !== stage.id) return;
         if (step.id === currentStep.id) return;
-        const state = progress.done.has(step.id) ? 'done' : 'ahead';
+        const verified = step.kind === 'chord'
+          && step.chord
+          && levelOf(mastery, `chord.${step.chord}`) >= WORKABLE;
+        const state = rawProgress.done.has(step.id)
+          ? 'done'
+          : placed.has(step.id)
+            ? 'placed'
+            : verified
+              ? 'verified'
+              : 'ahead';
         list.appendChild(stepCard(step, index, state));
       });
       group.appendChild(list);
@@ -226,7 +253,10 @@ export function pathView(context: AppContext): View {
     roadmap.append(
       h('div', { class: 'practice-actions' },
         button('Start the course over', () => {
-          if (!window.confirm('Start the course over from lesson 1? This only resets course checkmarks; it does not delete your saved riffs.')) return;
+          if (!window.confirm('Start the course over from lesson 1? This resets lesson progress and your starting point. It does not delete saved riffs.')) return;
+          new PlacementStore(store).save({
+            experience:'new', knownChords:[], knownSteps:[], completedAt:Date.now(),
+          });
           saveDone(store, new Set());
           render();
           element.scrollIntoView({ behavior: 'smooth', block: 'start' });
