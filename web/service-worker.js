@@ -1,4 +1,4 @@
-const CACHE = 'guitar-ai-coach-v20-guided-journey';
+const CACHE = 'guitar-ai-coach-v21-player-placement';
 const SHELL = [
   './index.html',
   './styles.css',
