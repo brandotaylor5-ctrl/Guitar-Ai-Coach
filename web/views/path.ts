@@ -14,6 +14,9 @@
 
 import { PATH, loadProgress, saveDone } from '../../src/curriculum/path.ts';
 import { JOURNEY_STAGES, journeyStatus, stageForStep } from '../../src/coach/journey.ts';
+import { chooseTeacherLesson } from '../../src/coach/teacher.ts';
+import { masteryMap } from '../../src/curriculum/mastery.ts';
+import { CurriculumStore } from '../../src/curriculum/watch.ts';
 import type { PathStep } from '../../src/curriculum/path.ts';
 import { chordShape, chordShapeMidis } from '../../src/music/chordShapes.ts';
 import { chordDiagram } from '../ui/chordCard.ts';
@@ -173,9 +176,12 @@ export function pathView(context: AppContext): View {
   function render(): void {
     clear(element);
     const progress = loadProgress(store);
-    const currentIndex = Math.max(0, PATH.indexOf(progress.current));
+    const mastery = masteryMap(new CurriculumStore(store).load());
+    const choice = chooseTeacherLesson(progress, mastery);
+    const currentStep = choice.step;
+    const currentIndex = choice.index;
 
-    const status = journeyStatus(progress);
+    const status = journeyStatus(progress, currentStep);
     element.append(
       h('header', { class: 'view-head' },
         h('p', { class: 'eyebrow', text: 'YOUR GUITAR ROADMAP' }),
@@ -193,8 +199,8 @@ export function pathView(context: AppContext): View {
       ),
       h('section', { class: 'panel roadmap-now' },
         h('p', { class: 'eyebrow', text: 'RIGHT NOW' }),
-        h('h3', { text: progress.current.title }),
-        h('p', { text: progress.current.outcome }),
+        h('h3', { text: currentStep.title }),
+        h('p', { text: currentStep.outcome }),
         button('Let Coach teach this', () => context.navigate('session'), 'btn-primary'),
       ),
     );
@@ -210,7 +216,7 @@ export function pathView(context: AppContext): View {
       const list = h('div', { class: 'step-list' });
       PATH.forEach((step, index) => {
         if (stageForStep(step).id !== stage.id) return;
-        if (step.id === progress.current.id) return;
+        if (step.id === currentStep.id) return;
         const state = progress.done.has(step.id) ? 'done' : 'ahead';
         list.appendChild(stepCard(step, index, state));
       });
