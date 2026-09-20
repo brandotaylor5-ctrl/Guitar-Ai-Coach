@@ -135,7 +135,7 @@ export function warmupFor(mastery:Map<string, SkillMastery>):Warmup {
   if (known.includes('G') && known.includes('D')) {
     return {
       title: 'Wake up the G → D change',
-      instruction: 'Four slow strums of G, four of D. Keep moving through ugly landings instead of stopping to repair them.',
+      instruction: 'Four slow strums of G, four of D. Keep the pulse moving through ugly landings instead of stopping to repair them.',
       chords: ['G', 'D'],
       minutes: 2,
     };
@@ -185,7 +185,7 @@ export function guidedSessionPlan(
     : status.id === 'rhythm'
       ? 'Keep one groove going and change only one thing: chord, accent, or strum.'
       : status.id === 'fretboard'
-        ? 'Make a three-note idea, repeat it, and change the final note.'
+        ? 'Make a short three-note phrase, repeat it, and change the final note.'
         : status.id === 'lead'
           ? 'Play one short phrase, leave space, then answer it.'
           : status.id === 'whole-guitar'
