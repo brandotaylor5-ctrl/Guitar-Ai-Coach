@@ -1015,7 +1015,10 @@ export function coachView(context:AppContext):View {
   }
 
   async function coachLatestPhrase():Promise<void> {
-    if (!freePlayMode || attemptStartMs !== null) return;
+    // The final three-minute play block is deliberately unscored and
+    // uninterrupted. Reactive coaching is only for the explicit "coach me
+    // while I play" mode, never while the learner is finishing today's session.
+    if (!freePlayMode || guidedPhase === 4 || attemptStartMs !== null) return;
     const latest = context.session.phrases().at(-1);
     if (!latest || latest.id === lastPhraseId || latest.notes.length < 3) return;
     lastPhraseId = latest.id;
