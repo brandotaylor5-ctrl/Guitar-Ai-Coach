@@ -1549,3 +1549,204 @@
 .coach-heard-line.is-quiet {
   opacity:.84;
 }
+
+
+/* ============================================================
+   Guided journey + daily session
+   ============================================================ */
+
+.coach-journey-strip {
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:.35rem;
+  margin-bottom:.75rem;
+}
+.coach-journey-stage {
+  display:flex;
+  align-items:center;
+  gap:.38rem;
+  min-width:0;
+  padding:.45rem .5rem;
+  border:1px solid var(--line);
+  border-radius:10px;
+  color:var(--text-dim);
+  font-size:.72rem;
+  background:var(--bg-sunken);
+}
+.coach-journey-stage > span:last-child {
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.coach-journey-stage.is-current {
+  border-color:color-mix(in srgb,var(--accent) 58%,var(--line));
+  color:var(--text);
+  background:color-mix(in srgb,var(--accent) 7%,var(--bg-sunken));
+}
+.coach-journey-stage.is-done { color:var(--accent); }
+.coach-journey-dot {
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  border:1px solid currentColor;
+  font:800 .65rem/1 var(--mono);
+}
+
+.coach-session-overview {
+  padding:1rem;
+  margin-bottom:.75rem;
+  border:1px solid color-mix(in srgb,var(--accent) 28%,var(--line));
+  border-radius:16px;
+  background:var(--bg-raised);
+}
+.coach-session-overview-head {
+  display:flex;
+  justify-content:space-between;
+  gap:.7rem;
+  align-items:flex-start;
+  margin-bottom:.8rem;
+}
+.coach-session-overview-head strong {
+  display:block;
+  margin-top:.2rem;
+}
+.coach-session-steps {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:.45rem;
+}
+.coach-session-steps > div {
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr);
+  gap:.45rem;
+  align-items:start;
+  padding:.65rem;
+  border-radius:11px;
+  background:var(--bg-sunken);
+}
+.coach-session-steps > div > span {
+  display:grid;
+  place-items:center;
+  width:26px;
+  height:26px;
+  border-radius:50%;
+  background:color-mix(in srgb,var(--accent) 12%,var(--bg-raised));
+  color:var(--accent);
+  font:800 .72rem/1 var(--mono);
+}
+.coach-session-steps p { margin:0; }
+.coach-session-steps strong { display:block; font-size:.82rem; }
+.coach-session-steps small {
+  display:block;
+  margin-top:.18rem;
+  color:var(--text-dim);
+  line-height:1.35;
+}
+.coach-why-next {
+  padding:.65rem .75rem;
+  border-radius:11px;
+  border:1px solid var(--line);
+  color:var(--text-dim);
+}
+.coach-why-next summary { cursor:pointer; font-weight:700; color:var(--text); }
+
+.coach-session-phase {
+  position:relative;
+  padding-top:2.6rem;
+}
+.coach-phase-time {
+  position:absolute;
+  top:.8rem;
+  right:.85rem;
+  color:var(--text-dim);
+  font:750 .75rem/1 var(--mono);
+}
+.coach-finish-play {
+  text-align:left;
+}
+.coach-finish-clock {
+  margin-top:1rem;
+  font:850 clamp(2.5rem,10vw,5rem)/1 var(--mono);
+  color:var(--accent);
+  letter-spacing:-.05em;
+}
+.coach-session-finish {
+  margin-top:.75rem;
+  padding:1rem;
+  border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));
+  border-radius:14px;
+  background:color-mix(in srgb,var(--accent) 5%,var(--bg-raised));
+}
+.coach-session-finish p { margin:.35rem 0 0; color:var(--text-dim); }
+
+.roadmap-stages {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:.55rem;
+  margin:.8rem 0 1rem;
+}
+.roadmap-stage {
+  display:grid;
+  grid-template-columns:30px minmax(0,1fr);
+  gap:.55rem;
+  align-items:start;
+  padding:.75rem;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--bg-sunken);
+  color:var(--text-dim);
+}
+.roadmap-stage > span {
+  display:grid;
+  place-items:center;
+  width:28px;
+  height:28px;
+  border-radius:50%;
+  border:1px solid currentColor;
+  font:800 .72rem/1 var(--mono);
+}
+.roadmap-stage strong { display:block; color:var(--text); }
+.roadmap-stage small { display:block; margin-top:.25rem; line-height:1.35; }
+.roadmap-stage.is-current {
+  border-color:color-mix(in srgb,var(--accent) 55%,var(--line));
+  background:color-mix(in srgb,var(--accent) 6%,var(--bg-sunken));
+}
+.roadmap-stage.is-current > span,
+.roadmap-stage.is-done > span { color:var(--accent); }
+.roadmap-now {
+  border-color:color-mix(in srgb,var(--warm) 38%,var(--line));
+}
+.roadmap-group {
+  margin-top:1rem;
+  padding-top:.8rem;
+  border-top:1px solid var(--line);
+}
+.roadmap-group > header {
+  display:grid;
+  gap:.2rem;
+  margin-bottom:.6rem;
+}
+.roadmap-group.is-current > header > strong { color:var(--accent); }
+
+@media (max-width:760px) {
+  .coach-journey-strip {
+    display:flex;
+    overflow-x:auto;
+    padding-bottom:.15rem;
+  }
+  .coach-journey-stage {
+    flex:0 0 auto;
+    min-width:118px;
+  }
+  .coach-session-steps {
+    grid-template-columns:1fr 1fr;
+  }
+  .roadmap-stages { grid-template-columns:1fr 1fr; }
+}
+@media (max-width:480px) {
+  .coach-session-steps,
+  .roadmap-stages { grid-template-columns:1fr; }
+}

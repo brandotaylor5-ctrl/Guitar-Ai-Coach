@@ -46,4 +46,15 @@ describe('teacher-led Coach',()=>{
     assert.ok(use);
     assert.match(use!.instruction,/riff/i);
   });
+
+  test('technique lessons have concrete musical applications instead of generic advice',()=>{
+    for(const id of ['strum','boom-chuck','hammer-on','fingerpick','dynamics']){
+      const step=PATH.find((item)=>item.id===id)!;
+      const use=musicalUseFor(step);
+      assert.ok(use,id);
+      assert.ok(use!.instruction.length>45,id);
+    }
+    assert.match(musicalUseFor(PATH.find((item)=>item.id==='hammer-on')!)!.instruction,/hammer/i);
+    assert.match(musicalUseFor(PATH.find((item)=>item.id==='boom-chuck')!)!.instruction,/bass/i);
+  });
 });
