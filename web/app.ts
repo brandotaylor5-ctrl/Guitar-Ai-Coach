@@ -59,7 +59,7 @@ const PRIMARY_TABS: Array<[ViewName, string]> = [];
  */
 const MORE_TABS: Array<[ViewName, string]> = [
   ['library', 'Saved ideas'],
-  ['path', 'Course'],
+  ['path', 'Roadmap'],
 ];
 
 /**
@@ -369,8 +369,8 @@ function mountChrome(): void {
   }
   const moreToggle = h('button', {
     class: 'nav-tab nav-more-toggle', type: 'button', text: '•••',
-    title: 'Saved ideas and course',
-    'aria-label': 'Open saved ideas and course',
+    title: 'Saved ideas and roadmap',
+    'aria-label': 'Open saved ideas and roadmap',
     onClick: () => setMoreOpen(!moreOpen),
   });
   moreToggle.setAttribute('aria-controls', 'nav-more');
