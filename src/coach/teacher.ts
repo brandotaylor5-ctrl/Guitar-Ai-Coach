@@ -73,6 +73,90 @@ export function chooseTeacherLesson(
   return { step, index, reason };
 }
 
+const STEP_USES: Record<string, MusicalUse> = {
+  strum: {
+    title: 'Make E minor breathe',
+    instruction: 'Four even down-strums on E minor, then one beat of silence. Repeat it four times without letting the tempo speed up.',
+    chords: ['Em'],
+  },
+  'strum-updown': {
+    title: 'Turn the motion into a groove',
+    instruction: 'On E minor, play steady down-up eighth notes for two bars. On the third bar, let one up-strum miss the strings so the groove suddenly has space.',
+    chords: ['Em'],
+  },
+  change: {
+    title: 'Make G → D feel like a sentence',
+    instruction: 'G for four counts, D for four, repeat. Do not stop after a messy landing. The goal is continuity, not perfection.',
+    chords: ['G', 'D'],
+  },
+  'strum-pattern': {
+    title: 'Put the pattern on real harmony',
+    instruction: 'Use down, down-up, up-down-up over G for one bar, C for one, D for one, then G for one. Keep the strumming hand moving through the missed beat.',
+    chords: ['G', 'C', 'D', 'G'],
+  },
+  'change-a-e': {
+    title: 'Make A → E sound like rock rhythm',
+    instruction: 'Two bars of A, two bars of E. Use fewer, heavier strums on the first pass, then a lighter continuous pattern on the second.',
+    chords: ['A', 'E'],
+  },
+  'boom-chuck': {
+    title: 'Build a country heartbeat',
+    instruction: 'On G: low bass note, light strum, A-string bass note, light strum. Four bars. Then keep the same bass-strum motion when you move to C.',
+    chords: ['G', 'C'],
+  },
+  'clean-notes': {
+    title: 'Turn picking practice into a melody',
+    instruction: 'Pick three clean notes on one string, pause, then answer with three notes on the next string. Keep every attack separate and even.',
+  },
+  'hammer-on': {
+    title: 'Make one note pull into the next',
+    instruction: 'Take any two adjacent notes from your minor pentatonic shape. Pick the lower one once, hammer to the higher one, pause, then answer with one picked note somewhere lower.',
+  },
+  'pull-off': {
+    title: 'Make the phrase fall back down',
+    instruction: 'Pick the higher note, pull off to the lower note, then pause. Repeat it once, then end on a different lower note so the second phrase answers the first.',
+  },
+  bend: {
+    title: 'Make the guitar actually sing',
+    instruction: 'Play the target note first. Then bend up to it and hold it. Follow with one lower note and stop. The bend is the emotional event — do not bury it in a long lick.',
+  },
+  'first-riff': {
+    title: 'Write four notes you can remember',
+    instruction: 'Pick three or four scale notes. Play them twice. The second time, change only the rhythm or the final note. Save the version your ear prefers.',
+  },
+  'power-chords': {
+    title: 'Move one shape and make a rock loop',
+    instruction: 'Play A5, slide the whole shape to C5, then D5, then back to A5. Four strong hits on each before you try a faster rhythm.',
+  },
+  barre: {
+    title: 'Use the barre as a movable chord',
+    instruction: 'Once the shape rings, move the exact same grip from fret 1 to fret 3, then fret 5. The lesson is that the hand shape stays the same while the harmony moves.',
+  },
+  fingerpick: {
+    title: 'Make one chord sound like several instruments',
+    instruction: 'On E minor: thumb, index, middle, ring. Repeat it four times. Then move to G without stopping the picking pattern.',
+    chords: ['Em', 'G'],
+  },
+  dynamics: {
+    title: 'Give one progression an arc',
+    instruction: 'Play G → C → D → G softly once. Repeat it louder. Third time, start soft and grow through the four chords. Same notes, completely different shape.',
+    chords: ['G', 'C', 'D', 'G'],
+  },
+  'twelve-bar': {
+    title: 'Feel the form instead of reading it',
+    instruction: 'Play the twelve-bar once while saying the next chord before you arrive. The second time, stop looking at the screen and trust the form.',
+    chords: ['A', 'D', 'E'],
+  },
+  ear: {
+    title: 'Hunt, do not guess',
+    instruction: 'Hum one note from a song you know. Find that pitch on the low two strings. Then test major versus minor and keep whichever one stops clashing.',
+  },
+  solo: {
+    title: 'Say one thing, then leave space',
+    instruction: 'Play a two- or three-note phrase over the first chord, leave a full beat of silence, then answer it when the harmony changes. Landing matters more than note count.',
+  },
+};
+
 const CHORD_USES: Record<string, MusicalUse> = {
   Em: {
     title: 'Make your first groove',
@@ -122,6 +206,7 @@ const CHORD_USES: Record<string, MusicalUse> = {
 };
 
 export function musicalUseFor(step: PathStep): MusicalUse | null {
+  if (STEP_USES[step.id]) return STEP_USES[step.id]!;
   if (step.chord && CHORD_USES[step.chord]) return CHORD_USES[step.chord]!;
   if (step.scale) {
     return {
