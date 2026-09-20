@@ -382,6 +382,10 @@ export function coachView(context:AppContext):View {
 
   function renderTeacherLesson(step:PathStep, index:number):void {
     freePlayMode = false;
+    guidedStep = step;
+    guidedIndex = index;
+    guidedPhase = 2;
+    clearSessionTimer();
     stopTempo();
     chordTarget = null;
     chordTargetHost = null;
@@ -389,13 +393,13 @@ export function coachView(context:AppContext):View {
     clear(workbench);
 
     setStage(
-      `LESSON ${index + 1}`,
+      'TODAY · 2 OF 4 · LEARN',
       step.title,
       step.why,
       true,
     );
     setActions(
-      button('Back to next lesson', () => renderTeacherHome(false), 'coach-text-action'),
+      button('Back to warm-up', () => renderWarmupPhase(step, index), 'coach-text-action'),
     );
 
     if (step.chord && chordShape(step.chord)) {
@@ -436,17 +440,12 @@ export function coachView(context:AppContext):View {
       ));
     }
 
-    if (use) {
-      task.appendChild(h('div', { class:'coach-use-it' },
-        h('span', { class:'coach-heard-label', text:'THEN MAKE IT MUSIC' }),
-        h('strong', { text:use.title }),
-        h('p', { text:use.instruction }),
-        use.chords ? chordLoopControls(use.chords) : null,
-      ));
-    }
-
     task.appendChild(h('div', { class:'coach-complete-row' },
-      button('I can do that — next lesson', () => finishStep(step, true), 'btn-primary'),
+      button(
+        use ? 'I can do that — now use it in music' : 'I can do that — finish by playing',
+        () => use ? renderMusicalUse(step) : renderFinishPhase(step),
+        'btn-primary',
+      ),
       button('Show me the steps again', () => task.scrollIntoView({ behavior:'smooth', block:'start' }), 'btn-quiet'),
     ));
 
@@ -536,20 +535,26 @@ export function coachView(context:AppContext):View {
   }
 
   function renderMusicalUse(step:PathStep):void {
+    guidedStep = step;
+    guidedPhase = 3;
+    clearSessionTimer();
     stopTempo();
     const use = musicalUseFor(step);
     clear(workbench);
 
     if (!use) {
-      finishStep(step, true);
+      renderFinishPhase(step);
       return;
     }
 
     setStage(
-      'NOW USE IT',
+      'TODAY · 3 OF 4 · MAKE MUSIC',
       use.title,
       use.instruction,
       true,
+    );
+    setActions(
+      button('Back to the lesson', () => renderTeacherLesson(step, guidedIndex), 'coach-text-action'),
     );
 
     const task = h('section', { class:'coach-task coach-use-card' },
@@ -560,11 +565,8 @@ export function coachView(context:AppContext):View {
     if (use.chords) task.appendChild(chordLoopControls(use.chords));
 
     task.appendChild(h('div', { class:'coach-complete-row' },
-      button('Got it — teach me the next thing', () => finishStep(step, true), 'btn-primary'),
-      button('Teach the hand again', () => {
-        const choiceIndex = teacherChoice().index;
-        renderTeacherLesson(step, choiceIndex);
-      }, 'btn-quiet'),
+      button('Done — finish by playing', () => renderFinishPhase(step), 'btn-primary'),
+      button('Teach the lesson again', () => renderTeacherLesson(step, guidedIndex), 'btn-quiet'),
     ));
     workbench.appendChild(task);
   }
@@ -662,9 +664,69 @@ export function coachView(context:AppContext):View {
         ),
       ),
       h('div', { class:'coach-complete-row' },
-        button('I can play the shape — next lesson', () => finishStep(step, true), 'btn-primary'),
+        button('I can play the example — now make it mine', () => renderMusicalUse(step), 'btn-primary'),
       ),
     ));
+  }
+
+  function renderFinishPhase(step:PathStep):void {
+    guidedStep = step;
+    guidedPhase = 4;
+    clearSessionTimer();
+    stopTempo();
+    chordTarget = null;
+    chordTargetHost = null;
+    context.setChordDiagnostics?.(false);
+    clear(workbench);
+
+    const plan = guidedSessionPlan(step, masteryMap(curriculum.load()));
+    setStage(
+      'TODAY · 4 OF 4 · PLAY',
+      'Put the lesson away.',
+      plan.finishPrompt,
+      true,
+    );
+    setActions(
+      button('Start 3-minute play', () => { void startFinishPlay(step); }, 'btn-primary coach-start'),
+      button('I already played enough', () => finishStep(step, true), 'btn-quiet'),
+    );
+
+    workbench.appendChild(h('section', { class:'coach-task coach-finish-play' },
+      h('p', { class:'coach-task-title', text:'No drill. No score.' }),
+      h('p', { text:plan.finishPrompt }),
+      h('p', { class:'muted', text:'If something sounds good, repeat it. If you make a mistake, keep moving. The point of the last three minutes is to make decisions without being told every note.' }),
+      h('div', { class:'coach-finish-clock', id:'coach-finish-clock', text:'3:00' }),
+    ));
+  }
+
+  async function startFinishPlay(step:PathStep):Promise<void> {
+    clearSessionTimer();
+    freePlayMode = true;
+    await unlockAudio();
+    if (!context.listening) await context.startListening();
+
+    const clock = workbench.querySelector<HTMLElement>('#coach-finish-clock');
+    const endsAt = Date.now() + 180_000;
+    speak('Three minutes. Just play. Use the new thing once, then follow your ear.', true);
+
+    const tick = () => {
+      const remaining = Math.max(0, endsAt - Date.now());
+      const seconds = Math.ceil(remaining / 1000);
+      if (clock) clock.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+      if (remaining <= 0) {
+        clearSessionTimer();
+        freePlayMode = false;
+        finishStep(step, true);
+      }
+    };
+    tick();
+    sessionTimer = window.setInterval(tick, 500);
+    setActions(
+      button('Finish session now', () => {
+        freePlayMode = false;
+        finishStep(step, true);
+      }, 'btn-primary coach-start'),
+    );
   }
 
   function teachChordOutsideLesson(label:string, reason:string):void {
@@ -1010,6 +1072,7 @@ export function coachView(context:AppContext):View {
       disposed = true;
       window.clearInterval(timer);
       stopTempo();
+      clearSessionTimer();
       context.setChordDiagnostics?.(false);
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     },
