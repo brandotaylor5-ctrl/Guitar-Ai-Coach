@@ -1,7 +1,7 @@
 # Guitar Workbench: from a performance to a song
 
 Date: 2026-10-08
-Status: Written design for Brandon's review; implementation has not started.
+Status: Approved by Brandon on 2026-10-08; implementation planning in progress.
 Repository baseline: `763118feb6411d4746b3412bf4f9cb67a32db338`.
 Working product name: Guitar Workbench. This is a direction, not a final branding decision.
 
@@ -209,4 +209,4 @@ Build as vertical slices in this order: reliable recording/storage and migration
 
 The broader live-partner and personal-sample-bank directions remain future projects. This written spec covers the first coherent workbench release only.
 
-Brandon approved the conversational direction on October 8. Under the Superpowers brainstorming workflow, his review of this written spec precedes the implementation plan. No production code or live app changes are part of this design commit.
+Brandon approved both the conversational direction and this written spec on October 8. The next artifact is the implementation plan. No production code or live app changes are part of these design and planning commits.
