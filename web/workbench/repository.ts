@@ -8,6 +8,10 @@ import { inTransaction, requestValue } from './database.ts';
 export class ConflictError extends Error {
   constructor(){super('This idea changed in another tab. Reload it before retrying your edit.');this.name='ConflictError';}
 }
+export interface RestoreBundle {
+ riffs:Riff[];song:SongSeed;assets:Array<{asset:AudioAsset;chunks:AudioChunk[]}>;
+ expected:Array<{store:'riffs'|'songs'|'assets';id:string;value:string|null}>;
+}
 
 export class WorkbenchRepository implements RiffStore {
   readonly db: IDBDatabase;
@@ -152,6 +156,21 @@ export class WorkbenchRepository implements RiffStore {
       if(!asset || asset.state!=='recording')return;
       const chunks=tx.objectStore('chunks'),keys=await requestValue(chunks.index('assetId').getAllKeys(id));
       for(const key of keys)await requestValue(chunks.delete(key));await requestValue(assets.delete(id));
+    });
+  }
+  async beginRestore(id:string):Promise<void>{await this.run(['staging'],'readwrite',async tx=>{await requestValue(tx.objectStore('staging').add({id,session:id,state:'active',heartbeat:Date.now()}));});}
+  async stageRestoreEntry(id:string,path:string,bytes:Uint8Array):Promise<void>{
+    await this.run(['staging'],'readwrite',async tx=>{const store=tx.objectStore('staging');const session=await requestValue(store.get(id));if(session?.state!=='active')throw new Error('Restore session closed');await requestValue(store.add({id:`${id}:${path}`,session:id,path,bytes}));session.heartbeat=Date.now();await requestValue(store.put(session));});
+  }
+  async discardRestore(id:string):Promise<void>{await this.run(['staging'],'readwrite',async tx=>{const store=tx.objectStore('staging');for(const entry of await requestValue(store.getAll()))if(entry.session===id)await requestValue(store.delete(entry.id));});}
+  async commitRestore(id:string,bundle:RestoreBundle):Promise<void>{
+    await this.run(['staging','riffs','songs','assets','chunks'],'readwrite',async tx=>{
+      if((await requestValue(tx.objectStore('staging').get(id)))?.state!=='active')throw new Error('Restore session unavailable');
+      for(const expected of bundle.expected){const actual=await requestValue(tx.objectStore(expected.store).get(expected.id));if((actual?JSON.stringify(actual):null)!==expected.value)throw new ConflictError();}
+      for(const {asset,chunks} of bundle.assets){await requestValue(tx.objectStore('assets').add(asset));for(const chunk of chunks)await requestValue(tx.objectStore('chunks').add(chunk));}
+      for(const riff of bundle.riffs)await requestValue(tx.objectStore('riffs').add({...riff,revision:1}));
+      const existing=await requestValue(tx.objectStore('songs').get(bundle.song.id));if(!existing)await requestValue(tx.objectStore('songs').add({...bundle.song,revision:1}));
+      const store=tx.objectStore('staging');for(const entry of await requestValue(store.getAll()))if(entry.session===id)await requestValue(store.delete(entry.id));
     });
   }
 }

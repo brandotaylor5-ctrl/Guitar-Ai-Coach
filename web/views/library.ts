@@ -76,7 +76,7 @@ export function libraryView(context: AppContext, params: Record<string, string> 
   let selectedId: string | null = params.riff ?? null;
 
   async function renderList(): Promise<void> {
-    const riffs = await context.library.listRiffs();
+    const riffs = (await context.library.listRiffs()).filter(r=>!r.archivedAt);
     clear(list);
     if (riffs.length === 0) {
       list.appendChild(empty('Nothing here yet. Play something with Coach listening and it will catch it — or keep a lick from a scale lesson or a song.'));
@@ -170,12 +170,10 @@ export function libraryView(context: AppContext, params: Record<string, string> 
           await context.library.rename(riff.id, name.trim() || null);
           void render();
         }, 'btn-quiet'),
-        button('Delete', async () => {
-          if (!window.confirm(`Delete "${riff.name ?? 'this riff'}" and all ${riff.versions.length} of its versions? This cannot be undone.`)) return;
-          await context.clips.deleteAll(riff.versions.map((v) => v.audioRef));
+        button('Archive', async () => {
           await context.library.deleteRiff(riff.id);
           selectedId = null;
-          context.say('Deleted.');
+          context.say('Archived. The recording and song references are preserved.');
           void render();
         }, 'btn-quiet btn-danger'),
       ),

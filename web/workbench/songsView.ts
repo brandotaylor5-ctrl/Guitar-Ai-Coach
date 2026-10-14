@@ -8,7 +8,8 @@ export function projectView(model:WorkbenchModel):View{
  model.playTarget='song';
  const rail=h('aside',{class:'wb-rail'}),editor=h('section',{class:'wb-editor'}),error=h('div',{class:'wb-error',role:'alert',hidden:true});
  const name=h('input',{'aria-label':'New song name',placeholder:'Name your song'});
- const root=h('div',{class:'workbench'},rail,h('div',{class:'wb-surface'},h('header',{class:'wb-heading'},h('div',{},h('p',{class:'wb-eyebrow',text:'FROM A PHRASE TO A SONG'}),h('h2',{text:'Songs'}))),h('div',{class:'wb-actions'},name,action(model,'New song',()=>model.createProject(name.value),'wb-button wb-primary')),error,editor));
+ const restore=h('input',{type:'file',accept:'.zip,application/zip',hidden:true,'aria-label':'Project backup file'});restore.addEventListener('change',()=>{const file=restore.files?.[0];restore.value='';if(file)void model.restoreBackup(file).catch(e=>model.report(e));});
+ const root=h('div',{class:'workbench'},rail,h('div',{class:'wb-surface'},h('header',{class:'wb-heading'},h('div',{},h('p',{class:'wb-eyebrow',text:'FROM A PHRASE TO A SONG'}),h('h2',{text:'Songs'}))),h('div',{class:'wb-actions'},name,action(model,'New song',()=>model.createProject(name.value),'wb-button wb-primary'),action(model,'Restore project ZIP',()=>restore.click()),restore),error,editor));
  let key='',dragged=-1;
  function render():void{
   const s=model.snapshot,p=s.project;replace(rail,h('h2',{text:'Your songs'}),h('div',{class:'wb-idea-list'},...s.songs.filter(song=>!song.archivedAt).map(song=>{
@@ -38,6 +39,8 @@ export function projectView(model:WorkbenchModel):View{
   editor.append(h('section',{class:'wb-tool-panel'},h('h3',{text:'Add a section'}),h('div',{class:'wb-actions'},choice,role,action(model,'Add selected take',()=>{if(!choice.value)throw new Error('Choose a take first');return model.addSection(p.id,JSON.parse(choice.value),role.value);}))));
   const notes=h('textarea',{'aria-label':'Lyrics and performance notes',rows:8,placeholder:'Lyrics, chords, where to pull back, where to let Burl ring…',value:p.notes??''});
   editor.append(h('label',{class:'wb-field'},'Lyrics & performance notes',notes),action(model,'Save lyrics and notes',()=>model.editProject({...p,notes:notes.value})));
+  const missing=h('input',{type:'checkbox'});
+  editor.append(h('section',{class:'wb-tool-panel'},h('h3',{text:'Take your project with you'}),h('p',{class:'wb-muted',text:'A project ZIP includes full original takes, imported source files, sketches, arrangement and lyrics. Keep a copy outside this browser.'}),action(model,'Download project ZIP',async()=>download(await model.backupProject(missing.checked),`${p.name}.zip`)),h('label',{class:'wb-field'},missing,'Allow a partial backup if old recordings are unavailable (listed in the manifest).')));
  }
  const unsubscribe=model.subscribe(s=>{error.hidden=!s.error;error.textContent=s.error;const next=JSON.stringify([s.project,s.songs,s.riffs.map(r=>[r.id,r.name,r.versions.length]),!!model.pendingProject]);if(next!==key){key=next;render();}});
  return {element:root,dispose(){unsubscribe();}};

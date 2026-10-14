@@ -4,6 +4,7 @@ import { makeId } from '../../src/util/id.ts';
 import { analyzeRecordedRegion } from './processing.ts';
 import { ConflictError } from './repository.ts';
 import { resolveArrangement,renderArrangement } from '../../src/workbench/arrangement.ts';
+import { exportProject,restoreProject } from './backup.ts';
 import type { AudioRegion, KeptTake, PcmAudio } from '../../src/workbench/types.ts';
 import { sourceForVersion } from '../../src/workbench/types.ts';
 import { validateRegion } from '../../src/workbench/regions.ts';
@@ -30,6 +31,7 @@ export class WorkbenchModel {
  pendingEdit:Riff|null=null;comparison:{a:string;b:string}|null=null;
  private songHistories=new Map<string,EditHistory<SongSeed>>();
  playTarget:'idea'|'song'='idea';pendingProject:SongSeed|null=null;
+ updatePending=false;
  get canCancel():boolean{return !!this.operation;}
  constructor(options:{repository:WorkbenchRepository;recorder:RecordingController;transport:AudioTransport}){
   this.repository=options.repository;this.recorder=options.recorder;this.transport=options.transport;this.library=new RiffLibrary(options.repository);
@@ -77,6 +79,7 @@ export class WorkbenchModel {
  }
  private validSelection():AudioRegion{if(!this.canUseSelection)throw new Error('Choose a non-empty range inside the recording');return {...this.state.selection!};}
  protected async save<T>(work:()=>Promise<T>):Promise<T>{
+  if(this.updatePending)throw new Error('The app update is being applied. Wait a moment.');
   if(this.state.busy)throw new Error('Wait for the current operation to finish');
   this.state.busy=true;this.state.saveStatus='Saving…';this.state.error='';this.emit();
   try{const result=await work();this.state.saveStatus='Saved on this device';return result;}
@@ -102,6 +105,7 @@ export class WorkbenchModel {
   await this.transport.play(source,{loop:this.loop,speed:this.speed});
  }
  async import(file:File):Promise<void>{
+  this.requireIdle();
   if(['requesting','recording','finalizing','recoverable'].includes(this.recorder.snapshot.status))throw new Error('Finish the current recording before importing.');
   this.operation=new AbortController();
   try{const kept=await this.save(()=>importAudio(file,this.repository,this.operation!.signal));await this.finishTake(kept);}
@@ -117,6 +121,7 @@ export class WorkbenchModel {
   return new Blob([encodePcmWav(await renderNotePcm(version.notes,48000),'pcm16')],{type:'audio/wav'});
  }
  private requireIdle():void{
+  if(this.updatePending)throw new Error('The app update is being applied. Wait a moment.');
   if(this.state.busy||['requesting','recording','finalizing','recoverable'].includes(this.recorder.snapshot.status))throw new Error('Finish the current recording or operation first.');
  }
  async recordAlternate():Promise<void>{
@@ -208,5 +213,14 @@ export class WorkbenchModel {
  async loopSection(index:number):Promise<void>{
   this.requireIdle();const project=this.state.project;if(!project)throw new Error('Choose a song first');
   const item=resolveArrangement(project,await this.repository.listRiffs())[index];if(!item)throw new Error('Section unavailable');await this.transport.play(item.source,{loop:true,speed:1});
+ }
+ async backupProject(acknowledgeMissing=false):Promise<Blob>{
+  this.requireIdle();const project=this.state.project;if(!project)throw new Error('Choose a song first');this.operation=new AbortController();
+  try{return await this.save(()=>exportProject(project.id,this.repository,this.operation!.signal,acknowledgeMissing));}finally{this.operation=null;this.emit(false);}
+ }
+ async restoreBackup(file:File):Promise<void>{
+  this.requireIdle();this.operation=new AbortController();
+  try{const restored=await this.save(()=>restoreProject(file,this.repository,this.operation!.signal));await this.refresh();await this.openProject(restored.projectId);}
+  finally{this.operation=null;this.emit(false);}
  }
 }

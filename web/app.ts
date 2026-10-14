@@ -36,6 +36,7 @@ import { WorkbenchModel } from './workbench/model.ts';
 import { recordView } from './workbench/recordView.ts';
 import { developView } from './workbench/developView.ts';
 import { projectView } from './workbench/songsView.ts';
+import { acquireCaptureLock,installWorkbenchLifecycle,recoverAvailable } from './workbench/lifecycle.ts';
 import { transportBar } from './workbench/transportBar.ts';
 
 const TUNINGS: Tuning[] = [STANDARD_TUNING, DROP_D_TUNING, HALF_STEP_DOWN, DADGAD_TUNING];
@@ -443,7 +444,8 @@ async function start(): Promise<void> {
   const repository = new WorkbenchRepository(db);
   const migration = store ? await migrateLegacy(db, store) : null;
   const transport = new AudioTransport({ repository, context:audioContext, renderNotes:renderNotePcm, onChange:() => workbench?.notifyTransport() });
-  const recorder = new RecordingController({capture:rawCapture,repository,onChange:() => workbench?.notifyRecorder(),stopPlayback:async()=>{
+  const recorder = new RecordingController({capture:rawCapture,repository,acquireLock:acquireCaptureLock,onChange:() => workbench?.notifyRecorder(),stopPlayback:async()=>{
+    if(workbench?.updatePending||workbench?.snapshot.busy)throw new Error('Wait for the current save or update before recording.');
     transport.stop();player.stop();window.speechSynthesis?.cancel();
     if (changingCapture) throw new Error('Finish the live coach microphone request before recording.');
     await context.stopListening();
@@ -452,11 +454,14 @@ async function start(): Promise<void> {
   workbench.tuningSnapshot = {name:STANDARD_TUNING.name,strings:[...STANDARD_TUNING.strings],capo:0};
   state.library = new RiffLibrary(repository);
   await workbench.refresh();
+  await recoverAvailable(workbench);
   state.session = new SketchbookSession({ library: state.library, tuning: state.tuning });
   if (store) void backfillPlayerModel(store);
 
   mountChrome();
   document.body.appendChild(transportBar(workbench));
+  installWorkbenchLifecycle(workbench);
+  qs('#protect-storage').addEventListener('click',()=>{void (async()=>{const allowed=await navigator.storage?.persist?.();qs('#storage-result').textContent=allowed?'Persistent storage enabled. Keep an external backup too.':'The browser did not grant persistent storage. Downloads and project backups remain available.';})().catch(error=>say(String(error),'error'));});
   armAudioUnlock();
   watchSound();
   readHash();

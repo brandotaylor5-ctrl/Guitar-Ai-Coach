@@ -13,7 +13,7 @@ export interface RecordingSnapshot {
   capturedSamples:number; committedSamples:number; sampleRate:number;
   error?:string; level:number; peaks:Array<{min:number;max:number}>; markers:number[]; kept?:KeptTake;
 }
-interface Options { capture:CapturePort; repository:WorkbenchRepository; stopPlayback:()=>void|Promise<void>; onChange:(state:RecordingSnapshot)=>void }
+interface Options { capture:CapturePort; repository:WorkbenchRepository; stopPlayback:()=>void|Promise<void>; onChange:(state:RecordingSnapshot)=>void; acquireLock?:()=>Promise<()=>void> }
 
 export class RecordingController {
   private options:Options;
@@ -33,13 +33,14 @@ export class RecordingController {
   private nextIndex=0;
   private nextStart=0;
   private early:Float32Array[]=[];
+  private releaseLock:(()=>void)|null=null;
   constructor(options:Options){this.options=options;}
   get snapshot():RecordingSnapshot{return {...this.state,markers:[...this.state.markers],peaks:[...this.state.peaks]};}
   private emit():void{this.options.onChange(this.snapshot);}
 
   start(target?:TakeTarget):Promise<void>{
     if(this.starting)return this.starting;
-    if(['recording','finalizing'].includes(this.state.status))return Promise.resolve();
+    if(['requesting','recording','finalizing'].includes(this.state.status))return Promise.resolve();
     if(this.state.status==='recoverable')return Promise.reject(new Error('Download or dismiss the recoverable take first.'));
     this.state={status:'requesting',capturedSamples:0,committedSamples:0,sampleRate:0,level:0,peaks:[],markers:[]};
     this.queue=[];this.filled=0;this.nextIndex=0;this.nextStart=0;this.early=[];this.ready=false;this.failed=false;
@@ -51,6 +52,7 @@ export class RecordingController {
     try{
       await this.options.stopPlayback();
       if(epoch!==this.epoch)return;
+      if(this.options.acquireLock){this.releaseLock=await this.options.acquireLock();if(epoch!==this.epoch){this.releaseLock();this.releaseLock=null;return;}}
       const result=await this.options.capture.start(chunk=>{
         if(epoch!==this.epoch || !this.accepting)return;
         if(!this.ready){
@@ -68,6 +70,7 @@ export class RecordingController {
       if(epoch!==this.epoch)return;
       this.accepting=false;await this.options.capture.stop().catch(()=>{});
       this.state.status=this.state.capturedSamples?'recoverable':'idle';
+      if(this.state.status==='idle'){this.releaseLock?.();this.releaseLock=null;}
       this.state.error=error instanceof Error?error.message:String(error);this.emit();
     }
   }
@@ -115,6 +118,7 @@ export class RecordingController {
     if(this.state.status==='recoverable' || this.state.status==='idle')return Promise.resolve(null);
     if(!this.ready){
       ++this.epoch;this.accepting=false;this.state.status='idle';this.emit();
+      this.releaseLock?.();this.releaseLock=null;
       return this.options.capture.stop().then(()=>null);
     }
     this.state.status='finalizing';this.emit();
@@ -125,10 +129,10 @@ export class RecordingController {
       await this.options.capture.stop();this.accepting=false;
       this.enqueue();while(this.writer)await this.writer;
       if(this.failed)return null;
-      if(!this.state.capturedSamples){this.state.status='idle';this.emit();return null;}
+      if(!this.state.capturedSamples){this.state.status='idle';this.releaseLock?.();this.releaseLock=null;this.emit();return null;}
       await this.options.repository.setMarkers(this.assetId,this.state.markers);
       const kept=await this.options.repository.finalizeTake(this.assetId,this.target);
-      this.state.status='saved';this.state.kept=kept;this.state.level=0;++this.epoch;this.emit();return kept;
+      this.state.status='saved';this.state.kept=kept;this.state.level=0;++this.epoch;this.releaseLock?.();this.releaseLock=null;this.emit();return kept;
     }catch(error){await this.interrupt(error instanceof Error?error.message:String(error));return null;}
   }
   async interrupt(reason:string):Promise<void>{
@@ -151,6 +155,7 @@ export class RecordingController {
     if(this.writer)await this.writer;
     const asset=await this.options.repository.getAsset(this.assetId);
     const kept=asset?.sampleCount?await this.options.repository.finalizeInterrupted(this.assetId,this.target):null;
+    this.releaseLock?.();this.releaseLock=null;
     ++this.epoch;this.queue=[];this.filled=0;this.state={status:'idle',capturedSamples:0,committedSamples:0,sampleRate:0,level:0,peaks:[],markers:[]};this.emit();return kept;
   }
 }

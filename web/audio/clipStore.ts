@@ -9,6 +9,7 @@
 
 import { openWorkbenchDatabase, inTransaction, requestValue, transactionDone } from '../workbench/database.ts';
 import { validatePcm } from '../../src/workbench/regions.ts';
+import type { Riff } from '../../src/types.ts';
 const STORE = 'clips';
 
 export interface StoredClip {
@@ -54,7 +55,7 @@ export class ClipStore {
     try {
       const db = await this.connect();
       validatePcm({ sampleRate, channels: [samples] });
-      await inTransaction(db, [STORE, 'assets', 'chunks'], 'readwrite', async tx => {
+      await inTransaction(db, [STORE, 'assets', 'chunks', 'riffs'], 'readwrite', async tx => {
         const key = this.key(ref);
         const existing = await requestValue(tx.objectStore(STORE).get(key));
         const clip: StoredClip = existing ?? { id:key, samples:new Float32Array(samples), sampleRate, savedAt:Date.now() };
@@ -64,6 +65,9 @@ export class ClipStore {
           await requestValue(tx.objectStore('assets').add({ id, source:'legacy', state:'complete', sampleRate:clip.sampleRate, channelCount:1, sampleCount:clip.samples.length, createdAt:clip.savedAt, markers:[] }));
           await requestValue(tx.objectStore('chunks').add({ assetId:id, index:0, startSample:0, channels:[clip.samples] }));
         }
+        const riffs:Riff[]=await requestValue(tx.objectStore('riffs').getAll());
+        for(const riff of riffs){let changed=false;for(const version of riff.versions)if(version.audioRef?.replace(/^clip:/,'')===key&&!version.recording){version.recording={assetId:id,startSample:0,endSample:clip.samples.length};version.sourceKind='recorded';version.analysis={state:version.notes.length?'estimated':'unavailable'};changed=true;}
+          if(changed){riff.revision=(riff.revision??0)+1;await requestValue(tx.objectStore('riffs').put(riff));}}
       });
       return true;
     } catch {

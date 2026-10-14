@@ -21,11 +21,13 @@ export function recordView(model:WorkbenchModel):View{
    h('div',{class:'wb-capture-actions'},record,mark,importButton,file,clock),h('div',{class:'wb-input-row'},meter,instrument,h('datalist',{id:'wb-instruments'},h('option',{value:'Burl'}),h('option',{value:'Llewelyn'}))),liveCanvas,hint),
    h('p',{class:'wb-small',text:'Import a Dolby On recording or another local audio file · mono or stereo · 100 MB maximum'}),error,recovery,editor));
  let wave:WaveformElement|null=null,revision=-1,shown='',editorGeneration=0;
+ const archived=h('details',{class:'wb-archived'},h('summary',{text:'Archived ideas'})),archivedList=h('div',{});archived.append(archivedList);root.querySelector('.wb-rail')!.append(archived);
  function renderEditor():void{
   const generation=++editorGeneration;wave?.dispose();wave=null;const s=model.snapshot;replace(editor);
   if(!s.version || !s.riff){editor.append(h('div',{class:'wb-empty'},h('span',{class:'wb-empty-mark',text:'∿','aria-hidden':'true'}),h('h3',{text:'Keep the part you want to come back to.'}),h('p',{text:'Record freely, or bring in a take from your phone. Choose a passage once you hear something worth keeping.'})));return;}
   const title=h('input',{class:'wb-title-input',value:s.riff.name??'',placeholder:'Untitled idea','aria-label':'Idea name'});title.addEventListener('change',()=>void model.rename(title.value).catch(e=>model.report(e)));
   editor.append(h('div',{class:'wb-editor-title'},title,h('span',{class:'wb-source',text:sourceLabel(s.version.sourceKind)})));
+  editor.append(action(model,'Archive idea',async()=>{await model.repository.archiveRiff(s.riff!.id,true);await model.refresh();}));
   if(s.audio && s.selection){
    wave=waveform({audio:s.audio,selection:s.selection,onSelection:(a,b)=>model.setSelection(a,b)});editor.append(wave);
    const keep=action(model,'Keep selection as idea',()=>model.keepSelection(),'wb-button wb-primary'),exportButton=action(model,'Download selection',async()=>download(await model.exportSelection(),`${model.snapshot.riff?.name??'guitar-idea'}.wav`));
@@ -43,9 +45,10 @@ export function recordView(model:WorkbenchModel):View{
   clock.textContent=time(s.recorder.sampleRate?s.recorder.capturedSamples/s.recorder.sampleRate:0);meter.value=s.recorder.level;
   const seconds=s.recorder.sampleRate?s.recorder.capturedSamples/s.recorder.sampleRate:0;hint.textContent=seconds>=540&&active?`${Math.max(0,Math.ceil(600-seconds))} seconds left in this take. It will save automatically.`:'Up to 10 minutes per take. Keep this tab in the foreground while recording.';
   liveCanvas.hidden=!active;if(active){const ctx=liveCanvas.getContext('2d');if(ctx){ctx.clearRect(0,0,700,90);ctx.strokeStyle='#e7b36b';const peaks=s.recorder.peaks;peaks.forEach((p,i)=>{const x=i/Math.max(1,peaks.length)*700;ctx.beginPath();ctx.moveTo(x,45-p.max*42);ctx.lineTo(x,45-p.min*42);ctx.stroke();});}}
-  error.hidden=!s.error;error.textContent=s.error;
+  const message=s.error??'';error.hidden=!(message||s.recorder.error);error.textContent=message||s.recorder.error||'';
   recovery.hidden=s.recorder.status!=='recoverable';if(!recovery.hidden && shown!==s.recorder.error){shown=s.recorder.error??'';replace(recovery,h('h3',{text:'Keep your captured audio'}),h('p',{text:shown}),action(model,'Download rescue WAV',async()=>{download(new Blob([encodePcmWav(await model.recorder.rescue(),'pcm16')],{type:'audio/wav'}),'recovered-take.wav');await model.recorder.acknowledgeRecovery();await model.refresh();}),action(model,'Dismiss rescue',async()=>{if(!window.confirm('Dismiss the unsaved tail? Any committed audio stays recoverable.'))return;await model.recorder.acknowledgeRecovery();await model.refresh();}));}
   if(s.revision!==revision){revision=s.revision;replace(list,...s.riffs.filter(r=>!r.archivedAt).sort((a,b)=>b.updatedAt-a.updatedAt).map(r=>{const btn=action(model,'',()=>model.openIdea(r.id),'wb-idea');btn.classList.toggle('is-selected',r.id===s.riff?.id);btn.append(h('strong',{text:r.name??'Untitled idea'}),h('span',{text:`${r.versions.length} ${r.versions.length===1?'take':'takes'} · ${relativeTime(r.createdAt)}`}));return btn;}));if(!list.childElementCount)list.append(h('p',{class:'wb-muted',text:'Your recordings and selected ideas will appear here.'}));renderEditor();}
+  if(s.revision===revision){replace(archivedList,...s.riffs.filter(r=>r.archivedAt).map(r=>action(model,`Restore ${r.name??'untitled idea'}`,async()=>{await model.repository.archiveRiff(r.id,false);await model.refresh();})));}
   if(s.selection)wave?.setSelection(s.selection);for(const control of editor.querySelectorAll<HTMLButtonElement>('[data-selection-action]'))control.disabled=!model.canUseSelection||s.busy||active;
  });
  return {element:root,dispose(){editorGeneration++;unsub();wave?.dispose();}};
