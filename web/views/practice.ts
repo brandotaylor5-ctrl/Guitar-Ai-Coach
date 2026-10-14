@@ -18,6 +18,9 @@ import type { AppContext } from './context.ts';
 const ATTEMPT_TIMEOUT_MS = 2000;
 
 export function practicePanel(context: AppContext, riff: Riff, version: RiffVersion): HTMLElement & { dispose(): void } {
+  if (!version.notes.length) {
+    return Object.assign(h('p', { class:'muted', text:'This take is audio-only. Open Develop to loop it, slow it down, or confirm a note interpretation.' }), { dispose() {} });
+  }
   let speed = 1;
   let target: PracticeTarget = version.parentId === null ? 'original' : 'latest';
   let capturing = false;

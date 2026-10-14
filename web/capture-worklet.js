@@ -14,9 +14,21 @@ class CaptureProcessor extends AudioWorkletProcessor {
     super();
     this.buffer = new Float32Array(CHUNK_SIZE);
     this.filled = 0;
+    this.stopped = false;
+    this.port.onmessage = (event) => {
+      if (event.data?.type !== 'flush') return;
+      this.stopped = true;
+      if (this.filled) {
+        const tail = this.buffer.slice(0, this.filled);
+        this.filled = 0;
+        this.port.postMessage(tail, [tail.buffer]);
+      }
+      this.port.postMessage({ type: 'flushed', id: event.data.id });
+    };
   }
 
   process(inputs) {
+    if (this.stopped) return true;
     const channel = inputs[0]?.[0];
     if (!channel) return true;
 

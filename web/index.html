@@ -3,17 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Guitar AI Coach</title>
-<meta name="description" content="A live guitar coach that listens, teaches one thing at a time, and helps turn your playing into music.">
-<meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#090b12">
+<title>Guitar Workbench</title>
+<meta name="description" content="Record your guitar, develop your ideas, and arrange your own songs. Your original performances stay yours.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#171a18">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Guitar Coach">
+<meta name="apple-mobile-web-app-title" content="Workbench">
 <link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./styles.css">
 <link rel="stylesheet" href="./mvp.css">
 <link rel="stylesheet" href="./learning.css">
+<link rel="stylesheet" href="./workbench.css">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="./icon.svg">
 </head>
@@ -21,7 +22,7 @@
   <header class="app-header">
     <div class="brand">
       <span id="live-dot" class="live-dot" aria-hidden="true"></span>
-      <h1>Guitar AI Coach</h1>
+      <h1>Guitar Workbench</h1>
     </div>
     <nav id="nav" class="nav" aria-label="Sections"></nav>
   </header>
@@ -49,10 +50,10 @@
 
   <footer class="app-footer">
     <p>
-      While listening, the last minute of audio and notes stays in memory on this device.
-      Nothing is uploaded. Saved riffs and their available recordings stay in this browser.
-      Starting a new listening session clears unsaved session memory.
+      Saved on this device. Your recordings stay in this browser; download audio and back up projects to keep a copy elsewhere.
     </p>
+    <button id="protect-storage" class="wb-button" type="button">Keep browser storage longer</button>
+    <span id="storage-result" role="status">Ask this browser to protect saved music from automatic storage cleanup. Backups are still recommended.</span>
   </footer>
 
   <script type="module" src="./app.js"></script>

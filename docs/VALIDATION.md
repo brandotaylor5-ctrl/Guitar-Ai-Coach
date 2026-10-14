@@ -1,3 +1,19 @@
+# Songwriter workbench release — 2026-10-14
+
+Implementation through local commit `fb05406`; matching uploaded tree `82167e229896d6c760a875e6ec5b4088cc977884`, GitHub review PR #44. At that checkpoint: 540/540 tests, TypeScript, production build, and whitespace checks pass. Later release fixes and live evidence are recorded below when verified.
+
+Covered: exact float32 stereo WAV round trips, final worklet tail acknowledgements, ten-minute capture, five-second queue stalls and rescue, late permission cancellation, native-rate WAV and browser-decoded imports, playback cancellation, immutable source ranges and version history, pinned song sections, mixed-rate demo duration, MIDI event timing, transactional migration/revision conflicts, complete ZIP restoration and collision handling, archive path/size validation, and blocked database upgrades.
+
+The browser and executor do not share localhost. Browser verification therefore uses the existing GitHub Pages deployment after CI. No real microphone device, audible monitoring channel, or iPhone Safari session is available here; those hardware behaviors must not be claimed verified. The private user-provided M4A fixture is outside the repository and is never published as a test asset.
+
+All generated runtime modules and the local ZIP vendor module enter a build-specific offline cache. Updates require an explicit action and safe acknowledgements from current app tabs. Recording and recovery use an exclusive browser lock; recovery does not finalize another tab's live recording. Old caches are retained for old clients.
+
+Design decisions: MIDI is an optional export of confirmed note sketches. Recordings remain unquantized and unnormalized. Restore publishes validated records together in one transaction after private staging; conflicting IDs become separate copies. Existing musical data, legacy source copies and course/placement storage keys remain intact.
+
+Independent whole-branch review found two important issues, both fixed with failing-then-passing regressions: interrupted recovery now awaits the final capture flush before download/reset; legacy playback now observes the recording lock and cancels Workbench playback, with the persistent Stop control covering either player. No critical findings or deferred minor findings. After the fix pass: 544/544 tests, TypeScript, build and diff checks pass. Added archive regressions also reject duplicate paths and forged lengths and preserve existing music after cancellation during staging.
+
+## Earlier live-coach validation notes
+
 # Reliability and instrument setup
 
 Run `npm ci`, `npm test`, `npm run typecheck`, and `npm run build`.

@@ -31,6 +31,7 @@ export interface CaptureHandlers {
    */
   onChordExplain?(explanation: ChordExplanation): void;
   onError(error: Error): void;
+  onInterrupted?(reason: string): void;
 }
 
 export class MicCapture {
@@ -47,6 +48,12 @@ export class MicCapture {
   minRms = 0.012;
   /** Report the detector's reasoning every frame. */
   diagnostics = false;
+  analysisEnabled = true;
+  private epoch = 0;
+  private starting: Promise<void> | null = null;
+  private stopping: Promise<void> | null = null;
+  private flushId = 0;
+  private flushes = new Map<number, () => void>();
 
   setSensitivity(minRms: number): void {
     if (!Number.isFinite(minRms) || minRms < 0.002 || minRms > 0.1) {
@@ -68,13 +75,20 @@ export class MicCapture {
     return this.context !== null;
   }
 
-  async start(): Promise<void> {
-    if (this.context) return;
+  start(): Promise<void> {
+    if (this.starting) return this.starting;
+    if (this.context) return Promise.resolve();
+    const epoch = ++this.epoch;
+    this.starting = this.open(epoch).finally(() => { this.starting = null; });
+    return this.starting;
+  }
+
+  private async open(epoch: number): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('This browser will not give a page microphone access.');
     }
 
-    this.stream = await navigator.mediaDevices.getUserMedia({
+    const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         ...(this.deviceId ? { deviceId: { exact: this.deviceId } } : {}),
         echoCancellation: false,
@@ -83,6 +97,8 @@ export class MicCapture {
         channelCount: 1,
       },
     });
+    if (epoch !== this.epoch) { for (const track of stream.getTracks()) track.stop(); return; }
+    this.stream = stream;
 
     const context = new AudioContext({ latencyHint: 'interactive' });
     this.context = context;
@@ -94,26 +110,40 @@ export class MicCapture {
       await this.stop();
       throw new Error(`Could not load the audio processor: ${(err as Error).message}`);
     }
+    if (epoch !== this.epoch) return;
 
+    if (this.analysisEnabled) try {
     this.worker = new Worker(new URL('../detector.worker.js', import.meta.url), { type: 'module' });
-    this.worker.onmessage = (event: MessageEvent<DetectorResult>) => {
+    this.worker.onmessage = (event: MessageEvent<DetectorResult | {type:'flushed';id:number}>) => {
+      if (event.data.type === 'flushed') { this.flushes.get(event.data.id)?.(); return; }
       const { notes, timeMs, frame } = event.data;
       this.handlers.onNotes(notes, timeMs);
       if (frame) this.handlers.onFrame(frame);
     };
     this.worker.onerror = (event) => {
+      this.worker?.terminate();
+      this.worker = null;
       this.handlers.onError(new Error(`Pitch detection failed: ${event.message}`));
     };
     this.worker.postMessage({ type: 'init', sampleRate: context.sampleRate, minRms: this.minRms });
+    } catch (error) { this.worker = null; this.handlers.onError(new Error(`Note analysis unavailable: ${String(error)}`)); }
 
     const source = context.createMediaStreamSource(this.stream);
     this.node = new AudioWorkletNode(context, 'capture', { numberOfOutputs: 0 });
-    this.node.port.onmessage = (event: MessageEvent<Float32Array>) => {
+    this.node.port.onmessage = (event: MessageEvent<Float32Array | {type:'flushed';id:number}>) => {
       const chunk = event.data;
+      if (!(chunk instanceof Float32Array)) { this.flushes.get(chunk.id)?.(); return; }
       this.handlers.onAudio(chunk.slice());
       this.worker?.postMessage({ type: 'audio', chunk }, [chunk.buffer]);
     };
     source.connect(this.node);
+    for (const track of stream.getAudioTracks()) track.addEventListener('ended', () => {
+      if (epoch === this.epoch) this.handlers.onInterrupted?.('Microphone disconnected. The captured portion is recoverable.');
+    });
+    context.addEventListener('statechange', () => {
+      if (epoch === this.epoch && context.state === 'suspended') this.handlers.onInterrupted?.('Audio was suspended. Keep the app in the foreground while recording.');
+    });
+    if (!this.analysisEnabled) return;
 
     // Chords need the whole spectrum rather than one fundamental pitch. Keep
     // this path separate so the proven monophonic note detector stays untouched.
@@ -143,9 +173,33 @@ export class MicCapture {
   }
 
   /** Close out any note still ringing, then tear everything down. */
-  async stop(): Promise<void> {
-    this.worker?.postMessage({ type: 'flush' });
-    await new Promise((resolve) => setTimeout(resolve, 60));
+  stop(): Promise<void> {
+    if (this.stopping) return this.stopping;
+    ++this.epoch;
+    this.stopping = this.shutdown().finally(() => { this.stopping = null; });
+    return this.stopping;
+  }
+
+  private async shutdown(): Promise<void> {
+    let flushError: Error | null = null;
+    if (this.node) {
+      const id = ++this.flushId;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => { this.flushes.delete(id); reject(new Error('The audio processor did not acknowledge its final samples. This take is interrupted.')); }, 1500);
+          this.flushes.set(id, () => { clearTimeout(timeout); this.flushes.delete(id); resolve(); });
+          this.node!.port.postMessage({ type:'flush', id });
+        });
+      } catch (error) { flushError = error as Error; }
+    }
+    if (this.worker) {
+      const id = ++this.flushId;
+      await new Promise<void>(resolve => {
+        const timeout = setTimeout(() => { this.flushes.delete(id); resolve(); }, 1500);
+        this.flushes.set(id, () => { clearTimeout(timeout); this.flushes.delete(id); resolve(); });
+        this.worker!.postMessage({ type:'flush', id });
+      });
+    }
 
     if (this.chordTimer !== null) window.clearInterval(this.chordTimer);
     this.chordTimer = null;
@@ -166,5 +220,6 @@ export class MicCapture {
 
     await this.context?.close();
     this.context = null;
+    if (flushError) throw flushError;
   }
 }

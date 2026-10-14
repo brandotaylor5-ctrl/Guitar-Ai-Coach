@@ -20,6 +20,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   for (const [key, value] of Object.entries(attrs)) {
     if (value === undefined || value === null || value === false) continue;
     if (key === 'class') node.className = String(value);
+    else if (key === 'value' && tag === 'textarea') (node as HTMLTextAreaElement).value = String(value);
     else if (key === 'text') node.textContent = String(value);
     else if (key === 'dataset') Object.assign(node.dataset, value);
     else if (key.startsWith('on') && typeof value === 'function') {

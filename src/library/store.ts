@@ -1,8 +1,10 @@
 /** Persistence boundary for the Riff Library. */
 
 import type { Riff, SongSeed } from '../types.ts';
+import type { AudioRegion } from '../workbench/types.ts';
 
 export interface RiffStore {
+  assertRecording?(region: AudioRegion): Promise<void>;
   listRiffs(): Promise<Riff[]>;
   getRiff(id: string): Promise<Riff | null>;
   putRiff(riff: Riff): Promise<void>;

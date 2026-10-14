@@ -7,8 +7,9 @@
  * Nothing else ever reaches this store, and deleting a riff deletes its clip.
  */
 
-const DB_NAME = 'guitar-ai-coach';
-const DB_VERSION = 1;
+import { openWorkbenchDatabase, inTransaction, requestValue, transactionDone } from '../workbench/database.ts';
+import { validatePcm } from '../../src/workbench/regions.ts';
+import type { Riff } from '../../src/types.ts';
 const STORE = 'clips';
 
 export interface StoredClip {
@@ -19,23 +20,13 @@ export interface StoredClip {
 }
 
 function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('Could not open the clip store'));
-  });
+  return openWorkbenchDatabase(indexedDB);
 }
 
-function run<T>(store: IDBObjectStore, request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('Clip store request failed'));
-    store.transaction.onabort = () => reject(store.transaction.error ?? new Error('Clip store aborted'));
-  });
+async function run<T>(store: IDBObjectStore, request: IDBRequest<T>): Promise<T> {
+  const done = transactionDone(store.transaction);
+  const [value] = await Promise.all([requestValue(request), done]);
+  return value;
 }
 
 /**
@@ -63,15 +54,21 @@ export class ClipStore {
     if (!this.available) return false;
     try {
       const db = await this.connect();
-      const tx = db.transaction(STORE, 'readwrite');
-      const store = tx.objectStore(STORE);
-      await run(store, store.put({
-        id: this.key(ref),
-        // Copy: the caller's view may be part of a larger buffer.
-        samples: new Float32Array(samples),
-        sampleRate,
-        savedAt: Date.now(),
-      } satisfies StoredClip));
+      validatePcm({ sampleRate, channels: [samples] });
+      await inTransaction(db, [STORE, 'assets', 'chunks', 'riffs'], 'readwrite', async tx => {
+        const key = this.key(ref);
+        const existing = await requestValue(tx.objectStore(STORE).get(key));
+        const clip: StoredClip = existing ?? { id:key, samples:new Float32Array(samples), sampleRate, savedAt:Date.now() };
+        if (!existing) await requestValue(tx.objectStore(STORE).add(clip));
+        const id = `legacy:${clip.id}:${clip.savedAt}`;
+        if (!(await requestValue(tx.objectStore('assets').get(id)))) {
+          await requestValue(tx.objectStore('assets').add({ id, source:'legacy', state:'complete', sampleRate:clip.sampleRate, channelCount:1, sampleCount:clip.samples.length, createdAt:clip.savedAt, markers:[] }));
+          await requestValue(tx.objectStore('chunks').add({ assetId:id, index:0, startSample:0, channels:[clip.samples] }));
+        }
+        const riffs:Riff[]=await requestValue(tx.objectStore('riffs').getAll());
+        for(const riff of riffs){let changed=false;for(const version of riff.versions)if(version.audioRef?.replace(/^clip:/,'')===key&&!version.recording){version.recording={assetId:id,startSample:0,endSample:clip.samples.length};version.sourceKind='recorded';version.analysis={state:version.notes.length?'estimated':'unavailable'};changed=true;}
+          if(changed){riff.revision=(riff.revision??0)+1;await requestValue(tx.objectStore('riffs').put(riff));}}
+      });
       return true;
     } catch {
       return false;

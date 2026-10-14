@@ -8,6 +8,8 @@
  */
 
 /** A single detected note: what was played, when, and for how long. */
+import type { AudioRegion } from './workbench/types.ts';
+
 export interface NoteEvent {
   /** MIDI note number. 40 = E2 = open low E in standard tuning. */
   midi: number;
@@ -111,6 +113,12 @@ export interface RiffVersion {
   audioRef?: string;
   /** Free-text, the player's own words. */
   comment?: string;
+  recording?: AudioRegion;
+  sourceKind?: 'recorded' | 'imported' | 'synthesized' | 'legacy';
+  instrument?: string;
+  tuningSnapshot?: { name: string; strings: number[]; capo: number };
+  analysis?: { state: 'unavailable' | 'estimated' | 'confirmed'; reason?: string };
+  provenance?: { sourceVersionId: string; operation: 'ending' | 'rhythm' | 'performance'; parameters: Record<string, string|number> };
 }
 
 /** A musical idea the player chose to keep. */
@@ -125,6 +133,8 @@ export interface Riff {
   currentVersionId: string;
   tags: string[];
   notes?: string;
+  revision?: number;
+  archivedAt?: number;
 }
 
 /** A loose grouping of riffs the player is treating as one song. */
@@ -132,7 +142,10 @@ export interface SongSeed {
   id: string;
   name: string;
   createdAt: number;
-  sections: Array<{ role: string; riffId: string; versionId?: string }>;
+  sections: Array<{ id?: string; role: string; riffId: string; versionId?: string; recording?: AudioRegion; repeats?: number; note?: string }>;
+  notes?: string;
+  revision?: number;
+  archivedAt?: number;
 }
 
 /** A match between something just played and something remembered. */
