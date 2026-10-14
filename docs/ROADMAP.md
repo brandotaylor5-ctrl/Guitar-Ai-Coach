@@ -109,3 +109,8 @@ included in them — the export is structured notes only.
 - **Unprompted recognition only fires on a settled phrase.** Play continuously
   without pausing and it will never volunteer anything, which is the right
   trade but worth knowing.
+# Songwriter Workbench — October 2026
+
+Implemented: Record → Develop → Songs, original recording/import preservation, alternate takes, confirmed editable monophonic sketches, MIDI/WAV export, pinned arrangements, complete ZIP backup/restore, and recording/update recovery. See [validation](VALIDATION.md) for exact release evidence and hardware limits.
+
+Future work remains separate: multitrack recording, editable drum accompaniment, effects automation, owned-sample libraries, and cloud/device synchronization. The current app does not claim those capabilities or train a music model.

@@ -101,7 +101,10 @@ let stoppedClock = 0;
 let pausedElapsed = 0;
 let changingCapture = false;
 let calibrationLevels: number[] | null = null;
-const player = new RiffPlayer();
+const player = new RiffPlayer({beforePlay:()=>{
+  if(workbench&&(['requesting','recording','finalizing','recoverable'].includes(workbench.recorder.snapshot.status)||workbench.updatePending)){say('Finish the recording or recovery before playback.','error');return false;}
+  workbench?.transport.stop();return true;
+},onChange:()=>workbench?.notifyTransport()});
 const clips = new ClipStore();
 const rawCapture = new RawCapturePort();
 let workbench: WorkbenchModel | null = null;
@@ -301,6 +304,7 @@ function render(): void {
   const main = qs('#view');
   clear(main);
   main.appendChild(current.element);
+  workbench?.notifyTransport();
 
   for (const tab of document.querySelectorAll<HTMLButtonElement>('.nav-tab')) {
     tab.classList.toggle('is-active', tab.dataset.view === state.view);
@@ -443,7 +447,10 @@ async function start(): Promise<void> {
   const db = await openWorkbenchDatabase(indexedDB);
   const repository = new WorkbenchRepository(db);
   const migration = store ? await migrateLegacy(db, store) : null;
-  const transport = new AudioTransport({ repository, context:audioContext, renderNotes:renderNotePcm, onChange:() => workbench?.notifyTransport() });
+  const transport = new AudioTransport({ repository, context:audioContext, renderNotes:renderNotePcm, onChange:() => workbench?.notifyTransport(),beforePlay:()=>{
+    if(workbench&&(['requesting','recording','finalizing','recoverable'].includes(workbench.recorder.snapshot.status)||workbench.updatePending))return false;
+    player.stop();return true;
+  } });
   const recorder = new RecordingController({capture:rawCapture,repository,acquireLock:acquireCaptureLock,onChange:() => workbench?.notifyRecorder(),stopPlayback:async()=>{
     if(workbench?.updatePending||workbench?.snapshot.busy)throw new Error('Wait for the current save or update before recording.');
     transport.stop();player.stop();window.speechSynthesis?.cancel();
@@ -451,6 +458,7 @@ async function start(): Promise<void> {
     await context.stopListening();
   }});
   workbench = new WorkbenchModel({repository,recorder,transport});
+  workbench.otherPlayback=()=>player.isPlaying;workbench.stopOtherPlayback=()=>player.stop();
   workbench.tuningSnapshot = {name:STANDARD_TUNING.name,strings:[...STANDARD_TUNING.strings],capo:0};
   state.library = new RiffLibrary(repository);
   await workbench.refresh();

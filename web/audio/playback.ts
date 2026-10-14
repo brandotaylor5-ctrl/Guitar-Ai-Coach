@@ -114,6 +114,8 @@ function maxSimultaneous(notes: NoteEvent[]): number {
 }
 
 export class RiffPlayer {
+  private options:{beforePlay?:()=>boolean;onChange?:()=>void};
+  constructor(options:{beforePlay?:()=>boolean;onChange?:()=>void}={}){this.options=options;}
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
   private timers: number[] = [];
@@ -137,6 +139,7 @@ export class RiffPlayer {
 
   /** Schedule the whole riff up front, so timing does not depend on the UI. */
   async play(notes: NoteEvent[], options: PlayOptions = {}): Promise<void> {
+    if(this.options.beforePlay?.()===false){options.onEnd?.();return;}
     this.stop();
     const epoch = this.epoch;
     if (notes.length === 0) return;
@@ -155,6 +158,7 @@ export class RiffPlayer {
     master.connect(audioOutput());
     this.master = master;
     this.playing = true;
+    this.options.onChange?.();
 
     const origin = notes[0]!.startMs;
     const startAt = context.currentTime + 0.08;
@@ -174,7 +178,7 @@ export class RiffPlayer {
     });
 
     await new Promise<void>((resolve) => {
-      this.settle = () => { this.settle = null; this.playing = false; options.onEnd?.(); resolve(); };
+      this.settle = () => { this.settle = null; this.playing = false; this.options.onChange?.(); options.onEnd?.(); resolve(); };
       this.endTimer = window.setTimeout(() => {
         this.settle?.();
       }, (finishesAt + 0.4) * 1000);
@@ -236,6 +240,7 @@ export class RiffPlayer {
    * left it — the whole point of practising something slowly.
    */
   async playSamples(samples: Float32Array, sampleRate: number, speed = 1): Promise<void> {
+    if(this.options.beforePlay?.()===false)return;
     this.stop();
     const epoch = this.epoch;
     if (samples.length === 0) return;
@@ -258,10 +263,11 @@ export class RiffPlayer {
     source.buffer = buffer;
     source.connect(master);
     this.playing = true;
+    this.options.onChange?.();
     source.start();
 
     await new Promise<void>((resolve) => {
-      this.settle = () => { this.settle = null; this.playing = false; resolve(); };
+      this.settle = () => { this.settle = null; this.playing = false; this.options.onChange?.(); resolve(); };
       source.onended = () => { if (epoch === this.epoch) this.settle?.(); };
     });
   }
@@ -292,5 +298,6 @@ export class RiffPlayer {
       this.master = null;
     }
     this.playing = false;
+    this.options.onChange?.();
   }
 }

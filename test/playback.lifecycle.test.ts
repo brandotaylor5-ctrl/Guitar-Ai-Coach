@@ -17,3 +17,8 @@ test('legacy note playback settles exactly once when stopped',{timeout:500},asyn
   await Promise.resolve();player.stop();await pending;player.stop();assert.equal(ended,1);
  }finally{Object.assign(globalThis,{window:oldWindow,AudioContext:oldContext});}
 });
+test('playback admission blocks legacy notes and samples before audio opens',async()=>{
+ let checked=0;const player=new RiffPlayer({beforePlay:()=>{checked++;return false;}});
+ await player.play([{midi:60,startMs:0,durationMs:100,confidence:1}]);await player.playSamples(new Float32Array([.1]),48000);
+ assert.equal(checked,2);assert.equal(player.isPlaying,false);
+});

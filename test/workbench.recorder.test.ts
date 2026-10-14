@@ -46,6 +46,13 @@ test('storage stalls halt at a five-second pending queue and preserve rescue sam
  const rescue=await recorder.rescue();assert.equal(rescue.channels[0]!.length,5000);assert.equal(rescue.channels[0]![4999],.25);
  finish();await new Promise(resolve=>setTimeout(resolve,5));db.close();
 });
+test('recovery waits for the interrupted worklet tail before downloading or acknowledging',async()=>{
+ const {db,capture,recorder,waitCommitted}=await setup();await recorder.start();capture.onAudio(new Float32Array(1000).fill(.25));await waitCommitted(1000);
+ let flush!:()=>void;capture.stop=()=>new Promise<void>(resolve=>{flush=()=>{capture.onAudio(new Float32Array(127).fill(.5));resolve();};});
+ const interrupted=recorder.interrupt('Device paused'),rescue=recorder.rescue();
+ await new Promise(resolve=>setTimeout(resolve,5));flush();await interrupted;
+ assert.equal((await rescue).channels[0]!.length,1127);await recorder.acknowledgeRecovery();db.close();
+});
 test('recording limit uses captured samples and keeps exactly ten minutes',{timeout:5000},async()=>{
  const {db,repository,capture,recorder,waitCommitted}=await setup();await recorder.start();
  for(let i=0;i<600;i++){capture.onAudio(new Float32Array(1000).fill(.1));await waitCommitted((i+1)*1000);}

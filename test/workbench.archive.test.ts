@@ -34,3 +34,16 @@ test('bad manifest/hash restores publish no records',async()=>{
  const bytes=await zipEntries([['manifest.json',new TextEncoder().encode(JSON.stringify({version:999}))]],signal);
  await assert.rejects(restoreProject(new Blob([bytes]),repo,signal));assert.deepEqual(await repo.listRiffs(),[]);assert.deepEqual(await repo.listSongs(),[]);assert.deepEqual(await repo.listAssets(),[]);repo.close();
 });
+test('duplicate paths and actual output beyond forged declared lengths are rejected',async()=>{
+ const signal=new AbortController().signal;
+ const duplicate=await zipEntries([['same',new Uint8Array([1])],['same',new Uint8Array([2])]],signal);await assert.rejects(unpackArchive(duplicate,signal),/duplicate/);
+ const bytes=await zipEntries([['payload',new Uint8Array(50000)]],signal),view=new DataView(bytes.buffer);
+ for(let i=0;i<bytes.length-46;i++)if(view.getUint32(i,true)===0x02014b50){view.setUint32(i+24,1,true);break;}
+ await assert.rejects(unpackArchive(bytes,signal),/declared|length|budget/);
+});
+test('cancellation after staging leaves existing music unchanged and removes only its own staging',async()=>{
+ const source=await setup(),dest=await setup();await source.putSong({id:'new',name:'New',createdAt:1,sections:[]});await dest.putSong({id:'existing',name:'Keep me',createdAt:2,sections:[]});
+ const zip=await exportProject('new',source,new AbortController().signal),before=await dest.listSongs(),controller=new AbortController();
+ const stage=dest.stageRestoreEntry.bind(dest);dest.stageRestoreEntry=async(...args)=>{await stage(...args);controller.abort();};
+ await assert.rejects(restoreProject(zip,dest,controller.signal));assert.deepEqual(await dest.listSongs(),before);source.close();dest.close();
+});

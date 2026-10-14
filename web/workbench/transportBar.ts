@@ -2,7 +2,7 @@ import { h } from '../ui/dom.ts';
 import type { WorkbenchModel } from './model.ts';
 import { action,time } from './ui.ts';
 export function transportBar(model:WorkbenchModel):HTMLElement{
- const play=action(model,'Play',()=>model.canCancel?model.cancelOperation():model.transport.snapshot.playing||model.transport.snapshot.processing?model.transport.stop():model.play(),'wb-button wb-play');
+ const play=action(model,'Play',()=>model.canCancel?model.cancelOperation():model.snapshot.transport.playing||model.transport.snapshot.processing?model.stopPlayback():model.play(),'wb-button wb-play');
  const loop=action(model,'Loop off',()=>{model.loop=!model.loop;loop.textContent=model.loop?'Loop on':'Loop off';loop.setAttribute('aria-pressed',String(model.loop));if(model.transport.snapshot.playing)void model.play().catch(e=>model.report(e));});loop.setAttribute('aria-pressed','false');
  const speed=h('select',{'aria-label':'Playback speed'},...[1,.75,.5].map(n=>h('option',{value:n,text:`${n*100}%`})));speed.addEventListener('change',()=>{model.speed=Number(speed.value) as 1|.75|.5;if(model.transport.snapshot.playing)void model.play().catch(e=>model.report(e));});
  const level=h('input',{type:'range',min:0,max:1,step:.01,value:.8,'aria-label':'Output volume'});level.addEventListener('input',()=>model.transport.setGain(Number(level.value)));

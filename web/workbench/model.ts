@@ -32,11 +32,13 @@ export class WorkbenchModel {
  private songHistories=new Map<string,EditHistory<SongSeed>>();
  playTarget:'idea'|'song'='idea';pendingProject:SongSeed|null=null;
  updatePending=false;
+ otherPlayback:()=>boolean=()=>false;stopOtherPlayback:()=>void=()=>{};
+ stopPlayback():void{this.transport.stop();this.stopOtherPlayback();}
  get canCancel():boolean{return !!this.operation;}
  constructor(options:{repository:WorkbenchRepository;recorder:RecordingController;transport:AudioTransport}){
   this.repository=options.repository;this.recorder=options.recorder;this.transport=options.transport;this.library=new RiffLibrary(options.repository);
  }
- get snapshot():WorkbenchSnapshot{return {...this.state,recorder:this.recorder.snapshot,transport:this.transport.snapshot};}
+ get snapshot():WorkbenchSnapshot{return {...this.state,recorder:this.recorder.snapshot,transport:{...this.transport.snapshot,playing:this.transport.snapshot.playing||this.otherPlayback()}};}
  subscribe(listener:(state:WorkbenchSnapshot)=>void):()=>void{this.listeners.add(listener);listener(this.snapshot);return()=>this.listeners.delete(listener);}
  protected emit(structural=true):void{if(structural)this.state.revision++;for(const listener of this.listeners)listener(this.snapshot);}
  report(error:unknown):void{this.state.error=error instanceof Error?error.message:String(error);this.emit();}
@@ -109,9 +111,9 @@ export class WorkbenchModel {
   if(['requesting','recording','finalizing','recoverable'].includes(this.recorder.snapshot.status))throw new Error('Finish the current recording before importing.');
   this.operation=new AbortController();
   try{const kept=await this.save(()=>importAudio(file,this.repository,this.operation!.signal));await this.finishTake(kept);}
-  finally{this.operation=null;}
+  finally{this.operation=null;this.emit(false);}
  }
- cancelOperation():void{this.operation?.abort();this.transport.stop();}
+ cancelOperation():void{this.operation?.abort();this.stopPlayback();}
  async rename(name:string):Promise<void>{
   const riff=this.state.riff;if(!riff)return;
   await this.save(async()=>{const updated={...riff,name:name.trim()||null};await this.repository.putRiff(updated);this.state.riff=updated;});await this.refresh();
@@ -139,7 +141,7 @@ export class WorkbenchModel {
    const notes=await this.save(async()=>analyzeRecordedRegion(await this.repository.readRegion(region),this.operation!.signal));
    if(!notes.length)throw new Error('No clear single-note line was found. The recording is saved; you can enter notes yourself.');
    await this.saveVersionEdit({...version,recording:region,notes,analysis:{state:'estimated'}});
-  }finally{this.operation=null;}
+  }finally{this.operation=null;this.emit(false);}
  }
  private async persistIdea(next:Riff,recordHistory=true):Promise<void>{
   this.requireIdle();const id=next.id;
@@ -206,7 +208,7 @@ export class WorkbenchModel {
   this.requireIdle();const project=this.state.project;if(!project)throw new Error('Choose a song first');
   this.operation=new AbortController();
   try{return await this.save(async()=>renderArrangement(resolveArrangement(project,await this.repository.listRiffs()),region=>this.repository.readRegion(region),renderNotePcm,48000,this.operation!.signal));}
-  finally{this.operation=null;}
+  finally{this.operation=null;this.emit(false);}
  }
  async playProject():Promise<void>{const audio=await this.renderProject();await this.transport.playPcm(audio,this.loop);}
  async exportProjectDemo():Promise<Blob>{const audio=await this.renderProject();return new Blob([encodePcmWav(audio,'pcm16')],{type:'audio/wav'});}

@@ -39,7 +39,7 @@ export function installWorkbenchLifecycle(model:WorkbenchModel):()=>void{
  const key=(event:KeyboardEvent)=>{
   if(event.repeat||event.ctrlKey||event.metaKey||event.altKey||(event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable=true]'))return;
   if(event.key==='Escape'){model.cancelOperation();return;}
-  if(event.code==='Space'){event.preventDefault();void (model.transport.snapshot.playing?Promise.resolve(model.transport.stop()):model.play()).catch(e=>model.report(e));}
+  if(event.code==='Space'){event.preventDefault();void (model.snapshot.transport.playing?Promise.resolve(model.stopPlayback()):model.play()).catch(e=>model.report(e));}
   if(event.key.toLowerCase()==='r'&&!model.snapshot.busy){event.preventDefault();void (['recording','requesting'].includes(model.recorder.snapshot.status)?model.recorder.stop():model.recorder.start()).catch(e=>model.report(e));}
  };
  document.addEventListener('visibilitychange',hidden);window.addEventListener('beforeunload',unload);document.addEventListener('keydown',key);

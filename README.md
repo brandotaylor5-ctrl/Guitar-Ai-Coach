@@ -1,4 +1,21 @@
-# Guitar AI Coach
+# Guitar Workbench
+
+Record your own performances, develop alternate takes and editable sketches, and arrange songs. The original audio stays intact.
+
+**Open the app:** https://brandotaylor5-ctrl.github.io/Guitar-Ai-Coach/web/index.html
+
+- **Record:** microphone recording or local WAV/M4A/MP3 import, waveform ranges, loops, and WAV downloads. Imports retain their original file bytes and stereo channels.
+- **Develop:** alternate takes, A/B listening, reversible versions, optional editable note interpretation, confirmed ending/rhythm sketches, and MIDI export.
+- **Songs:** pinned takes and ranges, section order/repeats, lyrics, stereo demo WAV, and complete project ZIP backup/restore.
+- **Learn:** the existing coach, lessons, scales, and traditional tunes remain available.
+
+Start with **Record → Import audio** for a Dolby On recording. Select a passage and keep it as an idea; use Develop to try another version or Songs to add it to an arrangement. Recording and import work without successful note detection. Note estimation is monophonic and must be checked by ear.
+
+Music is saved in this browser, not synced between devices. Download a project ZIP to keep an external copy or move a song. Limits: ten minutes per take/import, 100 MB per imported file, and 500 MB expanded project backup. Keep recording in the foreground. An interrupted capture offers recovery in Record.
+
+Run `npm ci`, `npm test`, `npm run typecheck`, and `npm start` with a current Node 22 release or Node 24. ZIP support is bundled locally from pinned `fflate`; browser music workflows do not call a remote model or CDN.
+
+The following describes the earlier live-coach foundation, still available through Learn.
 
 **An intelligent musical sketchbook, riff memory and guitar collaborator.**
 
@@ -49,8 +66,7 @@ npm run demo    # the whole vision in the terminal, from synthesised audio
 npm test        # Automated tests; no network or audio hardware needed
 ```
 
-Ships with **no runtime dependencies**. `npm install` fetches only TypeScript
-and Node's type definitions, for `npm run typecheck`.
+Install dependencies with `npm ci` before building or testing. The optional local conversation server uses its existing model SDK; the hosted recording workbench works locally in the browser.
 
 `npm start` opens the browser app: plug in, press **Start listening**, play for
 a while, then press **What did I just play?**

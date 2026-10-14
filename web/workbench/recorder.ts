@@ -34,6 +34,7 @@ export class RecordingController {
   private nextStart=0;
   private early:Float32Array[]=[];
   private releaseLock:(()=>void)|null=null;
+  private interruptShutdown:Promise<void>|null=null;
   constructor(options:Options){this.options=options;}
   get snapshot():RecordingSnapshot{return {...this.state,markers:[...this.state.markers],peaks:[...this.state.peaks]};}
   private emit():void{this.options.onChange(this.snapshot);}
@@ -135,13 +136,15 @@ export class RecordingController {
       this.state.status='saved';this.state.kept=kept;this.state.level=0;++this.epoch;this.releaseLock?.();this.releaseLock=null;this.emit();return kept;
     }catch(error){await this.interrupt(error instanceof Error?error.message:String(error));return null;}
   }
-  async interrupt(reason:string):Promise<void>{
-    if(this.failed)return;
-    this.failed=true;this.state.status='recoverable';this.state.error=reason;this.state.level=0;this.emit();
-    // Preserve any worklet tail even though storage has failed; bound it to the remaining queue allowance.
-    await this.options.capture.stop().catch(()=>{});this.accepting=false;
+  interrupt(reason:string):Promise<void>{
+    if(this.failed)return this.interruptShutdown??Promise.resolve();
+    const epoch=this.epoch;this.failed=true;this.state.status='recoverable';this.state.error=reason;this.state.level=0;
+    // Install shutdown before publishing recovery, so even synchronous subscribers wait for the tail.
+    this.interruptShutdown=Promise.resolve().then(()=>this.options.capture.stop()).catch(()=>{}).then(()=>{if(epoch===this.epoch)this.accepting=false;});
+    this.emit();return this.interruptShutdown;
   }
   async rescue():Promise<PcmAudio>{
+    await this.interruptShutdown;
     if(!this.state.capturedSamples)throw new Error('No audio samples were captured');
     const channel=new Float32Array(this.state.capturedSamples);
     const asset=await this.options.repository.getAsset(this.assetId).catch(()=>null);
@@ -152,11 +155,12 @@ export class RecordingController {
   }
   async acknowledgeRecovery():Promise<KeptTake|null>{
     if(this.state.status!=='recoverable')return null;
+    await this.interruptShutdown;
     if(this.writer)await this.writer;
     const asset=await this.options.repository.getAsset(this.assetId);
     const kept=asset?.sampleCount?await this.options.repository.finalizeInterrupted(this.assetId,this.target):null;
     this.releaseLock?.();this.releaseLock=null;
-    ++this.epoch;this.queue=[];this.filled=0;this.state={status:'idle',capturedSamples:0,committedSamples:0,sampleRate:0,level:0,peaks:[],markers:[]};this.emit();return kept;
+    ++this.epoch;this.interruptShutdown=null;this.queue=[];this.filled=0;this.state={status:'idle',capturedSamples:0,committedSamples:0,sampleRate:0,level:0,peaks:[],markers:[]};this.emit();return kept;
   }
 }
 

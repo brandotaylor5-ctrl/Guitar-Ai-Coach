@@ -7,6 +7,7 @@ interface Options {
  repository:{readRegion:(region:AudioRegion)=>Promise<PcmAudio>};context:AudioContext|(()=>AudioContext);
  renderNotes:(notes:NoteEvent[],sampleRate:number)=>Promise<PcmAudio>;onChange:(state:TransportSnapshot)=>void;
  stretch?:(audio:PcmAudio,factor:number,signal:AbortSignal)=>Promise<PcmAudio>;
+ beforePlay?:()=>boolean;
 }
 export class AudioTransport {
  private options:Options;
@@ -34,6 +35,7 @@ export class AudioTransport {
  }
  playPcm(audio:PcmAudio,loop=false):Promise<void>{return this.begin(async()=>audio,loop);}
  private begin(load:(signal:AbortSignal)=>Promise<PcmAudio>,loop:boolean):Promise<void>{
+  if(this.options.beforePlay?.()===false)return Promise.resolve();
   this.stop();const generation=this.generation,abort=new AbortController();this.abort=abort;
   this.state.processing=true;delete this.state.error;this.emit();
   return new Promise<void>((resolve,reject)=>{
