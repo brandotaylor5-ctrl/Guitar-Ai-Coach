@@ -1,12 +1,12 @@
 {
-  "name": "Guitar AI Coach",
-  "short_name": "Guitar Coach",
-  "description": "A live guitar coach that listens, teaches one thing at a time, and helps turn your playing into music.",
+  "name": "Guitar Workbench",
+  "short_name": "Workbench",
+  "description": "Record your playing, develop musical ideas, and build your own songs.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#090b12",
-  "theme_color": "#090b12",
+  "background_color": "#171a18",
+  "theme_color": "#171a18",
   "icons": [
     {
       "src": "./icon.svg",

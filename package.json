@@ -25,6 +25,7 @@
   "private": true,
   "devDependencies": {
     "@types/node": "^22.20.3",
+    "fake-indexeddb": "6.2.5",
     "typescript": "5.8"
   },
   "dependencies": {

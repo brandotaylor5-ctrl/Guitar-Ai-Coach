@@ -48,7 +48,7 @@ export function libraryView(context: AppContext, params: Record<string, string> 
   });
 
   const dataRow = h('div', { class: 'data-row' },
-    button('Export everything', async () => {
+    button('Export notes JSON', async () => {
       const json = await context.library.export();
       const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
       const link = h('a', {
@@ -152,6 +152,12 @@ export function libraryView(context: AppContext, params: Record<string, string> 
     if (!riff) { selectedId = null; return; }
 
     const current = riff.versions.find((v) => v.id === riff.currentVersionId) ?? riff.versions[0]!;
+    if (!current.notes.length) {
+      detail.appendChild(h('section', {class:'panel'}, h('h2', {text:riff.name ?? 'Recorded idea'}),
+        h('p', {text:'This take is audio-only. Its recording and alternate takes are available in Develop.'}),
+        h('a', {href:`#develop?riff=${encodeURIComponent(riff.id)}`, text:'Open Develop', class:'btn-primary'})));
+      return;
+    }
     const analysis = analyzeNotes(current.notes, { tuning: context.session.tuning });
 
     const title = h('h2', { class: 'riff-title', text: riff.name ?? 'unnamed' });

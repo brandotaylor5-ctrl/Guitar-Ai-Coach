@@ -13,6 +13,7 @@ import { diffTakes } from '../phrase/diff.ts';
 import type { NoteChange, TakeDiff } from '../phrase/diff.ts';
 import { timeScale } from '../phrase/edit.ts';
 import { timingSteadiness } from '../music/rhythm.ts';
+import { hasUsableNotes } from '../workbench/types.ts';
 
 export interface PracticeResult {
   /**
@@ -138,7 +139,8 @@ export function practiceVersion(riff: Riff, target: PracticeTarget): RiffVersion
   if (!riff.versions.length) throw new Error('This riff has no takes to practise.');
   if (target === 'original') return riff.versions[0]!;
   if (target === 'latest') return riff.versions[riff.versions.length - 1]!;
-  return riff.versions[cleanestIndex(riff.versions.map((v) => v.notes))]!;
+  const candidates = riff.versions.filter(hasUsableNotes);
+  return candidates.length ? candidates[cleanestIndex(candidates.map(v => v.notes))]! : riff.versions.find(v => v.id === riff.currentVersionId)!;
 }
 
 export interface PracticePlan {

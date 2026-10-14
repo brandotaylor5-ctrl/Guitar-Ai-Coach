@@ -15,7 +15,7 @@ export type DetectorRequest =
   | { type: 'init'; sampleRate: number; minRms?: number }
   | { type: 'sensitivity'; minRms: number }
   | { type: 'audio'; chunk: Float32Array }
-  | { type: 'flush' }
+  | { type: 'flush'; id?: number }
   | { type: 'reset' };
 
 export interface DetectorResult {
@@ -31,7 +31,7 @@ let tracker: NoteTracker | null = null;
 
 const scope = self as unknown as {
   onmessage: ((event: MessageEvent<DetectorRequest>) => void) | null;
-  postMessage(message: DetectorResult): void;
+  postMessage(message: DetectorResult | {type:'flushed';id:number}): void;
 };
 
 function respond(notes: NoteEvent[], frame: Frame | null): void {
@@ -66,8 +66,8 @@ scope.onmessage = (event) => {
     }
 
     case 'flush':
-      if (!streamer || !tracker) return;
-      respond(tracker.flush(streamer.currentTimeMs), null);
+      if (streamer && tracker) respond(tracker.flush(streamer.currentTimeMs), null);
+      if (message.id !== undefined) scope.postMessage({type:'flushed',id:message.id});
       break;
 
     case 'reset':

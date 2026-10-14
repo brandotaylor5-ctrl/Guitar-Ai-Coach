@@ -14,6 +14,7 @@ import { combineTakes, spliceNotes } from '../phrase/edit.ts';
 import { cleanestIndex } from '../phrase/quality.ts';
 import { InMemoryRiffStore } from './store.ts';
 import type { RiffStore } from './store.ts';
+import { hasUsableNotes } from '../workbench/types.ts';
 
 /** A, B, ... Z, AA, AB, ... so version labels never run out. */
 export function versionLabel(index: number): string {
@@ -26,7 +27,16 @@ export function versionLabel(index: number): string {
   return `Version ${out}`;
 }
 
-export interface SaveRiffOptions {
+type RecordingOptions = Pick<RiffVersion, 'recording'|'sourceKind'|'instrument'|'tuningSnapshot'|'analysis'|'provenance'>;
+function recordingOptions(options: RecordingOptions): RecordingOptions {
+  const result: RecordingOptions = {};
+  for (const key of ['recording','sourceKind','instrument','tuningSnapshot','analysis','provenance'] as const) {
+    if (options[key] !== undefined) Object.assign(result, { [key]: structuredClone(options[key]) });
+  }
+  return result;
+}
+
+export interface SaveRiffOptions extends RecordingOptions {
   name?: string | null;
   audioRef?: string;
   comment?: string;
@@ -34,7 +44,7 @@ export interface SaveRiffOptions {
   createdAt?: number;
 }
 
-export interface AddVersionOptions {
+export interface AddVersionOptions extends RecordingOptions {
   /** Which version this one grew out of. Defaults to the current version. */
   parentId?: string;
   audioRef?: string;
@@ -67,7 +77,10 @@ export class RiffLibrary {
 
   /** SAVE RIFF. The idea becomes Version A; nothing is ever lost after this. */
   async saveRiff(notes: NoteEvent[], options: SaveRiffOptions = {}): Promise<Riff> {
-    if (notes.length === 0) throw new Error('Cannot save a riff with no notes');
+    if (notes.length === 0) {
+      if (!options.recording || !this.store.assertRecording) throw new Error('Cannot save a riff with no notes or committed recording');
+      await this.store.assertRecording(options.recording);
+    }
     const now = options.createdAt ?? Date.now();
     const version: RiffVersion = {
       id: makeId('ver'),
@@ -77,6 +90,7 @@ export class RiffLibrary {
       createdAt: now,
       ...(options.audioRef ? { audioRef: options.audioRef } : {}),
       ...(options.comment ? { comment: options.comment } : {}),
+      ...recordingOptions(options),
     };
     const riff: Riff = {
       id: makeId('riff'),
@@ -125,7 +139,10 @@ export class RiffLibrary {
 
   /** A new take becomes a branch, not a replacement. */
   async addVersion(riffId: string, notes: NoteEvent[], options: AddVersionOptions = {}): Promise<RiffVersion> {
-    if (!notes.length) throw new Error('Cannot save an empty version.');
+    if (!notes.length) {
+      if (!options.recording || !this.store.assertRecording) throw new Error('Cannot save an empty version.');
+      await this.store.assertRecording(options.recording);
+    }
     const riff = await this.mustGet(riffId);
     const parentId = options.parentId ?? riff.currentVersionId;
     if (!riff.versions.some((v) => v.id === parentId)) {
@@ -137,6 +154,7 @@ export class RiffLibrary {
       parentId,
       notes: [...notes],
       createdAt: options.createdAt ?? Date.now(),
+      ...recordingOptions(options),
       ...(options.audioRef ? { audioRef: options.audioRef } : {}),
       ...(options.comment ? { comment: options.comment } : {}),
     };
@@ -176,7 +194,9 @@ export class RiffLibrary {
   /** The version that plays cleanest, which may not be the newest. */
   async bestTake(riffId: string): Promise<RiffVersion> {
     const riff = await this.mustGet(riffId);
-    return riff.versions[cleanestIndex(riff.versions.map((v) => v.notes))]!;
+    const candidates = riff.versions.filter(hasUsableNotes);
+    if (!candidates.length) return riff.versions.find(v => v.id === riff.currentVersionId)!;
+    return candidates[cleanestIndex(candidates.map((v) => v.notes))]!;
   }
 
   async originalVersion(riffId: string): Promise<RiffVersion> {
@@ -228,6 +248,7 @@ export class RiffLibrary {
    * the player abandoned rather than the one they kept.
    */
   async findSimilar(notes: NoteEvent[], options: RecognitionOptions = {}): Promise<RecognitionMatch[]> {
+    if (!notes.length) return [];
     const threshold = options.threshold ?? 0.85;
     const limit = options.limit ?? 5;
     const riffs = await this.store.listRiffs();
@@ -237,6 +258,7 @@ export class RiffLibrary {
       if (riff.id === options.excludeRiffId) continue;
       let best: RecognitionMatch | null = null;
       for (const version of riff.versions) {
+        if (!hasUsableNotes(version)) continue;
         const score = compareNotes(version.notes, notes).overall;
         if (score >= threshold && (!best || score > best.similarity)) {
           best = {
@@ -263,7 +285,7 @@ export class RiffLibrary {
   async export(): Promise<string> {
     const [riffs, songs] = await Promise.all([this.store.listRiffs(), this.store.listSongs()]);
     return JSON.stringify({ version: 1, exportedAt: Date.now(), riffs, songs },
-      (key, value) => key === 'audioRef' ? undefined : value, 2);
+      (key, value) => ['audioRef', 'recording'].includes(key) ? undefined : value, 2);
   }
 
   /**
@@ -289,13 +311,13 @@ export class RiffLibrary {
       if (!riff?.id || !Array.isArray(riff.versions) || riff.versions.length === 0) { skipped++; continue; }
       if (existing.has(riff.id)) { skipped++; continue; }
       // Older exports carried references to recordings that were never bundled.
-      const portable = { ...riff, versions: riff.versions.map(({ audioRef, ...version }) => version) };
+      const portable = { ...riff, revision:undefined, versions: riff.versions.map(({ audioRef, recording, ...version }) => ({...version, sourceKind: 'legacy' as const})) };
       await this.store.putRiff(portable);
       riffs++;
     }
     for (const song of parsed.songs ?? []) {
       if (!song?.id || existingSongs.has(song.id)) continue;
-      await this.store.putSong(song);
+      await this.store.putSong({ ...song, revision:undefined, sections:song.sections.map(({recording, ...section}) => section) });
       songs++;
     }
     return { riffs, songs, skipped };
@@ -325,9 +347,12 @@ export class RiffLibrary {
 
   async addToSong(songId: string, role: string, riffId: string, versionId?: string): Promise<SongSeed> {
     const song = await this.mustGetSong(songId);
+    const riff = await this.mustGet(riffId);
+    const version = riff.versions.find(v => v.id === (versionId ?? riff.currentVersionId));
+    if (!version) throw new Error('The selected take is unavailable');
     const updated: SongSeed = {
       ...song,
-      sections: [...song.sections, { role, riffId, ...(versionId ? { versionId } : {}) }],
+      sections: [...song.sections, { id:makeId('section'), role, riffId, versionId:version.id, repeats:1, ...(version.recording ? {recording:{...version.recording}} : {}) }],
     };
     await this.store.putSong(updated);
     return updated;

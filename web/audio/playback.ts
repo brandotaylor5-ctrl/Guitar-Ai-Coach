@@ -13,6 +13,7 @@ import type { NoteEvent } from '../../src/types.ts';
 import { midiToFrequency } from '../../src/music/notes.ts';
 import { timeStretch } from '../../src/audio/timeStretch.ts';
 import { audioContext, audioOutput, unlockAudio } from './context.ts';
+import type { PcmAudio } from '../../src/workbench/types.ts';
 
 /** Deterministic noise keeps the same pitch from changing character every play. */
 function seededNoise(seed:number):()=>number {
@@ -23,12 +24,11 @@ function seededNoise(seed:number):()=>number {
   };
 }
 
-function pluckBuffer(
-  context:AudioContext,
+function pluckSamples(
+  sampleRate:number,
   frequency:number,
   seconds:number,
-):AudioBuffer {
-  const sampleRate=context.sampleRate;
+):Float32Array {
   const length=Math.max(1,Math.ceil(seconds*sampleRate));
   const period=Math.max(2,Math.round(sampleRate/frequency));
   const ring=new Float32Array(period);
@@ -46,8 +46,7 @@ function pluckBuffer(
   // Lower strings lose high-frequency energy more slowly than high strings.
   const normalized=Math.max(0,Math.min(1,(frequency-82)/(880-82)));
   const damping=.996-normalized*.0045;
-  const buffer=context.createBuffer(1,length,sampleRate);
-  const out=buffer.getChannelData(0);
+  const out=new Float32Array(length);
   let smooth=0;
 
   for(let i=0;i<length;i++){
@@ -64,7 +63,28 @@ function pluckBuffer(
     const attack=Math.min(1,i/(sampleRate*.0025));
     out[i]=smooth*life*attack;
   }
-  return buffer;
+  return out;
+}
+
+function pluckBuffer(context:AudioContext,frequency:number,seconds:number):AudioBuffer {
+  const samples=pluckSamples(context.sampleRate,frequency,seconds),buffer=context.createBuffer(1,samples.length,context.sampleRate);
+  buffer.getChannelData(0).set(samples);return buffer;
+}
+
+/** The workbench previews and downloads the same explicitly synthesized sound. */
+export async function renderNotePcm(notes:NoteEvent[],sampleRate:number):Promise<PcmAudio>{
+  if(!notes.length)throw new Error('This sketch has no notes');
+  if(!Number.isFinite(sampleRate)||sampleRate<8000||sampleRate>192000)throw new Error('Invalid synthesis sample rate');
+  for(const n of notes)if(!Number.isFinite(n.midi)||n.midi<0||n.midi>127||!Number.isFinite(n.startMs)||n.startMs<0||!Number.isFinite(n.durationMs)||n.durationMs<=0)throw new Error('Invalid sketch note');
+  const sustain=(n:NoteEvent)=>Math.max(.45,Math.min(3.1,n.durationMs/1000+.7));
+  const seconds=Math.max(...notes.map(n=>n.startMs/1000+sustain(n)));
+  if(seconds>601)throw new Error('Choose a sketch of ten minutes or less');
+  const output=new Float32Array(Math.ceil(seconds*sampleRate)),level=.9/Math.sqrt(maxSimultaneous(notes));
+  for(const note of notes){
+    const sound=pluckSamples(sampleRate,midiToFrequency(note.midi),sustain(note)),at=Math.round(note.startMs/1000*sampleRate),velocity=.28+(note.velocity??.5)*.5;
+    for(let i=0;i<sound.length && at+i<output.length;i++)output[at+i]!+=sound[i]!*velocity*level;
+  }
+  return {sampleRate,channels:[output]};
 }
 
 export interface PlayOptions {
@@ -99,6 +119,9 @@ export class RiffPlayer {
   private timers: number[] = [];
   private endTimer: number | null = null;
   private playing = false;
+  private epoch = 0;
+  private settle: (() => void) | null = null;
+  private sources: AudioBufferSourceNode[] = [];
 
   get isPlaying(): boolean {
     return this.playing;
@@ -115,11 +138,13 @@ export class RiffPlayer {
   /** Schedule the whole riff up front, so timing does not depend on the UI. */
   async play(notes: NoteEvent[], options: PlayOptions = {}): Promise<void> {
     this.stop();
+    const epoch = this.epoch;
     if (notes.length === 0) return;
 
     const speed = options.speed ?? 1;
     const context = this.ensureContext();
     if (context.state !== 'running') await unlockAudio();
+    if (epoch !== this.epoch) return;
 
     const master = context.createGain();
     // A six-string chord is six voices summed. Holding every chord to the
@@ -149,10 +174,9 @@ export class RiffPlayer {
     });
 
     await new Promise<void>((resolve) => {
+      this.settle = () => { this.settle = null; this.playing = false; options.onEnd?.(); resolve(); };
       this.endTimer = window.setTimeout(() => {
-        this.playing = false;
-        options.onEnd?.();
-        resolve();
+        this.settle?.();
       }, (finishesAt + 0.4) * 1000);
     });
   }
@@ -169,6 +193,7 @@ export class RiffPlayer {
     const sustain = Math.max(0.45, Math.min(3.1, duration + 0.7));
 
     const source = context.createBufferSource();
+    this.sources.push(source);
     source.buffer = pluckBuffer(context, frequency, sustain);
 
     // Guitar body / air: lose sub rumble and the scratchiest top end, then add
@@ -212,10 +237,12 @@ export class RiffPlayer {
    */
   async playSamples(samples: Float32Array, sampleRate: number, speed = 1): Promise<void> {
     this.stop();
+    const epoch = this.epoch;
     if (samples.length === 0) return;
 
     const context = this.ensureContext();
     if (context.state !== 'running') await unlockAudio();
+    if (epoch !== this.epoch) return;
 
     const audio = speed === 1 ? samples : timeStretch(samples, 1 / speed);
     const buffer = context.createBuffer(1, audio.length, sampleRate);
@@ -227,13 +254,15 @@ export class RiffPlayer {
     this.master = master;
 
     const source = context.createBufferSource();
+    this.sources.push(source);
     source.buffer = buffer;
     source.connect(master);
     this.playing = true;
     source.start();
 
     await new Promise<void>((resolve) => {
-      source.onended = () => { this.playing = false; resolve(); };
+      this.settle = () => { this.settle = null; this.playing = false; resolve(); };
+      source.onended = () => { if (epoch === this.epoch) this.settle?.(); };
     });
   }
 
@@ -243,6 +272,10 @@ export class RiffPlayer {
   }
 
   stop(): void {
+    ++this.epoch;
+    for (const source of this.sources) { source.onended = null; try { source.stop(); } catch { /* Already ended. */ } }
+    this.sources = [];
+    this.settle?.();
     for (const timer of this.timers) window.clearTimeout(timer);
     this.timers = [];
     if (this.endTimer !== null) window.clearTimeout(this.endTimer);

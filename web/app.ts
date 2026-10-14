@@ -8,12 +8,11 @@ import { analyzeNotes } from '../src/phrase/analyze.ts';
 import { PlayerModelStore, phraseObservation } from '../src/coach/playerModel.ts';
 import { noiseGate } from '../src/audio/calibration.ts';
 import { RiffLibrary } from '../src/library/riffLibrary.ts';
-import { LocalStorageRiffStore } from '../src/library/localStorageStore.ts';
 import { STANDARD_TUNING, DROP_D_TUNING, HALF_STEP_DOWN, DADGAD_TUNING, customTuning, withCapo } from '../src/music/fretboard.ts';
 import type { Tuning } from '../src/music/fretboard.ts';
 import { MicCapture } from './audio/capture.ts';
-import { armAudioUnlock, audioBlocked, onAudioStateChange, unlockAudio } from './audio/context.ts';
-import { RiffPlayer } from './audio/playback.ts';
+import { armAudioUnlock, audioBlocked, onAudioStateChange, unlockAudio, audioContext } from './audio/context.ts';
+import { RiffPlayer, renderNotePcm } from './audio/playback.ts';
 import { ClipStore } from './audio/clipStore.ts';
 import { h, clear, qs, replace } from './ui/dom.ts';
 import { coachView } from './views/coach.ts';
@@ -28,6 +27,16 @@ import { practiceTodayView } from './views/practiceToday.ts';
 import { songView } from './views/song.ts';
 import { fingerprintView } from './views/fingerprint.ts';
 import type { AppContext, View, ViewName } from './views/context.ts';
+import { openWorkbenchDatabase } from './workbench/database.ts';
+import { WorkbenchRepository } from './workbench/repository.ts';
+import { migrateLegacy } from './workbench/migration.ts';
+import { RecordingController, RawCapturePort } from './workbench/recorder.ts';
+import { AudioTransport } from './workbench/transport.ts';
+import { WorkbenchModel } from './workbench/model.ts';
+import { recordView } from './workbench/recordView.ts';
+import { developView } from './workbench/developView.ts';
+import { projectView } from './workbench/songsView.ts';
+import { transportBar } from './workbench/transportBar.ts';
 
 const TUNINGS: Tuning[] = [STANDARD_TUNING, DROP_D_TUNING, HALF_STEP_DOWN, DADGAD_TUNING];
 
@@ -35,7 +44,7 @@ const state = {
   session: new SketchbookSession(),
   library: new RiffLibrary(),
   listening: false,
-  view: 'session' as ViewName,
+  view: 'record' as ViewName,
   params: {} as Record<string, string>,
   tuning: STANDARD_TUNING,
   sampleRate: 0,
@@ -50,7 +59,7 @@ const state = {
  * the one it belongs to — seven tabs is not a front page, it is a filing
  * cabinet, and nobody picks up a guitar to file.
  */
-const PRIMARY_TABS: Array<[ViewName, string]> = [];
+const PRIMARY_TABS: Array<[ViewName, string]> = [['record','Record'],['develop','Develop'],['projects','Songs'],['path','Learn']];
 
 /**
  * Secondary places support the four musical front doors without competing
@@ -58,8 +67,10 @@ const PRIMARY_TABS: Array<[ViewName, string]> = [];
  * creation are a core part of the product rather than a hidden sandbox.
  */
 const MORE_TABS: Array<[ViewName, string]> = [
+  ['session', 'Live coach'],
   ['library', 'Saved ideas'],
-  ['path', 'Roadmap'],
+  ['songs', 'Traditional tunes'],
+  ['lab', 'Riff school'],
 ];
 
 /**
@@ -68,6 +79,7 @@ const MORE_TABS: Array<[ViewName, string]> = [
  * choosing one rather than from the navigation.
  */
 const VIEW_NAMES: string[] = [
+  'record', 'develop', 'projects',
   'session',
   'library',
   'path',
@@ -90,6 +102,8 @@ let changingCapture = false;
 let calibrationLevels: number[] | null = null;
 const player = new RiffPlayer();
 const clips = new ClipStore();
+const rawCapture = new RawCapturePort();
+let workbench: WorkbenchModel | null = null;
 
 function storage(): Storage | null {
   try {
@@ -195,6 +209,10 @@ const context: AppContext = {
   },
 
   async startListening() {
+    if (workbench && ['requesting','recording','finalizing','recoverable'].includes(workbench.recorder.snapshot.status)) {
+      say('Finish your recording before starting the live coach.', 'error'); return;
+    }
+    workbench?.transport.stop();
     if (changingCapture || state.listening) return;
     changingCapture = true;
     try {
@@ -243,7 +261,7 @@ const context: AppContext = {
     state.view = view;
     state.params = params;
     const query = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-    window.location.hash = view === 'session' && !query ? '' : `#${view}${query ? `?${query}` : ''}`;
+    window.location.hash = view === 'record' && !query ? '' : `#${view}${query ? `?${query}` : ''}`;
     render();
   },
 
@@ -255,7 +273,11 @@ const context: AppContext = {
 };
 
 function buildView(): View {
+  if(workbench)workbench.playTarget=state.view==='projects'?'song':'idea';
   switch (state.view) {
+    case 'record': return recordView(workbench!);
+    case 'develop': return developView(workbench!);
+    case 'projects': return projectView(workbench!);
     case 'lab': return labView(context, state.params);
     case 'lessons': return lessonsView(context, state.params);
     case 'session': return coachView(context);
@@ -267,11 +289,12 @@ function buildView(): View {
     case 'seeds': return songsView(context);
     case 'fingerprint': return fingerprintView(context);
     case 'today': return todayView(context);
-    default: return coachView(context);
+    default: return recordView(workbench!);
   }
 }
 
 function render(): void {
+  document.body.classList.toggle('workbench-mode', ['record','develop','projects'].includes(state.view));
   current?.dispose?.();
   current = buildView();
   const main = qs('#view');
@@ -291,7 +314,7 @@ function render(): void {
 function readHash(): void {
   const raw = window.location.hash.replace('#', '');
   const [name, query = ''] = raw.split('?');
-  state.view = VIEW_NAMES.includes(name ?? '') ? (name as ViewName) : 'session';
+  state.view = VIEW_NAMES.includes(name ?? '') ? (name as ViewName) : 'record';
   state.params = Object.fromEntries(
     query.split('&').filter(Boolean).map((pair) => {
       const [key, value = ''] = pair.split('=');
@@ -329,7 +352,7 @@ function watchSound(): void {
 
 function mountChrome(): void {
   const input = qs<HTMLSelectElement>('#microphone');
-  input.addEventListener('change', () => { capture.deviceId = input.value; });
+  input.addEventListener('change', () => { capture.deviceId = input.value; rawCapture.deviceId = input.value; });
   const gate = qs<HTMLInputElement>('#noise-gate');
   gate.addEventListener('change', () => {
     try { capture.setSensitivity(Number(gate.value)); }
@@ -389,6 +412,7 @@ function mountChrome(): void {
         : TUNINGS.find((t) => t.name === select.value) ?? STANDARD_TUNING;
       state.tuning = withCapo(base, Number(capo.value));
       state.session.tuning = state.tuning;
+      if (workbench) workbench.tuningSnapshot = { name:base.name, strings:[...base.strings], capo:Number(capo.value) };
       say(`Reading the guitar as ${state.tuning.name}.`);
       render();
     } catch (error) { say((error as Error).message, 'error'); }
@@ -412,17 +436,33 @@ async function listMicrophones(): Promise<void> {
   } catch { say('This browser could not list microphones. The active input still works.'); }
 }
 
-function start(): void {
+async function start(): Promise<void> {
   const store = storage();
-  state.library = new RiffLibrary(store ? new LocalStorageRiffStore(store) : undefined);
+  replace(qs('#view'), h('p', {class:'wb-loading', text:'Opening your music…'}));
+  const db = await openWorkbenchDatabase(indexedDB);
+  const repository = new WorkbenchRepository(db);
+  const migration = store ? await migrateLegacy(db, store) : null;
+  const transport = new AudioTransport({ repository, context:audioContext, renderNotes:renderNotePcm, onChange:() => workbench?.notifyTransport() });
+  const recorder = new RecordingController({capture:rawCapture,repository,onChange:() => workbench?.notifyRecorder(),stopPlayback:async()=>{
+    transport.stop();player.stop();window.speechSynthesis?.cancel();
+    if (changingCapture) throw new Error('Finish the live coach microphone request before recording.');
+    await context.stopListening();
+  }});
+  workbench = new WorkbenchModel({repository,recorder,transport});
+  workbench.tuningSnapshot = {name:STANDARD_TUNING.name,strings:[...STANDARD_TUNING.strings],capo:0};
+  state.library = new RiffLibrary(repository);
+  await workbench.refresh();
   state.session = new SketchbookSession({ library: state.library, tuning: state.tuning });
   if (store) void backfillPlayerModel(store);
 
   mountChrome();
+  document.body.appendChild(transportBar(workbench));
   armAudioUnlock();
   watchSound();
   readHash();
   render();
+  if (migration?.missingAudio.length || migration?.rejected.length) workbench.report(`Your previous music was kept. ${migration.missingAudio.length} recording(s) were unavailable; ${migration.rejected.length} legacy entry/entries need attention. The old library is preserved.`);
+  if (migration?.recoveredLegacyChanges) say('Recovered changed ideas from an older app tab as separate copies.');
 
   window.setInterval(() => {
     if (stoppedAt === null) return;
@@ -448,4 +488,7 @@ function start(): void {
   if (!window.AudioWorkletNode) say('This browser is missing audio features the app needs. Try a recent Safari, Chrome, Edge or Firefox.', 'error');
 }
 
-start();
+void start().catch(error => {
+  replace(qs('#view'), h('section', {class:'wb-start-error'}, h('h2',{text:'Your music could not be opened'}), h('p',{text:error instanceof Error?error.message:String(error)}),
+    h('button',{type:'button',class:'wb-button',text:'Try again',onClick:()=>location.reload()})));
+});

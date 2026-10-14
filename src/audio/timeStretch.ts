@@ -48,8 +48,17 @@ function similarity(input: Float32Array, offset: number, target: Float32Array, s
  * double speed, 1 returns the input unchanged.
  */
 export function timeStretch(input: Float32Array, factor: number, options: TimeStretchOptions = {}): Float32Array {
+  return timeStretchChannels([input], factor, options)[0]!;
+}
+
+/** One alignment decision is shared by both channels, preserving their stereo phase. */
+export function timeStretchChannels(channels:Float32Array[], factor:number, options:TimeStretchOptions = {}):Float32Array[] {
+  if(!channels.length || channels.some(c=>c.length!==channels[0]!.length))throw new Error('Unequal audio channels');
+  // Select a non-silent reference without summing opposite-polarity channels away.
+  const power=(c:Float32Array)=>{let p=0;for(let i=0;i<c.length;i+=64)p+=c[i]!**2;return p;};
+  const input=channels.reduce((a,b)=>power(a)>=power(b)?a:b);
   if (!Number.isFinite(factor) || factor <= 0) throw new Error('factor must be a positive number');
-  if (factor === 1) return new Float32Array(input);
+  if (factor === 1) return channels.map(c=>c.slice());
 
   const windowSize = options.windowSize ?? 1024;
   const synthesisHop = windowSize >> 1;
@@ -59,11 +68,12 @@ export function timeStretch(input: Float32Array, factor: number, options: TimeSt
   if (input.length < windowSize * 2) {
     // Too short to stretch meaningfully; resampling it would change the pitch,
     // so hand back what we were given rather than something wrong.
-    return new Float32Array(input);
+    return channels.map(c=>c.slice());
   }
 
   const window = hannWindow(windowSize);
-  const output = new Float32Array(Math.ceil(input.length * factor) + windowSize);
+  const outputs = channels.map(()=>new Float32Array(Math.ceil(input.length * factor) + windowSize));
+  const output = outputs[0]!;
   // Correlating every sample is wasted work at audio rates.
   const step = Math.max(1, windowSize >> 6);
 
@@ -86,8 +96,8 @@ export function timeStretch(input: Float32Array, factor: number, options: TimeSt
       }
     }
 
-    for (let i = 0; i < windowSize; i++) {
-      output[outputPos + i] = (output[outputPos + i] ?? 0) + (input[best + i] ?? 0) * (window[i] ?? 0);
+    for (let c=0;c<channels.length;c++) for (let i = 0; i < windowSize; i++) {
+      outputs[c]![outputPos+i]=(outputs[c]![outputPos+i]??0)+(channels[c]![best+i]??0)*(window[i]??0);
     }
 
     // What would naturally have followed the window we just used. The next
@@ -105,5 +115,5 @@ export function timeStretch(input: Float32Array, factor: number, options: TimeSt
 
   // Trim the tail that was never written into.
   const used = Math.min(output.length, outputPos + synthesisHop);
-  return output.subarray(0, used);
+  return outputs.map(c=>c.subarray(0,used));
 }
