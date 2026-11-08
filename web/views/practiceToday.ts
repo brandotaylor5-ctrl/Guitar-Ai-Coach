@@ -75,7 +75,7 @@ export function practiceTodayView(context:AppContext):View {
       ),
       finished?h('p',{text:'Session complete. The goal was to play and learn, not chase a score.'}):null
     );
-    clock=clockSection.querySelector('.academy-clock');
+    clock=clockSection.querySelector<HTMLElement>('.academy-clock');
     element.appendChild(clockSection);
 
     const cards=[
