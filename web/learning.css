@@ -36,3 +36,26 @@
 .academy-more summary{font-weight:700;cursor:pointer}
 .academy-back{margin-top:8px}
 @media(max-width:550px){.academy-task{padding:14px}.academy-title-row{display:block}.academy-counter{display:inline-block;margin-bottom:10px}.academy-string-name{font-size:.7rem}.academy-fret{min-height:45px}.academy-actions>.btn{width:100%}}
+
+
+/* Learning-first revision: a single string, clear note/fret labels and audible test. */
+.academy-v2 .academy-location{color:var(--text-dim);font-size:.95rem;line-height:1.5;max-width:64ch}
+.academy-v2 .academy-task{margin-top:14px}
+.academy-v2 .academy-task>p{line-height:1.55}
+.academy-one-string{border:1px solid var(--line);background:var(--bg-sunken);border-radius:14px;padding:14px;margin:18px 0}
+.academy-string-title{font-weight:800;color:var(--text);margin-bottom:10px}
+.academy-one-row{display:flex;gap:7px;flex-wrap:nowrap;overflow-x:auto;padding:4px 2px 12px;overscroll-behavior-x:contain}
+.academy-spot{min-width:54px;flex:1 0 54px;max-width:92px;min-height:60px;padding:8px 5px;border:1px solid var(--line);border-radius:9px;background:var(--bg-raised);color:var(--text);font-weight:800;font-size:.87rem;cursor:pointer;touch-action:manipulation}
+.academy-spot-target{border:2px solid var(--warm);background:color-mix(in srgb,var(--warm) 18%,var(--bg-raised))}
+.academy-spot:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.academy-board-tip,.academy-choice-feedback{font-size:.83rem;color:var(--text-dim);margin:6px 0}
+.academy-choice-feedback{font-weight:700;min-height:20px}
+.academy-sound{border-top:1px solid var(--line);padding-top:13px;margin-top:12px;font-size:.86rem;color:var(--text-dim)}
+.academy-practice .view-head{margin-bottom:14px}
+.academy-practice-clock{margin:14px 0}
+.academy-clock{font-size:clamp(2.2rem,7vw,3.8rem);font-variant-numeric:tabular-nums;font-weight:800;line-height:1.1;margin:12px 0}
+.academy-practice-item h3{margin:8px 0}
+.academy-practice-item{margin:10px 0}
+.academy-practice .check-picker{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.academy-practice .check-picker .btn{min-width:75px}
+@media(max-width:550px){.academy-one-string{padding:10px}.academy-spot{min-width:48px;flex-basis:48px;min-height:56px}.academy-v2 .academy-actions .btn{width:100%}}
