@@ -74,6 +74,9 @@ async function build() {
   const sw=await readFile(join(ROOT,'web/service-worker.js'),'utf8');
   await emit(join(OUT,'web/service-worker.js'),sw.replace('__WORKBENCH_CACHE__',`guitar-workbench-${digest.digest('hex').slice(0,16)}`).replace('__WORKBENCH_SHELL__',JSON.stringify(assets)));
 
+  // Public recovery page is deliberately outside /web/, where old service workers cannot intercept it.
+  await emit(join(OUT, 'repair.html'), await readFile(join(ROOT, 'repair.html'), 'utf8'));
+
   // A root page, so a static host serving dist/ directly still lands somewhere.
   // The dev server redirects instead; a plain file host has no way to.
   await emit(join(OUT, 'index.html'), `<!doctype html>
