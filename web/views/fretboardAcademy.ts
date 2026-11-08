@@ -98,7 +98,7 @@ export function fretboardAcademyView(context: AppContext): View {
       const dot=h('button',{
         type:'button',
         class:'academy-spot'+(reveal&&selected?' academy-spot-target':''),
-        text:reveal&&selected ? n.name : label,
+        text:reveal&&selected ? label+' · '+n.name : label,
         'aria-label':'String '+n.string+', '+(fret===0?'open':('fret '+fret)),
         title:label,
         onClick:()=>{
@@ -142,7 +142,7 @@ export function fretboardAcademyView(context: AppContext): View {
     return statusHost;
   }
   function render():void {
-    clear(element);message='';
+    clear(element);
     const study=studyAt(active),notes=study.notes;
     element.appendChild(header(study));
     const body=h('section',{class:'academy-task'});element.appendChild(body);
@@ -151,7 +151,7 @@ export function fretboardAcademyView(context: AppContext): View {
         h('p',{class:'academy-step',text:'FIRST · WHAT IS THIS?'}),
         h('h3',{text:'Guitar notes are places you can find.'}),
         h('p',{text:study.title+' uses these notes: '+notes.slice(0,7).map(n=>n.name).join(' · ')+'. Then '+study.home+' repeats higher.'}),
-        h('p',{text:'A string has an open note. Each fret moves its sound up one small step. The thickest string is low E. On that string, fret 3 is G and fret 5 is A.'}),
+        h('p',{text:'A string has an open note. Each fret moves its sound up one small step. '+notes[0]!.name+' is at '+noteLocation(notes[0]!)+'. The next note, '+notes[1]!.name+', is at '+noteLocation(notes[1]!)+'.'}),
         h('p',{text:'We will learn eight notes, one at a time, across a few strings. You do not have to memorize the whole guitar neck.'}),
         h('div',{class:'academy-actions'},
           button('Hear the first note ('+notes[0]!.name+')',()=>hear(notes[0]!)),
@@ -168,7 +168,7 @@ export function fretboardAcademyView(context: AppContext): View {
         h('div',{class:'academy-actions'},
           button('Hear '+n.name,()=>hear(n)),
           step>0?button('Previous note',()=>{step-=1;render();}):null,
-          button(step===7?'I saw all 8 · test my memory':'Next note',()=>{if(step===7)startTest();else{step+=1;render();}},true)
+          button(step===7?'I saw all 8 · test my memory':'Next note',()=>{if(step===7)startTest();else{step+=1;message='';render();}},true)
         ),
       );
     } else if(phase==='recall') {
