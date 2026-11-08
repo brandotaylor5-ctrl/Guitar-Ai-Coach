@@ -197,11 +197,15 @@ export function pathView(context: AppContext): View {
     const status = journeyStatus(rawProgress, currentStep);
     element.append(
       h('header', { class: 'view-head' },
-        h('p', { class: 'eyebrow', text: 'YOUR GUITAR ROADMAP' }),
-        h('h2', { text: status.stage.name }),
-        h('p', { text: status.stage.promise }),
-        h('p', { class: 'muted', text: `Lesson ${status.lessonNumber} of ${status.totalLessons} · ${status.stageCompleted} of ${status.stageTotal} finished in this stage.` }),
+        h('p', { class: 'eyebrow', text: 'YOUR GUITAR LEARNING HOME' }),
+        h('h2', { text: 'One useful thing at a time' }),
+        h('p', { text: 'Choose one focus, play something real, and leave the rest for another day.' }),
       ),
+      !placement ? h('section', { class:'panel academy-starting-point' },
+        h('h3', { text:'Already playing guitar?' }),
+        h('p', { text:'Tell Coach which chords and techniques you already know. We will skip beginner lessons without guessing your level.' }),
+        button('Set my starting point', () => context.navigate('session'), 'btn-quiet'),
+      ) : '',
       h('section', { class:'panel academy-entry' },
         h('p', {class:'eyebrow',text:'START HERE · FRETBOARD'}),
         h('h3', {text:'One scale. One octave. One clear goal.'}),
@@ -218,7 +222,9 @@ export function pathView(context: AppContext): View {
           button('Chord colors', () => context.navigate('lessons',{skill:'chord.Cmaj7'}),'btn-quiet'),
         ),
       ),
-      h('div', { class: 'roadmap-stages' },
+      h('details', { class:'panel academy-roadmap-preview' },
+        h('summary', { text:'See the six-stage course roadmap' }),
+        h('div', { class: 'roadmap-stages' },
         ...JOURNEY_STAGES.map((stage, index) => {
           const complete = PATH
             .filter((item) => stageForStep(item).id === stage.id)
@@ -230,13 +236,14 @@ export function pathView(context: AppContext): View {
             h('div', {}, h('strong', { text: stage.name }), h('small', { text: stage.promise })),
           );
         }),
+        ),
       ),
-      h('section', { class: 'panel roadmap-now' },
-        h('p', { class: 'eyebrow', text: 'RIGHT NOW' }),
+      placement ? h('section', { class: 'panel roadmap-now' },
+        h('p', { class: 'eyebrow', text: 'YOUR GUIDED COURSE · ' + status.stage.name }),
         h('h3', { text: currentStep.title }),
         h('p', { text: currentStep.outcome }),
-        button('Let Coach teach this', () => context.navigate('session'), 'btn-primary'),
-      ),
+        button('Continue guided course', () => context.navigate('session'), 'btn-quiet'),
+      ) : '',
     );
 
     const roadmap = h('details', { class: 'panel course-roadmap' },
