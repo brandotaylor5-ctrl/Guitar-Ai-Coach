@@ -70,7 +70,7 @@ const PRIMARY_TABS: Array<[ViewName, string]> = [['path','Learn'],['practice','P
  */
 const MORE_TABS: Array<[ViewName, string]> = [
   ['session', 'Live coach'],
-  ['lab', 'Riff school'],
+  ['lab', 'Advanced riff school'],
   ['develop', 'Develop recordings'],
   ['library', 'Saved ideas'],
   ['songs', 'Traditional tunes'],
