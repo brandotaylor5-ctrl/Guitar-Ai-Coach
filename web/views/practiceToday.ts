@@ -30,6 +30,7 @@ export function practiceTodayView(context:AppContext):View {
   let running=false;
   let finished=false;
   let clock:HTMLElement|null=null;
+  let soundStatus:HTMLElement|null=null;
 
   function stop():void { if(interval)window.clearInterval(interval);interval=0;running=false; }
   function start():void {
@@ -44,6 +45,11 @@ export function practiceTodayView(context:AppContext):View {
     stop();minutes=n;left=n*60;finished=false;
     try {window.localStorage.setItem(LENGTH_KEY,String(n));} catch { /* Fine. */ }
     render();
+  }
+  async function hearPair(notes:readonly number[]):Promise<void> {
+    if(soundStatus)soundStatus.textContent='Playing reference notes…';
+    const ok=await playStudyTones(notes);
+    if(soundStatus)soundStatus.textContent=ok?'Sound played. Check phone volume if quiet.':'Sound is blocked. Tap “Turn sound on” at the top and try again.';
   }
   function btn(label:string,click:()=>void,main=false):HTMLElement {
     return h('button',{type:'button',class:'btn '+(main?'btn-primary':'btn-quiet'),text:label,onClick:click});
@@ -94,7 +100,7 @@ export function practiceTodayView(context:AppContext):View {
       {
         title:'3. Make a tiny melody',
         time:music,
-        body:'Pick '+a.name+' → '+b.name+' → '+a.name+'. Leave a pause, then play a G chord. Repeat and listen to the change.',
+        body:'Pick '+a.name+' → '+b.name+' → '+a.name+'. Leave a pause, then play a '+scale.chord+' chord. Repeat and listen to the change.',
         help:'You have just used a scale to make music. That is the reason we learn the notes.',
       },
     ];
@@ -106,9 +112,10 @@ export function practiceTodayView(context:AppContext):View {
         h('p',{text:card.body}),
         h('p',{class:'muted',text:card.help}),
         i===1?h('div',{class:'academy-actions'},
-          btn('Hear '+a.name+' then '+b.name,()=>{void playStudyTones([a.midi,b.midi]);}),
+          btn('Hear '+a.name+' then '+b.name,()=>{void hearPair([a.midi,b.midi]);}),
           btn('Teach me each fret',()=>context.navigate('academy'),true)
         ):null,
+        i===1?(soundStatus=h('p',{class:'academy-sound','aria-live':'polite',text:'Tap “Hear” to check sound before playing along.'})):null,
       ));
     }
     element.appendChild(h('p',{class:'academy-footer',text:'Want to go deeper? Learn teaches one note at a time. The advanced scale explorer is optional and is not part of this routine.'}));
