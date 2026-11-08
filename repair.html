@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Guitar Workbench — update check</title>
+<style>
+:root{font-family:system-ui,-apple-system,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0d111b;color:#f5f0e6;padding:34px 18px}
+main{max-width:640px;margin:0 auto}h1{font-size:clamp(1.7rem,5vw,2.3rem);line-height:1.15}
+p{line-height:1.65;color:#c4cbda}strong{color:#fff}
+a{color:#bba8fa}button{border:0;border-radius:12px;padding:16px 20px;min-height:50px;font-size:1rem;font-weight:700;cursor:pointer;background:#bba8fa;color:#171220;margin:10px 8px 8px 0}
+button.secondary{background:transparent;border:1px solid #6d7587;color:#f5f0e6}button:disabled{opacity:.45;cursor:default}
+#status{border:1px solid #414a5d;padding:16px;border-radius:12px;margin:24px 0;white-space:pre-wrap;line-height:1.6}
+small{color:#a8afbd}ol{color:#c4cbda;line-height:1.7}
+</style>
+</head>
+<body>
+<main>
+<p><strong>Guitar Workbench · Update check</strong></p>
+<h1>Is your guitar app actually up to date?</h1>
+<p>This page lives outside the old app's offline cache. It checks the website itself before offering a safe way to replace old cached app files.</p>
+<p><strong>Your saved riffs, recordings, progress and settings will not be erased.</strong> The repair removes only old offline app copies and the old service worker. Before repairing, finish any active recording and close other Guitar Workbench tabs.</p>
+<div id="status" role="status" aria-live="polite">Checking the live website…</div>
+<button id="check" class="secondary" type="button">Check live version</button>
+<button id="repair" type="button" disabled>Repair cache &amp; open latest app</button>
+<p><small>Expected release: 2026-11-08 · learning clarity + cache fix.</small></p>
+</main>
+<script>
+(() => {
+  'use strict';
+  const RELEASE = '2026-11-08-cache-repair';
+  const status = document.getElementById('status');
+  const check = document.getElementById('check');
+  const repair = document.getElementById('repair');
+  const appUrl = new URL('./web/index.html', location.href);
+  const scope = new URL('./web/', location.href).href;
+  let verified = false;
+  let busy = false;
+
+  async function serverCheck() {
+    if (busy) return;
+    busy = true;
+    verified = false;
+    repair.disabled = true;
+    status.textContent = 'Asking the live website for its current version…';
+    try {
+      const url = new URL(appUrl.href);
+      url.searchParams.set('release-check', String(Date.now()));
+      const response = await fetch(url.href, { cache: 'no-store', redirect: 'follow' });
+      if (!response.ok) throw new Error('The website returned HTTP ' + response.status + '.');
+      const html = await response.text();
+      verified = html.includes('data-release="' + RELEASE + '"');
+      if (verified) {
+        status.textContent = 'Live website confirmed: ' + RELEASE + '\nThe newest lesson code has been published.\nIf your normal app still looks old, its local offline cache may be stale.';
+        repair.disabled = false;
+      } else {
+        status.textContent = 'The live website responded, but its HTML did not contain the expected release marker. This means the latest release is not confirmed on the public site. Do not trust the old app yet.';
+      }
+    } catch (error) {
+      status.textContent = 'Could not verify the public website. ' + (error instanceof Error ? error.message : String(error));
+    } finally { busy = false; }
+  }
+
+  async function refreshApp() {
+    if (!verified || busy) return;
+    busy = true;
+    repair.disabled = true;
+    check.disabled = true;
+    status.textContent = 'Removing only old Guitar Workbench offline app files…';
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        const scoped = regs.filter(reg => reg.scope.startsWith(scope));
+        for (const reg of scoped) {
+          const removed = await reg.unregister();
+          if (!removed) throw new Error('Could not unregister a previous Guitar Workbench service worker.');
+        }
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter(key => key.startsWith('guitar-workbench-')).map(key => caches.delete(key)));
+      }
+      const target = new URL(appUrl.href);
+      target.searchParams.set('fresh', String(Date.now()));
+      target.hash = 'path';
+      status.textContent = 'The old offline app cache is cleared. Opening the latest release…';
+      location.replace(target.href);
+    } catch (error) {
+      status.textContent = 'Cache repair could not finish: ' + (error instanceof Error ? error.message : String(error)) + '\nYour saved projects and progress were not intentionally changed.';
+      check.disabled = false;
+      repair.disabled = false;
+      busy = false;
+    }
+  }
+  check.addEventListener('click', () => { void serverCheck(); });
+  repair.addEventListener('click', () => { void refreshApp(); });
+  void serverCheck();
+})();
+</script>
+</body>
+</html>
