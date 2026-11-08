@@ -1,1 +1,38 @@
 .chord-teach-card{overflow:hidden}.chord-teach-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.chord-teach-head h2{margin:.15rem 0 .35rem}.chord-strum-cue{font-size:.82rem;font-weight:700;padding:.5rem .7rem;border:1px solid var(--line,#353945);border-radius:999px;white-space:nowrap}.chord-teach-layout{display:grid;grid-template-columns:minmax(220px,320px) 1fr;gap:24px;align-items:start;margin-top:16px}.chord-board{width:min(100%,320px);padding:10px 8px 8px;border-radius:14px;background:rgba(0,0,0,.18)}.chord-diagram-row{display:grid;grid-template-columns:repeat(6,1fr)}.chord-diagram-markers{height:28px;align-items:center}.chord-marker{text-align:center;font-size:1.05rem;font-weight:700}.chord-cell{position:relative;display:grid;place-items:center;height:46px;border-top:2px solid rgba(255,255,255,.3);border-right:1px solid rgba(255,255,255,.22)}.chord-cell:first-child{border-left:1px solid rgba(255,255,255,.22)}.chord-diagram-row:nth-child(2) .chord-cell{border-top:5px solid rgba(255,255,255,.8)}.finger-dot{display:grid;place-items:center;width:29px;height:29px;border-radius:50%;background:var(--accent,#f2c14e);color:#101217;font-size:.82rem;box-shadow:0 0 0 3px rgba(0,0,0,.18)}.chord-string-names span{text-align:center;padding-top:7px;font-size:.72rem;color:var(--muted,#9ba2ae)}.chord-instructions ol{margin:.2rem 0 1rem;padding-left:1.3rem}.chord-instructions li{margin:.55rem 0;line-height:1.45}.chord-listen-for{padding:12px 14px;border-left:3px solid var(--accent,#f2c14e);background:rgba(255,255,255,.035);border-radius:0 10px 10px 0}.chord-connection{line-height:1.45}.chord-sound-actions{margin-top:16px}.chord-teach-card.is-compact .chord-teach-layout{grid-template-columns:minmax(180px,250px) 1fr}.lesson-card .new-skill-warning{margin:.55rem 0;color:var(--accent,#f2c14e);font-weight:700}.learn-sequence{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}.learn-sequence span{padding:10px;border:1px solid var(--line,#353945);border-radius:10px;text-align:center;font-size:.78rem}.learn-sequence span.is-current{border-color:var(--accent,#f2c14e);background:rgba(242,193,78,.08)}.teacher-rule{margin-top:10px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.035);font-size:.84rem}.known-skill-strip{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.known-skill-strip .badge{font-size:.78rem}.next-chord-preview{margin-top:16px}.teach-first-callout{padding:12px 14px;border:1px solid var(--line,#353945);border-radius:12px;background:rgba(255,255,255,.025);margin:12px 0}.teach-first-callout strong{display:block;margin-bottom:4px}@media(max-width:720px){.chord-teach-head{flex-direction:column}.chord-teach-layout,.chord-teach-card.is-compact .chord-teach-layout{grid-template-columns:1fr}.chord-board{margin:0 auto}.learn-sequence{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Fretboard Academy: one active skill, large touch targets, no hidden paywall. */
+.academy{max-width:850px;margin:0 auto;padding-bottom:28px}
+.academy-header{margin-bottom:20px}
+.academy-eyebrow,.academy-step{font-size:.75rem;letter-spacing:.1em;font-weight:800;color:var(--warm);text-transform:uppercase}
+.academy-title-row{display:flex;gap:14px;justify-content:space-between;align-items:flex-start}
+.academy-title-row h2{font-size:clamp(1.8rem,5vw,2.65rem);margin:5px 0}
+.academy-subtitle{color:var(--text-dim);margin-bottom:8px}
+.academy-counter{font-size:.82rem;white-space:nowrap;padding:8px 12px;border-radius:14px;border:1px solid var(--line)}
+.academy-rule,.academy-review-due{font-size:.88rem;color:var(--text-dim)}
+.academy-review-due{color:var(--warm)}
+.academy-task{padding:clamp(16px,3.5vw,30px);background:var(--bg-raised);border:1px solid var(--line);border-radius:18px}
+.academy-task h3{font-size:1.42rem;margin:8px 0 14px}
+.academy-instruction{color:var(--text-dim);max-width:62ch}
+.academy-board{margin:22px 0 18px;overflow-x:auto}
+.academy-fret-row,.academy-string-row{display:grid;gap:4px;align-items:stretch;min-width:315px}
+.academy-fret-row{margin-bottom:6px;font-size:.65rem;text-align:center;font-weight:800;letter-spacing:.045em;color:var(--text-dim)}
+.academy-fret-row span:first-child{text-align:left;padding-left:4px}
+.academy-string-row{margin:5px 0}
+.academy-string-name{font-size:.75rem;font-weight:750;display:flex;align-items:center}
+.academy-fret{min-height:49px;border:1px solid var(--line);border-radius:8px;background:var(--bg-sunken);color:var(--text-dim);font-size:1rem;font-weight:750;cursor:pointer;touch-action:manipulation}
+.academy-fret.is-in-scale{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 20%,var(--bg-raised));color:var(--text)}
+.academy-fret.is-home{border-color:var(--warm);box-shadow:inset 0 0 0 1px var(--warm)}
+.academy-fret:focus-visible{outline:3px solid var(--warm);outline-offset:2px}
+.academy-fret:active{transform:scale(.95)}
+.academy-board-help{margin-top:12px;font-size:.82rem;color:var(--text-dim)}
+.academy-actions,.academy-skill-links{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:20px}
+.academy-actions .btn{min-height:46px}
+.academy-message{font-weight:750;min-height:27px;margin:8px 0}
+.academy-previous{border-top:1px solid var(--line);margin-top:26px;padding-top:16px}
+.academy-previous p{color:var(--text-dim);font-size:.9rem}
+.academy-footer{margin:16px 0;color:var(--text-dim);font-size:.82rem}
+.academy-entry{margin:18px 0 14px}
+.academy-entry h3{margin-top:0}
+.academy-more summary{font-weight:700;cursor:pointer}
+.academy-back{margin-top:8px}
+@media(max-width:550px){.academy-task{padding:14px}.academy-title-row{display:block}.academy-counter{display:inline-block;margin-bottom:10px}.academy-string-name{font-size:.7rem}.academy-fret{min-height:45px}.academy-actions>.btn{width:100%}}
