@@ -205,7 +205,7 @@ export function pathView(context: AppContext): View {
         h('h3', { text:'Already playing guitar?' }),
         h('p', { text:'Tell Coach which chords and techniques you already know. We will skip beginner lessons without guessing your level.' }),
         button('Set my starting point', () => context.navigate('session'), 'btn-quiet'),
-      ) : null,
+      ) : '',
       h('section', { class:'panel academy-entry' },
         h('p', {class:'eyebrow',text:'START HERE · FRETBOARD'}),
         h('h3', {text:'One scale. One octave. One clear goal.'}),
@@ -243,7 +243,7 @@ export function pathView(context: AppContext): View {
         h('h3', { text: currentStep.title }),
         h('p', { text: currentStep.outcome }),
         button('Continue guided course', () => context.navigate('session'), 'btn-quiet'),
-      ) : null,
+      ) : '',
     );
 
     const roadmap = h('details', { class: 'panel course-roadmap' },
