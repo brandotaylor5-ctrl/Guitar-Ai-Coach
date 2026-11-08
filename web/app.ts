@@ -23,6 +23,7 @@ import { libraryView } from './views/library.ts';
 import { songsView } from './views/songs.ts';
 import { songListView } from './views/songList.ts';
 import { pathView } from './views/path.ts';
+import { fretboardAcademyView } from './views/fretboardAcademy.ts';
 import { practiceTodayView } from './views/practiceToday.ts';
 import { songView } from './views/song.ts';
 import { fingerprintView } from './views/fingerprint.ts';
@@ -45,7 +46,7 @@ const state = {
   session: new SketchbookSession(),
   library: new RiffLibrary(),
   listening: false,
-  view: 'record' as ViewName,
+  view: 'path' as ViewName,
   params: {} as Record<string, string>,
   tuning: STANDARD_TUNING,
   sampleRate: 0,
@@ -60,7 +61,7 @@ const state = {
  * the one it belongs to — seven tabs is not a front page, it is a filing
  * cabinet, and nobody picks up a guitar to file.
  */
-const PRIMARY_TABS: Array<[ViewName, string]> = [['record','Record'],['develop','Develop'],['projects','Songs'],['path','Learn']];
+const PRIMARY_TABS: Array<[ViewName, string]> = [['path','Learn'],['practice','Practice'],['projects','Songs'],['record','Record']];
 
 /**
  * Secondary places support the four musical front doors without competing
@@ -69,9 +70,10 @@ const PRIMARY_TABS: Array<[ViewName, string]> = [['record','Record'],['develop',
  */
 const MORE_TABS: Array<[ViewName, string]> = [
   ['session', 'Live coach'],
+  ['lab', 'Riff school'],
+  ['develop', 'Develop recordings'],
   ['library', 'Saved ideas'],
   ['songs', 'Traditional tunes'],
-  ['lab', 'Riff school'],
 ];
 
 /**
@@ -84,6 +86,7 @@ const VIEW_NAMES: string[] = [
   'session',
   'library',
   'path',
+  'academy',
   'song',
   'songs',
   'fingerprint',
@@ -288,6 +291,7 @@ function buildView(): View {
     case 'library': return libraryView(context, state.params);
     case 'practice': return practiceTodayView(context);
     case 'path': return pathView(context);
+    case 'academy': return fretboardAcademyView(context);
     case 'songs': return songListView(context);
     case 'song': return songView(context, state.params);
     case 'seeds': return songsView(context);
@@ -319,7 +323,7 @@ function render(): void {
 function readHash(): void {
   const raw = window.location.hash.replace('#', '');
   const [name, query = ''] = raw.split('?');
-  state.view = VIEW_NAMES.includes(name ?? '') ? (name as ViewName) : 'record';
+  state.view = VIEW_NAMES.includes(name ?? '') ? (name as ViewName) : 'path';
   state.params = Object.fromEntries(
     query.split('&').filter(Boolean).map((pair) => {
       const [key, value = ''] = pair.split('=');
