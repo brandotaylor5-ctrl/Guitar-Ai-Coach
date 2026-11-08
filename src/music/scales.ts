@@ -176,7 +176,17 @@ export function scaleRun(
   span = 4,
 ): BoxPosition[] {
   const box = scaleBox(tonicPc, scale, tuning, startFret, span);
-  const up = [...box.positions].sort((a, b) => a.midi - b.midi || a.string - b.string);
+  // A pitch may be playable at two different string/fret positions.
+  // A scale *lesson* should sound that pitch once, not double it in the run.
+  // Prefer the lower fret when there are equivalent locations.
+  const seen = new Set<number>();
+  const up = [...box.positions]
+    .sort((a, b) => a.midi - b.midi || a.fret - b.fret || a.string - b.string)
+    .filter((position) => {
+      if (seen.has(position.midi)) return false;
+      seen.add(position.midi);
+      return true;
+    });
   const down = [...up].reverse().slice(1);
   return [...up, ...down];
 }
