@@ -77,8 +77,14 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
       context.say('A reference chord is unavailable. Continue with the written exercise.', 'error');
       return;
     }
+    const status = element.querySelector<HTMLElement>('.rhythm-sound-status');
+    if (status) status.textContent = 'Reference requested. If you hear nothing, use “Turn sound on” above.';
     void context.player.play(events, { speed: slower ? 0.7 : 1 })
-      .catch(() => context.say('Audio could not play. Check sound permission and try again.', 'error'));
+      .then(() => { if (status?.isConnected) status.textContent = 'Reference finished. Try the rhythm on your guitar.'; })
+      .catch(() => {
+        if (status?.isConnected) status.textContent = 'Sound could not start. Tap “Turn sound on” at the top, then try again.';
+        context.say('Audio could not play. Check sound permission and try again.', 'error');
+      });
   }
 
   function markBarrePractice(): void {
@@ -165,6 +171,7 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
         button('Hear it slower', () => playExample(false, true), 'btn-quiet'),
         button('Simplest sound', () => playExample(true), 'btn-quiet'),
       ),
+      h('p', { class: 'rhythm-sound-status muted', role: 'status', 'aria-live': 'polite', text: 'Tap Hear the example to audition the rhythm.' }),
       h('h3', { text: '2. Put it under your fingers' }),
       h('ol', { class: 'rhythm-instructions' }, ...active.teach.map(step => h('li', { text: step }))),
       h('div', { class: 'rhythm-practice-brief' },
