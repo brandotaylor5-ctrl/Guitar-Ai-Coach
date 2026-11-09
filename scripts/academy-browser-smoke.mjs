@@ -67,6 +67,7 @@ try {
 
   // Navigate to and from Learn, then open the parallel barre clinic.
   await page.getByRole('button', { name: 'Back to Learn' }).click();
+  await page.locator('.academy-more summary').click();
   await page.getByRole('button', { name: 'Barre-chord rescue' }).click();
   await page.locator('.rhythm-clinic').waitFor();
   await page.getByRole('button', { name: 'Four-chord song' }).click();
