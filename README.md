@@ -28,8 +28,7 @@ musical phrases, remembers them, compares them, and helps develop them.
 It is not a tuner, and it is not a guitar course. Live note recognition is only
 the foundation. **Your own playing is the curriculum.**
 
-> 📖 **[docs/PRODUCT_VISION.md](docs/PRODUCT_VISION.md) is the governing
-> document.** Every design decision should trace back to it.
+> 📖 **[docs/CURRICULUM_ARCHITECTURE.md](docs/CURRICULUM_ARCHITECTURE.md) governs the Academy.** The [original creative vision](docs/PRODUCT_VISION.md) remains the reference for the optional songwriting workbench.
 > [Architecture](docs/ARCHITECTURE.md) · [Roadmap & status](docs/ROADMAP.md)
 
 ## The headline interaction
