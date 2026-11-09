@@ -1,8 +1,6 @@
-# Product Vision
+# Creative Workbench Vision (original; now secondary)
 
-> This is the governing document. Every design decision in this repository
-> should be traceable back to something on this page. If a proposed feature
-> conflicts with the principles here, the principles win.
+> **November 2026 update:** The Guitar Academy curriculum is now the primary learning experience. [CURRICULUM_ARCHITECTURE.md](CURRICULUM_ARCHITECTURE.md) governs educational decisions. This document preserves the original creative-workbench principles for recording, riff memory and songwriting, which remain optional features. The original prohibition on building a guitar course no longer applies to the Academy.
 
 ## What this is
 
