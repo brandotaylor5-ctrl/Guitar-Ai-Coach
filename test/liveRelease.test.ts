@@ -9,7 +9,7 @@ describe('public release and cache recovery', () => {
   const deploy = readFileSync('.github/workflows/pages.yml', 'utf8');
 
   test('the installed app shows a release identifier and a cache repair link', () => {
-    assert.match(page, /data-release="2026-11-09-rhythm-click-fix"/);
+    assert.match(page, /data-release="2026-11-09-rhythm-placement-demo"/);
     assert.match(page, /id="build-status"/);
     assert.match(page, /href="\.\.\/repair\.html"/);
   });
