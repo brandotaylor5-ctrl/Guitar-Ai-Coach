@@ -57,13 +57,13 @@ jobs:
           import os, time, urllib.request
           base = os.environ['PAGES_URL'].rstrip('/') + '/'
           expected = {
-            'web/index.html': 'data-release="2026-11-09-rhythm-academy"',
+            'web/index.html': 'data-release="2026-11-09-rhythm-click-fix"',
             'web/views/fretboardAcademy.js': 'Which fret makes',
             'web/views/practiceToday.js': 'Play what you know',
-            'web/views/rhythmChapter.js': 'GUITAR ACADEMY',
+            'web/views/rhythmChapter.js': 'Start lesson:',
             'web/rhythmChapter.css': 'rhythm-lesson-map',
             'web/audio/studyTone.js': 'playStudyTones',
-            'repair.html': '2026-11-09-rhythm-academy',
+            'repair.html': '2026-11-09-rhythm-click-fix',
           }
           problems = []
           for attempt in range(1, 16):

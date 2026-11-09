@@ -41,7 +41,11 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
   let active: ChapterLesson = requested ?? recommendRhythmLesson(progress);
   let answerMessage = '';
   let needHelp = false;
-  let showMap = false;
+  // The suggested lesson is not open until the learner explicitly starts it.
+  // Previously the first lesson was already on screen, so tapping its
+  // recommendation appeared to do absolutely nothing.
+  let lessonOpen = !!requested;
+  let showMap = !requested && params.clinic !== '1';
   let showClinic = params.clinic === '1';
   let difficulty: Difficulty = 'transition';
   let barreAttempts = 0;
@@ -73,8 +77,14 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
       context.say('A reference chord is unavailable. Continue with the written exercise.', 'error');
       return;
     }
+    const status = element.querySelector<HTMLElement>('.rhythm-sound-status');
+    if (status) status.textContent = 'Reference requested. If you hear nothing, use “Turn sound on” above.';
     void context.player.play(events, { speed: slower ? 0.7 : 1 })
-      .catch(() => context.say('Audio could not play. Check sound permission and try again.', 'error'));
+      .then(() => { if (status?.isConnected) status.textContent = 'Reference finished. Try the rhythm on your guitar.'; })
+      .catch(() => {
+        if (status?.isConnected) status.textContent = 'Sound could not start. Tap “Turn sound on” at the top, then try again.';
+        context.say('Audio could not play. Check sound permission and try again.', 'error');
+      });
   }
 
   function markBarrePractice(): void {
@@ -86,11 +96,13 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
 
   function selectLesson(lesson: ChapterLesson): void {
     active = lesson;
+    lessonOpen = true;
     answerMessage = '';
     needHelp = false;
     showMap = false;
+    showClinic = false;
     render();
-    element.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    element.querySelector('.rhythm-active-lesson')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }
 
   function lessonStatus(lesson: ChapterLesson): string {
@@ -159,6 +171,7 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
         button('Hear it slower', () => playExample(false, true), 'btn-quiet'),
         button('Simplest sound', () => playExample(true), 'btn-quiet'),
       ),
+      h('p', { class: 'rhythm-sound-status muted', role: 'status', 'aria-live': 'polite', text: 'Tap Hear the example to audition the rhythm.' }),
       h('h3', { text: '2. Put it under your fingers' }),
       h('ol', { class: 'rhythm-instructions' }, ...active.teach.map(step => h('li', { text: step }))),
       h('div', { class: 'rhythm-practice-brief' },
@@ -275,14 +288,18 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
         ),
         h('p', { class: 'muted', text: 'Only concept questions are checked by the app. Playing reports come from you and are never represented as verified skill.' }),
         rowActions(
-          button('Suggested: ' + recommendRhythmLesson(progress).title, () => selectLesson(recommendRhythmLesson(progress)), 'btn-primary'),
+          button((lessonOpen ? 'Start suggested lesson: ' : 'Start lesson: ') + recommendRhythmLesson(progress).title, () => selectLesson(recommendRhythmLesson(progress)), 'btn-primary'),
           button(showMap ? 'Hide all lessons' : 'See all eight lessons', () => { showMap = !showMap; render(); }, 'btn-quiet'),
           button('Back to Learn', () => context.navigate('path'), 'btn-quiet'),
         ),
       ),
       showMap ? renderMap() : h('span'),
       showClinic ? clinicCard() : h('span'),
-      lessonCard(),
+      lessonOpen ? lessonCard() : h('section', { class: 'panel rhythm-ready' },
+        h('h3', { text: 'Choose a lesson to begin' }),
+        h('p', { text: 'Tap Find the Pulse above to open its step-by-step practice and sound examples. Nothing starts or gets marked complete until you choose it.' }),
+        button('Start Find the Pulse', () => selectLesson(RHYTHM_CHAPTER[0]!), 'btn-primary'),
+      ),
       h('section', { class: 'panel rhythm-clinic-entry' },
         h('h3', { text: 'A hard technique should not end your learning' }),
         h('p', { text: 'Still developing barre chords? Keep that work separate from this rhythm chapter. Try a focused recovery exercise and return to it on another day.' }),
