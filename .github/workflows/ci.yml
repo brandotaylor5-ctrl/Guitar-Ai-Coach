@@ -23,6 +23,12 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
+      - name: Install browser for click-through smoke test
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Exercise the real academy buttons in Chromium
+        run: node scripts/academy-browser-smoke.mjs
       - name: Keep deployable app
         uses: actions/upload-artifact@v4
         with:
