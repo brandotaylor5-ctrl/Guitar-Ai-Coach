@@ -41,7 +41,11 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
   let active: ChapterLesson = requested ?? recommendRhythmLesson(progress);
   let answerMessage = '';
   let needHelp = false;
-  let showMap = false;
+  // The suggested lesson is not open until the learner explicitly starts it.
+  // Previously the first lesson was already on screen, so tapping its
+  // recommendation appeared to do absolutely nothing.
+  let lessonOpen = !!requested;
+  let showMap = !requested && params.clinic !== '1';
   let showClinic = params.clinic === '1';
   let difficulty: Difficulty = 'transition';
   let barreAttempts = 0;
@@ -86,11 +90,13 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
 
   function selectLesson(lesson: ChapterLesson): void {
     active = lesson;
+    lessonOpen = true;
     answerMessage = '';
     needHelp = false;
     showMap = false;
+    showClinic = false;
     render();
-    element.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    element.querySelector('.rhythm-active-lesson')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }
 
   function lessonStatus(lesson: ChapterLesson): string {
@@ -275,14 +281,18 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
         ),
         h('p', { class: 'muted', text: 'Only concept questions are checked by the app. Playing reports come from you and are never represented as verified skill.' }),
         rowActions(
-          button('Suggested: ' + recommendRhythmLesson(progress).title, () => selectLesson(recommendRhythmLesson(progress)), 'btn-primary'),
+          button((lessonOpen ? 'Start suggested lesson: ' : 'Start lesson: ') + recommendRhythmLesson(progress).title, () => selectLesson(recommendRhythmLesson(progress)), 'btn-primary'),
           button(showMap ? 'Hide all lessons' : 'See all eight lessons', () => { showMap = !showMap; render(); }, 'btn-quiet'),
           button('Back to Learn', () => context.navigate('path'), 'btn-quiet'),
         ),
       ),
       showMap ? renderMap() : h('span'),
       showClinic ? clinicCard() : h('span'),
-      lessonCard(),
+      lessonOpen ? lessonCard() : h('section', { class: 'panel rhythm-ready' },
+        h('h3', { text: 'Choose a lesson to begin' }),
+        h('p', { text: 'Tap Find the Pulse above to open its step-by-step practice and sound examples. Nothing starts or gets marked complete until you choose it.' }),
+        button('Start Find the Pulse', () => selectLesson(RHYTHM_CHAPTER[0]!), 'btn-primary'),
+      ),
       h('section', { class: 'panel rhythm-clinic-entry' },
         h('h3', { text: 'A hard technique should not end your learning' }),
         h('p', { text: 'Still developing barre chords? Keep that work separate from this rhythm chapter. Try a focused recovery exercise and return to it on another day.' }),
