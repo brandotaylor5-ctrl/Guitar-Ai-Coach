@@ -194,24 +194,20 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
       if (answerMessage) card.appendChild(h('p', { class: 'rhythm-feedback', role: 'status', text: answerMessage }));
     }
 
+    const independentButton = button('I played it without the guide', () => saveProgress('independent'), 'btn-quiet');
+    independentButton.disabled = !attempted;
     card.append(
       h('h3', { text: '4. Play and decide what happens next' }),
       h('p', { text: 'Try the exercise on your guitar. These buttons record your report; the app is not grading your audio or verifying your technique.' }),
       rowActions(
         button('I practiced this', () => saveProgress('practiced'), 'btn-primary'),
-        button('I played it without the guide', () => saveProgress('independent'), 'btn-quiet'),
+        independentButton,
         button('I am stuck on this', () => { needHelp = true; saveProgress('needs-work'); }, 'btn-quiet'),
       ),
       !attempted ? h('p', { class: 'muted', text: 'Independent playing can only be recorded after a practice attempt. It remains your self-assessment.' }) : h('span'),
       attempted ? h('p', { class: 'rhythm-evidence', text: 'Practice attempts reported: ' + evidence!.practiceAttempts +
         (evidence?.selfReportedIndependentAt ? ' · Independent performance self-reported; not microphone verified.' : ' · Physical fluency not established.') }) : h('span'),
     );
-    // Disable the independent claim until the learner reports an attempt.
-    const allButtons = card.querySelectorAll<HTMLButtonElement>('button');
-    for (const control of allButtons) {
-      if (control.textContent === 'I played it without the guide' && !attempted) control.disabled = true;
-    }
-
     if (needHelp || evidence?.needsWork) {
       card.appendChild(h('section', { class: 'rhythm-recovery' },
         h('h4', { text: 'Reduce one difficulty, not the goal' }),
@@ -285,13 +281,13 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
         ),
       ),
       showMap ? renderMap() : h('span'),
+      showClinic ? clinicCard() : h('span'),
       lessonCard(),
       h('section', { class: 'panel rhythm-clinic-entry' },
         h('h3', { text: 'A hard technique should not end your learning' }),
         h('p', { text: 'Still developing barre chords? Keep that work separate from this rhythm chapter. Try a focused recovery exercise and return to it on another day.' }),
-        !showClinic ? button('Open barre-chord clinic', () => { showClinic = true; render(); }, 'btn-quiet') : null,
+        !showClinic ? button('Open barre-chord clinic', () => { showClinic = true; render(); element.querySelector('.rhythm-clinic')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 'btn-quiet') : null,
       ),
-      showClinic ? clinicCard() : h('span'),
       h('p', { class: 'academy-footer', text: storage
         ? 'Progress stays in this browser, not synced between devices. Use your own judgment and listen to your playing.'
         : 'Private browsing or blocked storage: progress may not survive closing this page.' }),
