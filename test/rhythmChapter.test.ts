@@ -81,6 +81,12 @@ describe('first complete academy chapter', () => {
     assert.equal(data.steady?.needsWork, false);
     assert.equal(data.eighths?.conceptCheckedAt, 1800000000000);
     assert.equal(data.eighths?.needsWork, true);
+    const impossible = parseChapterProgress(JSON.stringify({
+      steady: { practiceAttempts: 0, selfReportedIndependentAt: 1800000000000 },
+      eighths: { practiceAttempts: 2, needsWork: true, selfReportedIndependentAt: 1800000000000 },
+    }));
+    assert.equal(impossible.steady?.selfReportedIndependentAt, undefined);
+    assert.equal(impossible.eighths?.selfReportedIndependentAt, undefined);
     assert.ok(RHYTHM_STORAGE_KEY.includes('.v1'));
   });
 
