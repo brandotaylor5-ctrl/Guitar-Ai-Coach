@@ -1,0 +1,65 @@
+/* A real curriculum chapter, built for a phone beside an acoustic guitar. */
+.rhythm-chapter{max-width:920px;margin:0 auto;padding-bottom:38px}
+.rhythm-head{max-width:74ch;margin-bottom:14px}
+.rhythm-head h2{font-size:clamp(1.9rem,4.5vw,2.7rem);margin:.25rem 0}
+.rhythm-head p{line-height:1.55}
+.rhythm-chapter .panel{margin:12px 0 20px}
+.rhythm-split-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.rhythm-split-head h2,.rhythm-split-head h3{margin-top:0}
+.rhythm-duration{white-space:nowrap;padding:7px 10px;border:1px solid var(--line);border-radius:10px;color:var(--text-dim);font-size:.8rem}
+.rhythm-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:4px 0 14px}
+.rhythm-summary>div{display:flex;flex-direction:column;gap:3px;padding:14px 10px;border-radius:12px;background:var(--bg-sunken);border:1px solid var(--line)}
+.rhythm-summary strong{font-size:1.35rem;line-height:1.2}
+.rhythm-summary small{color:var(--text-dim);font-size:.78rem}
+.rhythm-overview .academy-actions .btn{min-height:46px}
+.rhythm-lesson-map{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
+.rhythm-map-item{display:flex;align-items:center;text-align:left;gap:12px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--bg-sunken);color:var(--text);cursor:pointer;min-height:65px}
+.rhythm-map-item.is-current{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--bg-sunken))}
+.rhythm-map-item:focus-visible,.rhythm-chapter .btn:focus-visible{outline:3px solid var(--warm);outline-offset:3px}
+.rhythm-map-number{font-weight:800;color:var(--warm);min-width:18px}
+.rhythm-map-copy{display:flex;flex-direction:column;gap:3px}
+.rhythm-map-copy small{color:var(--text-dim)}
+.rhythm-active-lesson{padding:clamp(16px,4vw,28px)}
+.rhythm-lede{font-size:1.08rem;line-height:1.5;font-weight:650}
+.rhythm-active-lesson h3{font-size:1.15rem;margin:26px 0 10px}
+.rhythm-active-lesson p{line-height:1.55}
+.rhythm-beat-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px;margin:18px 0 10px}
+.rhythm-beat{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;min-height:74px;background:var(--bg-sunken);border:1px solid var(--line);border-radius:10px}
+.rhythm-beat:nth-child(odd){border-top:3px solid var(--warm)}
+.rhythm-beat.is-accent{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--bg-sunken))}
+.rhythm-beat small{color:var(--text-dim);font-size:.8rem;font-weight:750}
+.rhythm-beat strong{font-size:1.32rem}
+.rhythm-legend{color:var(--text-dim);font-size:.78rem}
+.rhythm-instructions{padding-left:24px}
+.rhythm-instructions li,.rhythm-practice-brief li{margin:10px 0;line-height:1.55}
+.rhythm-practice-brief{padding:15px 17px;background:var(--bg-sunken);border-left:3px solid var(--warm);border-radius:0 12px 12px 0;margin:14px 0}
+.rhythm-practice-brief h4{margin:0 0 8px}
+.rhythm-practice-brief p{margin:8px 0}
+.rhythm-chord-details{border:1px solid var(--line);border-radius:12px;padding:12px;margin:16px 0}
+.rhythm-chord-details summary,.rhythm-transfer summary{font-weight:650;cursor:pointer}
+.rhythm-chord-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:16px}
+.rhythm-chord{min-width:0;overflow:hidden}
+.rhythm-chord>strong{display:block;margin-bottom:8px}
+.rhythm-chord .chord-board{max-width:225px}
+.rhythm-answers{display:flex;flex-direction:column;gap:10px}
+.rhythm-answers .btn{white-space:normal;text-align:left;min-height:50px}
+.rhythm-feedback{padding:11px;border-left:3px solid var(--warm);background:var(--bg-sunken)}
+.rhythm-good{padding:12px;border-left:3px solid var(--accent);background:var(--bg-sunken)}
+.rhythm-evidence{font-size:.9rem;color:var(--text-dim)}
+.rhythm-recovery{padding:16px;border:1px solid var(--warm);border-radius:12px;margin:18px 0}
+.rhythm-recovery h4{margin:0}
+.rhythm-transfer{margin:18px 0}
+.rhythm-clinic-picks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0}
+.rhythm-clinic-picks .btn{min-height:46px;white-space:normal}
+.rhythm-chapter button:disabled{opacity:.48;cursor:not-allowed}
+@media(max-width:640px){
+  .rhythm-lesson-map{grid-template-columns:1fr}
+  .rhythm-summary{gap:5px}
+  .rhythm-summary>div{padding:10px 7px}
+  .rhythm-summary strong{font-size:1.1rem}
+  .rhythm-summary small{font-size:.7rem}
+  .rhythm-beat-grid{gap:3px}
+  .rhythm-beat{min-height:65px;border-radius:6px}
+  .rhythm-beat strong{font-size:1.08rem}
+  .rhythm-chapter .academy-actions .btn{flex:1 1 170px;white-space:normal}
+}
