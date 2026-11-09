@@ -39,15 +39,16 @@ try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   page.on('pageerror', e => failures.push('Browser JavaScript error: ' + e.message));
   await page.goto(origin + '/web/index.html#rhythm', { waitUntil: 'domcontentloaded' });
-  await page.locator('.rhythm-lesson-map').waitFor({ timeout: 15000 });
+  await page.locator('.rhythm-start-card').waitFor({ timeout: 15000 });
 
-  // Previously lesson 1 was already open. Clicking "Suggested: Find the
-  // pulse" reset it to the same state, with no visible result.
+  // Beginners must choose an appropriate starting point before exercises.
+  // The first lesson teaches tapping or muted strumming, not G fingering.
   assert.equal(await page.locator('.rhythm-active-lesson').count(), 0);
-  const first = page.locator('.rhythm-map-item').filter({ hasText: 'Find the pulse' });
-  await first.click();
+  await page.locator('.rhythm-start-option').first().click();
   await page.locator('.rhythm-active-lesson').waitFor();
   assert.match(await page.locator('.rhythm-active-lesson h2').innerText(), /Find the pulse/);
+  assert.match(await page.locator('.rhythm-active-lesson').innerText(), /Without forming a chord/);
+  assert.match(await page.locator('.rhythm-active-lesson').innerText(), /four complete bars/);
   assert.equal(await page.locator('.rhythm-lesson-map').count(), 0);
 
   await page.getByRole('button', { name: 'Hear the example' }).click();
@@ -76,19 +77,29 @@ try {
   await page.getByRole('button', { name: 'I worked on this today' }).click();
   assert.match(await page.locator('.rhythm-clinic').innerText(), /sessions noted: 1/);
 
-  // Test the original recommended-button path on a fresh browser context.
+  // An experienced guitarist should not be forced into four basic downstrokes.
+  // Self-selected starting level does NOT mark earlier lessons as passed.
   const fresh = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const second = await fresh.newPage();
   second.on('pageerror', e => failures.push('Fresh browser JS error: ' + e.message));
   await second.goto(origin + '/web/index.html#rhythm', { waitUntil: 'domcontentloaded' });
-  await second.getByRole('button', { name: 'Start lesson: Find the pulse' }).waitFor();
-  assert.equal(await second.locator('.rhythm-active-lesson').count(), 0);
-  await second.getByRole('button', { name: 'Start lesson: Find the pulse' }).click();
-  assert.equal(await second.locator('.rhythm-active-lesson').count(), 1);
+  await second.locator('.rhythm-start-card').waitFor();
+  await second.locator('.rhythm-start-option').last().click();
+  assert.match(await second.locator('.rhythm-active-lesson h2').innerText(), /Make the space between beats count/);
+  const state = await second.evaluate(() => ({
+    start: localStorage.getItem('guitar-academy.rhythm-entry.v1'),
+    progress: localStorage.getItem('guitar-academy.rhythm-chapter.v1'),
+  }));
+  assert.equal(state.start, 'songs');
+  assert.equal(state.progress, null, 'placement never creates phantom mastery');
+  await second.reload();
+  await second.locator('.rhythm-lesson-map').waitFor();
+  await second.getByRole('button', { name: /Go to suggested lesson: Make the space between beats count/ }).click();
+  assert.match(await second.locator('.rhythm-active-lesson h2').innerText(), /Make the space between beats count/);
   await fresh.close();
 
   assert.deepEqual(failures, [], 'browser console must have no unhandled errors');
-  console.log('PASS: real mobile-width clicks, lesson activation, sound button, concept check, practice, self-report, next lesson, storage, barre clinic and navigation.');
+  console.log('PASS: novice and experienced placement, real mobile-width lesson clicks, reference, concept check, practice, self-report, persistent start, barre clinic and navigation.');
 } finally {
   await browser?.close();
   server.kill('SIGTERM');
