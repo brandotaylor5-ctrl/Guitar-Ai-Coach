@@ -322,7 +322,7 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
           entry || requested ? button('Go to suggested lesson: ' + suggested().title, () => selectLesson(suggested()), 'btn-primary') : h('span'),
           button(showMap ? 'Hide all lessons' : 'See all eight lessons', () => { showMap = !showMap; render(); }, 'btn-quiet'),
           button('Back to Learn', () => context.navigate('path'), 'btn-quiet'),
-          entry ? button('Change my starting point', () => { entry = null; lessonOpen = false; showClinic = false; showMap = false; render(); }, 'btn-quiet') : h('span'),
+          entry ? button('Change my starting point', () => { entry = null; try { storage?.removeItem(RHYTHM_ENTRY_KEY); } catch { /* A blocked store only prevents persistence. */ } lessonOpen = false; showClinic = false; showMap = false; render(); }, 'btn-quiet') : h('span'),
         ),
       ),
       showMap ? renderMap() : h('span'),
