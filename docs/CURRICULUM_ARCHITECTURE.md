@@ -82,3 +82,9 @@ These tests check software invariants, not educational effectiveness. Browser au
 7. Device-level tests for phone audio unlock and offline updating. Verify backups separately before relying on storage.
 
 Until those steps happen, describe this as an **implemented and tested pilot chapter**, not a proven full guitar education.
+
+## November 9 entry-point correction
+
+The first pilot release failed to distinguish brand-new learners from experienced players and showed a one-bar chord demo before asking for four bars of playing. This is a sequencing failure, not a button problem. The chapter now asks for the learner's approximate rhythm starting point in a single non-graded choice: brand new, chords without automatic strumming, strumming with rough changes, or already playing songs. Choosing a later lesson never credits earlier lessons as passed. The entry choice is saved locally and can be changed.
+
+The pulse lesson now begins with clapping and muted strings instead of requiring G major. References offer four audible high-pitched count-in plucks and four full bars of synthetic chords. These are *not* spoken lessons or validated real-guitar audio, and physical playing remains self-reported. The longer count-in and four-bar examples intentionally replace the original mismatched one-bar preview.

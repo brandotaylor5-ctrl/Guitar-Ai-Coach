@@ -63,3 +63,14 @@
   .rhythm-beat strong{font-size:1.08rem}
   .rhythm-chapter .academy-actions .btn{flex:1 1 170px;white-space:normal}
 }
+
+/* One short starting-point decision, never an experience-level exam. */
+.rhythm-start-card{max-width:780px;margin-inline:auto}
+.rhythm-start-card h3{font-size:clamp(1.45rem,3vw,1.8rem);margin:8px 0}
+.rhythm-start-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:22px 0 12px}
+.rhythm-start-option{text-align:left;display:flex;flex-direction:column;gap:8px;min-height:112px;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--bg-sunken);color:var(--text);cursor:pointer;line-height:1.45}
+.rhythm-start-option strong{font-size:1rem}
+.rhythm-start-option span{font-size:.88rem;color:var(--text-dim)}
+.rhythm-start-option:hover{border-color:var(--accent)}
+.rhythm-start-option:focus-visible{outline:3px solid var(--warm);outline-offset:3px}
+@media(max-width:620px){.rhythm-start-options{grid-template-columns:1fr;gap:9px}.rhythm-start-option{min-height:92px;padding:15px}}

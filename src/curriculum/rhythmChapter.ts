@@ -34,10 +34,10 @@ export const RHYTHM_CHAPTER: readonly ChapterLesson[] = [
     why: 'A chord is only part of the music. Your listener also needs a steady pulse to follow.',
     minutes: 8, bpm: 65, chords: ['G'],
     pattern: ['D','.','D','.','D','.','D','.'], accents: [],
-    hear: 'Listen for four equally spaced downstrokes. Count 1, 2, 3, 4 aloud.',
-    teach: ['Hold G. Say 1, 2, 3, 4 out loud at an even speed.', 'Make one downstroke on each number.', 'Keep counting even if one strum is messy. Do not stop to fix it.'],
-    practice: 'Play four bars of G, one downstroke on each beat. Keep counting all the way through.',
-    simplify: 'Mute the strings and tap your strumming hand on your leg while counting.',
+    hear: 'The first four high clicks count you in. Then hear four complete bars, with a downstroke on each numbered beat. No guitar chord is required yet.',
+    teach: ['Tap your foot or clap four even beats: 1, 2, 3, 4. This is the pulse.', 'Without forming a chord, lightly mute the strings with your fretting hand. Brush down once on every number.', 'If you already know G, try the same exercise with G. Keep counting through imperfect sounds.'],
+    practice: 'Count in four beats, then play four bars (16 beats). Tap or brush muted strings; G is optional, not a prerequisite.',
+    simplify: 'Leave the guitar down. Clap once per count, matching the four-bar reference before adding any fretting.',
     apply: 'Change the volume of the strum without changing the spacing between beats.',
     check: { question: 'What matters most in this exercise?', options: ['Hitting every string loudly', 'Keeping four beats evenly spaced', 'Changing chords as quickly as possible'], correct: 1, explanation: 'Timing comes before speed or volume. Four evenly spaced beats create a dependable pulse.' },
   },
@@ -214,6 +214,34 @@ export function recordEvidence(progress: ChapterProgress, id: RhythmLevel, actio
   return { ...progress, [id]: next };
 }
 
+/**
+ * Entry point is a learner choice, not a claim of mastery. In particular,
+ * selecting an experienced start never awards passing scores for earlier
+ * lessons. All lesson choices remain accessible for review.
+ */
+export type RhythmEntry = 'new' | 'chords' | 'switches' | 'songs';
+export const RHYTHM_ENTRY_KEY = 'guitar-academy.rhythm-entry.v1';
+export const RHYTHM_ENTRY: Readonly<Record<RhythmEntry,{title:string; detail:string; start: RhythmLevel}>> = {
+  new: { title: 'I am new to guitar', detail: 'Build a pulse with claps and muted strings. You do not need to know any chords.', start: 'steady' },
+  chords: { title: 'I know a few open chords', detail: 'Learn a useful down-up strumming pattern without adding new chord shapes.', start: 'pattern' },
+  switches: { title: 'I can strum, but chord changes interrupt my rhythm', detail: 'Work on keeping the beat through changes, without chasing speed.', start: 'changes' },
+  songs: { title: 'I already play songs with strumming patterns', detail: 'Work on offbeat feel and combining rhythm with complete progressions.', start: 'syncopation' },
+};
+
+export function parseRhythmEntry(value: string | null): RhythmEntry | null {
+  return value === 'new' || value === 'chords' || value === 'switches' || value === 'songs' ? value : null;
+}
+
+export function recommendRhythmFromEntry(progress: ChapterProgress, entry: RhythmEntry): ChapterLesson {
+  const index = RHYTHM_CHAPTER.findIndex(lesson => lesson.id === RHYTHM_ENTRY[entry].start);
+  const afterStart = RHYTHM_CHAPTER.slice(index);
+  return afterStart.find(lesson => {
+    const state = progress[lesson.id];
+    return (!state?.conceptCheckedAt || !state.practiceAttempts) && !state?.needsWork;
+  }) ?? afterStart.find(lesson => !progress[lesson.id]?.selfReportedIndependentAt)
+    ?? afterStart[afterStart.length - 1]!;
+}
+
 export function recommendRhythmLesson(progress: ChapterProgress): ChapterLesson {
   // A declared difficulty never gates the next lesson. A lesson is ready for
   // review without being marked as completed, and another concept stays open.
@@ -232,17 +260,33 @@ export function chapterCounts(progress: ChapterProgress) {
   };
 }
 
-/** Musical example data; synthesis is a reference, not a recording or mic assessment. */
+/**
+ * Musical reference: four audible count-in clicks, followed by four complete
+ * bars. A one-bar demo followed by a four-bar assignment was confusing and
+ * did not give a learner time to hear what the task really was.
+ *
+ * Clicks use short high pitched synthetic plucks, not speech. This is a
+ * reference track only, never a live grading or evaluation system.
+ */
 export function rhythmEvents(
   lesson: ChapterLesson,
   getNotes: (chord: string) => readonly number[],
   simpler = false,
 ): Array<{ midi: number; startMs: number; durationMs: number; confidence: number; velocity: number }> {
-  const eighthMs = (60000 / lesson.bpm) / 2;
+  const beatMs = 60000 / lesson.bpm;
+  const eighthMs = beatMs / 2;
   const events: Array<{ midi: number; startMs: number; durationMs: number; confidence: number; velocity: number }> = [];
-  lesson.chords.forEach((chord, bar) => {
+  for (let beat = 0; beat < 4; beat++) {
+    events.push({ midi: beat === 0 ? 91 : 88, startMs: beat * beatMs,
+      durationMs: 90, confidence: 1, velocity: beat === 0 ? 0.5 : 0.3 });
+  }
+  const afterCountIn = 4 * beatMs;
+  // Short examples repeat for four bars; full four-chord examples still play
+  // every chord once. No lesson demonstration stops after only four strokes.
+  for (let bar = 0; bar < Math.max(4, lesson.chords.length); bar++) {
+    const chord = lesson.chords[bar % lesson.chords.length]!;
     const midis = getNotes(chord);
-    if (!midis.length) return;
+    if (!midis.length) continue;
     const pattern = simpler ? (['D','.','.','.','.','.','.','.'] as const) : lesson.pattern;
     pattern.forEach((stroke, subdivision) => {
       if (stroke === '.') return;
@@ -250,12 +294,12 @@ export function rhythmEvents(
       const accent = !simpler && lesson.accents.includes(subdivision);
       notes.forEach((midi, index) => {
         events.push({
-          midi, startMs: bar * 8 * eighthMs + subdivision * eighthMs + index * 12,
+          midi, startMs: afterCountIn + bar * 8 * eighthMs + subdivision * eighthMs + index * 12,
           durationMs: Math.min(650, eighthMs * 1.6), confidence: 1,
           velocity: accent ? 0.72 : stroke === 'U' ? 0.4 : 0.52,
         });
       });
     });
-  });
+  }
   return events;
 }

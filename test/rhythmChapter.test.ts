@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   RHYTHM_CHAPTER, BARRE_RECOVERY, RHYTHM_STORAGE_KEY,
   chapterCounts, parseChapterProgress, recordEvidence, recommendRhythmLesson, rhythmEvents,
+  RHYTHM_ENTRY, RHYTHM_ENTRY_KEY, parseRhythmEntry, recommendRhythmFromEntry,
 } from '../src/curriculum/rhythmChapter.ts';
 
 describe('first complete academy chapter', () => {
@@ -95,12 +96,39 @@ describe('first complete academy chapter', () => {
     const notes = (_: string) => [40, 47, 52];
     const full = rhythmEvents(lesson, notes);
     const simple = rhythmEvents(lesson, notes, true);
-    assert.equal(full.length, 6 * 3, 'six strokes per bar, three reference notes per stroke');
-    assert.equal(simple.length, 3, 'simplest version is one stroke per bar');
+    assert.equal(full.length, 4 + 4 * 6 * 3, 'four count-in clicks plus four bars of six strokes');
+    assert.equal(simple.length, 4 + 4 * 3, 'simplest version is four clicks plus one stroke per bar');
     assert.equal(simple[0]?.startMs, 0);
+    const beat = 60000 / lesson.bpm;
+    assert.ok(full.slice(0, 4).every((n, i) => Math.abs(n.startMs - i * beat) < 0.001));
+    assert.ok(full.slice(4).every(n => n.startMs >= 4 * beat), 'chords begin after the count-in');
+    assert.ok(full.some(n => n.startMs >= 4 * beat + 3 * 4 * beat), 'full fourth bar is played');
     assert.ok(full.every(event => event.startMs >= 0 && event.durationMs > 0));
-    assert.ok(full.some(event => event.startMs > 1000));
-    assert.equal(rhythmEvents(lesson, () => [] ).length, 0);
+    assert.equal(rhythmEvents(lesson, () => [] ).length, 4, 'count-in still sounds when chord fingering unavailable');
+  });
+
+  test('guitar experience chooses a suitable starting point, never awards passing credits', () => {
+    assert.deepEqual(Object.keys(RHYTHM_ENTRY), ['new', 'chords', 'switches', 'songs']);
+    assert.equal(parseRhythmEntry('veteran'), null);
+    assert.equal(parseRhythmEntry('songs'), 'songs');
+    assert.ok(RHYTHM_ENTRY_KEY.includes('.v1'));
+    for (const [entry, start] of [
+      ['new', 'steady'], ['chords', 'pattern'], ['switches', 'changes'], ['songs', 'syncopation'],
+    ] as const) {
+      assert.equal(recommendRhythmFromEntry({}, entry).id, start);
+      assert.ok(RHYTHM_ENTRY[entry].detail.length > 25);
+    }
+    const progress = recordEvidence({}, 'steady', 'needs-work', 1800000000000);
+    assert.equal(recommendRhythmFromEntry(progress, 'songs').id, 'syncopation', 'stuck on pulse does not gate the rest');
+    assert.equal(progress.steady?.conceptCheckedAt, undefined, 'placement does not produce mastery evidence');
+  });
+
+  test('first beginner rhythm lesson requires no G fingering to practice', () => {
+    const first = RHYTHM_CHAPTER[0]!;
+    assert.equal(first.id, 'steady');
+    assert.match(first.practice, /Tap or brush muted strings/);
+    assert.match(first.teach.join(' '), /Without forming a chord/);
+    assert.match(first.hear, /four complete bars/);
   });
 
   test('barre help has targeted alternative exercises and no mastery unlock', () => {
