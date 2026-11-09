@@ -8,9 +8,10 @@
 import {
   RHYTHM_CHAPTER, RHYTHM_STORAGE_KEY, BARRE_RECOVERY,
   parseChapterProgress, recordEvidence, recommendRhythmLesson,
-  chapterCounts, rhythmEvents,
+  chapterCounts, rhythmEvents, RHYTHM_ENTRY, RHYTHM_ENTRY_KEY,
+  parseRhythmEntry, recommendRhythmFromEntry,
 } from '../../src/curriculum/rhythmChapter.ts';
-import type { ChapterLesson, ChapterProgress, RhythmLevel, Difficulty, EvidenceAction } from '../../src/curriculum/rhythmChapter.ts';
+import type { ChapterLesson, ChapterProgress, RhythmLevel, RhythmEntry, Difficulty, EvidenceAction } from '../../src/curriculum/rhythmChapter.ts';
 import { chordShape, chordShapeMidis } from '../../src/music/chordShapes.ts';
 import { chordDiagram } from '../ui/chordCard.ts';
 import { h, clear } from '../ui/dom.ts';
@@ -37,15 +38,16 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
   const element = h('div', { class: 'view rhythm-chapter' });
   const storage = safeStorage();
   let progress: ChapterProgress = parseChapterProgress(storage?.getItem(RHYTHM_STORAGE_KEY) ?? null);
+  let entry: RhythmEntry | null = parseRhythmEntry(storage?.getItem(RHYTHM_ENTRY_KEY) ?? null);
   const requested = RHYTHM_CHAPTER.find(l => l.id === params.lesson);
-  let active: ChapterLesson = requested ?? recommendRhythmLesson(progress);
+  let active: ChapterLesson = requested ?? (entry ? recommendRhythmFromEntry(progress, entry) : recommendRhythmLesson(progress));
   let answerMessage = '';
   let needHelp = false;
   // The suggested lesson is not open until the learner explicitly starts it.
   // Previously the first lesson was already on screen, so tapping its
   // recommendation appeared to do absolutely nothing.
   let lessonOpen = !!requested;
-  let showMap = !requested && params.clinic !== '1';
+  let showMap = !!entry && !requested && params.clinic !== '1';
   let showClinic = params.clinic === '1';
   let difficulty: Difficulty = 'transition';
   let barreAttempts = 0;
@@ -92,6 +94,35 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
     try { storage?.setItem(BARRE_KEY, JSON.stringify({ focus: difficulty, attempts: barreAttempts, lastPracticedAt: Date.now() })); }
     catch { context.say('This browser could not save the barre practice note.', 'error'); }
     render();
+  }
+
+  function suggested(): ChapterLesson {
+    return entry ? recommendRhythmFromEntry(progress, entry) : recommendRhythmLesson(progress);
+  }
+
+  function chooseEntry(nextEntry: RhythmEntry): void {
+    entry = nextEntry;
+    try { storage?.setItem(RHYTHM_ENTRY_KEY, nextEntry); }
+    catch { context.say('Your starting-point choice could not be saved on this device.', 'error'); }
+    const lesson = RHYTHM_CHAPTER.find(item => item.id === RHYTHM_ENTRY[nextEntry].start)!;
+    selectLesson(lesson);
+  }
+
+  function startCard(): HTMLElement {
+    return h('section', { class: 'panel rhythm-start-card' },
+      h('p', { class: 'academy-eyebrow', text: 'BEFORE LESSON ONE' }),
+      h('h3', { text: 'Where are you with strumming?' }),
+      h('p', { text: 'A new guitarist and somebody already playing songs should not start in the same place. Choose the closest description. This changes your starting lesson, not your mastery or your saved music.' }),
+      h('div', { class: 'rhythm-start-options' },
+        ...(Object.keys(RHYTHM_ENTRY) as RhythmEntry[]).map(id =>
+          h('button', { type: 'button', class: 'rhythm-start-option', onClick: () => chooseEntry(id) },
+            h('strong', { text: RHYTHM_ENTRY[id].title }),
+            h('span', { text: RHYTHM_ENTRY[id].detail }),
+          ),
+        ),
+      ),
+      h('p', { class: 'muted', text: 'There is no pass or fail. You can return to earlier lessons, or change your starting point later.' }),
+    );
   }
 
   function selectLesson(lesson: ChapterLesson): void {
@@ -165,7 +196,7 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
       h('p', { text: active.hear }),
       beatGrid(active),
       h('p', { class: 'rhythm-legend', text: 'D = downstroke   U = upstroke   · = move your hand without striking the strings. Accent = slightly stronger stroke.' }),
-      h('p', { class: 'muted', text: 'Example: ' + active.chords.join(' → ') + ' · ' + active.bpm + ' beats/min · synthesized chord tones, not a recorded guitar.' }),
+      h('p', { class: 'muted', text: 'First hear four higher-pitched count-in clicks. Then listen to four complete bars of ' + active.chords.join(' → ') + ' at ' + active.bpm + ' beats/min. Each bar contains counts 1, 2, 3, 4. Sound is synthesized, not a recorded guitar.' }),
       rowActions(
         button('Hear the example', () => playExample(), 'btn-primary'),
         button('Hear it slower', () => playExample(false, true), 'btn-quiet'),
@@ -288,18 +319,19 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
         ),
         h('p', { class: 'muted', text: 'Only concept questions are checked by the app. Playing reports come from you and are never represented as verified skill.' }),
         rowActions(
-          button((lessonOpen ? 'Start suggested lesson: ' : 'Start lesson: ') + recommendRhythmLesson(progress).title, () => selectLesson(recommendRhythmLesson(progress)), 'btn-primary'),
+          entry || requested ? button('Go to suggested lesson: ' + suggested().title, () => selectLesson(suggested()), 'btn-primary') : h('span'),
           button(showMap ? 'Hide all lessons' : 'See all eight lessons', () => { showMap = !showMap; render(); }, 'btn-quiet'),
           button('Back to Learn', () => context.navigate('path'), 'btn-quiet'),
+          entry ? button('Change my starting point', () => { entry = null; lessonOpen = false; showClinic = false; showMap = false; render(); }, 'btn-quiet') : h('span'),
         ),
       ),
       showMap ? renderMap() : h('span'),
       showClinic ? clinicCard() : h('span'),
-      lessonOpen ? lessonCard() : h('section', { class: 'panel rhythm-ready' },
+      lessonOpen ? lessonCard() : (!entry && !showClinic ? startCard() : h('section', { class: 'panel rhythm-ready' },
         h('h3', { text: 'Choose a lesson to begin' }),
-        h('p', { text: 'Tap Find the Pulse above to open its step-by-step practice and sound examples. Nothing starts or gets marked complete until you choose it.' }),
-        button('Start Find the Pulse', () => selectLesson(RHYTHM_CHAPTER[0]!), 'btn-primary'),
-      ),
+        h('p', { text: 'Select a lesson from the map, or open the suggested lesson. This is an educational sequence, not an automatic proficiency test.' }),
+        button('Open ' + suggested().title, () => selectLesson(suggested()), 'btn-primary'),
+      )),
       h('section', { class: 'panel rhythm-clinic-entry' },
         h('h3', { text: 'A hard technique should not end your learning' }),
         h('p', { text: 'Still developing barre chords? Keep that work separate from this rhythm chapter. Try a focused recovery exercise and return to it on another day.' }),
