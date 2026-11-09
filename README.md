@@ -1,6 +1,8 @@
 # Guitar Workbench
 
-Record your own performances, develop alternate takes and editable sketches, and arrange songs. The original audio stays intact.
+**Current direction: Guitar Academy, a structured learning experience.** The first complete eight-lesson rhythm chapter is now available in **Learn → Start rhythm chapter**, with a separate barre-chord recovery clinic. Understanding checks, reported practice, and reported independent playing are stored separately; microphone playback is not graded or certified. See [Curriculum architecture](docs/CURRICULUM_ARCHITECTURE.md).
+
+The original creative workbench is preserved as an optional area. Record your own performances, develop alternate takes and editable sketches, and arrange songs. The original audio stays intact.
 
 **Open the app:** https://brandotaylor5-ctrl.github.io/Guitar-Ai-Coach/web/index.html
 
@@ -26,8 +28,7 @@ musical phrases, remembers them, compares them, and helps develop them.
 It is not a tuner, and it is not a guitar course. Live note recognition is only
 the foundation. **Your own playing is the curriculum.**
 
-> 📖 **[docs/PRODUCT_VISION.md](docs/PRODUCT_VISION.md) is the governing
-> document.** Every design decision should trace back to it.
+> 📖 **[docs/CURRICULUM_ARCHITECTURE.md](docs/CURRICULUM_ARCHITECTURE.md) governs the Academy.** The [original creative vision](docs/PRODUCT_VISION.md) remains the reference for the optional songwriting workbench.
 > [Architecture](docs/ARCHITECTURE.md) · [Roadmap & status](docs/ROADMAP.md)
 
 ## The headline interaction

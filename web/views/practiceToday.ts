@@ -72,6 +72,12 @@ export function practiceTodayView(context:AppContext):View {
         h('div',{class:'check-picker'},...[5,10,15,25].map(n=>btn(n+' min',()=>selectTime(n))))
       ),
     );
+    element.appendChild(h('section',{class:'panel academy-entry'},
+      h('p',{class:'academy-step',text:'WANT A CONNECTED LESSON SEQUENCE?'}),
+      h('h3',{text:'Make chords become music'}),
+      h('p',{text:'The new eight-lesson rhythm chapter builds a skill step by step. Your five-minute practice remains available here.'}),
+      btn('Open the rhythm chapter',()=>context.navigate('rhythm'),true)
+    ));
     const clockSection=h('section',{class:'panel academy-practice-clock'},
       h('p',{class:'academy-step',text:'YOUR '+minutes+'-MINUTE SESSION'}),
       h('div',{class:'academy-clock',text:format(left)}),

@@ -24,6 +24,7 @@ import { songsView } from './views/songs.ts';
 import { songListView } from './views/songList.ts';
 import { pathView } from './views/path.ts';
 import { fretboardAcademyView } from './views/fretboardAcademy.ts';
+import { rhythmChapterView } from './views/rhythmChapter.ts';
 import { practiceTodayView } from './views/practiceToday.ts';
 import { songView } from './views/song.ts';
 import { fingerprintView } from './views/fingerprint.ts';
@@ -87,6 +88,7 @@ const VIEW_NAMES: string[] = [
   'library',
   'path',
   'academy',
+  'rhythm',
   'song',
   'songs',
   'fingerprint',
@@ -292,6 +294,7 @@ function buildView(): View {
     case 'practice': return practiceTodayView(context);
     case 'path': return pathView(context);
     case 'academy': return fretboardAcademyView(context);
+    case 'rhythm': return rhythmChapterView(context, state.params);
     case 'songs': return songListView(context);
     case 'song': return songView(context, state.params);
     case 'seeds': return songsView(context);
