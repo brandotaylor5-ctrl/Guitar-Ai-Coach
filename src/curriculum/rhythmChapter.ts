@@ -184,6 +184,8 @@ export function parseChapterProgress(value: string | null): ChapterProgress {
         selfReportedIndependentAt: safeDate(item.selfReportedIndependentAt),
         needsWork: item.needsWork === true,
       };
+      const evidence = output[id as RhythmLevel]!;
+      if (!evidence.practiceAttempts || evidence.needsWork) evidence.selfReportedIndependentAt = undefined;
     }
     return output;
   } catch { return {}; }
