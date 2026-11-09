@@ -51,6 +51,7 @@ try {
   assert.equal(await page.locator('.rhythm-lesson-map').count(), 0);
 
   await page.getByRole('button', { name: 'Hear the example' }).click();
+  assert.match(await page.locator('.rhythm-sound-status').innerText(), /Reference requested|Reference finished|Sound could not start/);
   await page.getByRole('button', { name: 'Keeping four beats evenly spaced' }).click();
   await page.getByText('Concept check passed.').waitFor();
   await page.getByRole('button', { name: 'I practiced this' }).click();
