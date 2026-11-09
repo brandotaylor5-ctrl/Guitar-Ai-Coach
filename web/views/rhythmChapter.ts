@@ -202,9 +202,9 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
         button('I played it without the guide', () => saveProgress('independent'), 'btn-quiet'),
         button('I am stuck on this', () => { needHelp = true; saveProgress('needs-work'); }, 'btn-quiet'),
       ),
-      !attempted ? h('p', { class: 'muted', text: 'Independent playing can only be recorded after a practice attempt. It remains your self-assessment.' }) : null,
+      !attempted ? h('p', { class: 'muted', text: 'Independent playing can only be recorded after a practice attempt. It remains your self-assessment.' }) : h('span'),
       attempted ? h('p', { class: 'rhythm-evidence', text: 'Practice attempts reported: ' + evidence!.practiceAttempts +
-        (evidence?.selfReportedIndependentAt ? ' · Independent performance self-reported; not microphone verified.' : ' · Physical fluency not established.') }) : null,
+        (evidence?.selfReportedIndependentAt ? ' · Independent performance self-reported; not microphone verified.' : ' · Physical fluency not established.') }) : h('span'),
     );
     // Disable the independent claim until the learner reports an attempt.
     const allButtons = card.querySelectorAll<HTMLButtonElement>('button');
@@ -284,14 +284,14 @@ export function rhythmChapterView(context: AppContext, params: Record<string, st
           button('Back to Learn', () => context.navigate('path'), 'btn-quiet'),
         ),
       ),
-      showMap ? renderMap() : null,
+      showMap ? renderMap() : h('span'),
       lessonCard(),
       h('section', { class: 'panel rhythm-clinic-entry' },
         h('h3', { text: 'A hard technique should not end your learning' }),
         h('p', { text: 'Still developing barre chords? Keep that work separate from this rhythm chapter. Try a focused recovery exercise and return to it on another day.' }),
         !showClinic ? button('Open barre-chord clinic', () => { showClinic = true; render(); }, 'btn-quiet') : null,
       ),
-      showClinic ? clinicCard() : null,
+      showClinic ? clinicCard() : h('span'),
       h('p', { class: 'academy-footer', text: storage
         ? 'Progress stays in this browser, not synced between devices. Use your own judgment and listen to your playing.'
         : 'Private browsing or blocked storage: progress may not survive closing this page.' }),
