@@ -29,6 +29,15 @@ try {
   await page.goto(origin + '/web/index.html#songbook', { waitUntil: 'domcontentloaded' });
   await page.locator('.sb-song-card').first().waitFor({ timeout: 15000 });
   assert.match(await page.locator('.sb-song-card').first().innerText(), /But I Digress/);
+  assert.match(await page.locator('.sb-whats-new').innerText(), /See the words, chords, melody and breathing/);
+  await page.getByRole('button', { name: /View lyric.*melody example/ }).click();
+  assert.match(await page.locator('.sb-performing-title').innerText(), /Demo/);
+  assert.ok(await page.locator('.sb-phrase.has-melody').count() >= 2, 'Demo shows written melody and lyric phrases');
+  assert.ok(await page.locator('.sb-breath').count() >= 1, 'Demo shows phrase boundaries');
+  assert.ok(await page.locator('.sb-word-unit .sb-chord').count() >= 2, 'Demo shows chords above words');
+  await page.getByRole('button', { name: 'Library', exact: true }).click();
+  assert.equal(await page.locator('.sb-song-card').count(), 1, 'Demo never silently adds to personal song library');
+  assert.equal(await page.locator('.sb-update-link').getAttribute('href'), '../repair.html');
   await page.getByRole('button', { name: 'Play' }).first().click();
   assert.match(await page.locator('.sb-section').first().innerText(), /Introduction/);
   assert.equal(await page.locator('.sb-chord').first().innerText(), 'Cmaj7/G');
