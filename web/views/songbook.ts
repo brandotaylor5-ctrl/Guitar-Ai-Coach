@@ -58,7 +58,7 @@ function newSong(): Song {
   return {
     id: crypto.randomUUID(),
     title: 'Untitled original',
-    content: '# Verse 1\n[Cmaj7]Type your [Em]lyrics here\n\n# Chorus\n[G]And put [C]chords before words',
+    content: '# Verse 1\n> Example only. Replace these words and cues with your own.\n[G]{E4}Put your [Em]{↑}lyrics here | [C]{↓}and breathe\n\n# Chorus\n[G]Place each [C]chord on its word',
     capo: 0,
     bpm: 78,
     timeSignature: '4/4',
