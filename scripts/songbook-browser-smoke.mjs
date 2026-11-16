@@ -46,14 +46,17 @@ try {
   assert.match(await page.locator('.sb-performing-title').innerText(), /Draft/);
   assert.deepEqual(await page.locator('.sb-chord').allInnerTexts(), ['G', 'C']);
   await page.reload();
-  await page.locator('.sb-chord').first().waitFor({ timeout: 15000 });
+  await page.locator('.sb-song-card').first().waitFor({ timeout: 15000 });
+  assert.match(await page.locator('.sb-song-list').innerText(), /Draft/);
+  await page.getByRole('button', { name: 'Play' }).first().click();
+  await page.locator('.sb-chord').first().waitFor();
   assert.match(await page.locator('.sb-performing-title').innerText(), /Draft/);
 
-  await page.getByRole('button', { name: 'Library', exact: true }).click();
+  await page.getByRole('button', { name: /Library/ }).click();
   await page.getByRole('button', { name: 'New song' }).click();
   await page.getByLabel('Song title').fill('A New Original');
   await page.getByLabel('Lyrics and chord chart').fill('# Chorus\n[Am]One more [F]song');
-  await page.getByRole('button', { name: 'Library', exact: true }).click();
+  await page.getByRole('button', { name: /Library/ }).click();
   assert.match(await page.locator('.sb-song-list').innerText(), /A New Original/);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export backup' }).click();
