@@ -33,7 +33,7 @@ function parseWords(source: string): Line {
 }
 
 function lyricPhrase(line: Line, index: number): HTMLElement {
-  const phrase = h('article', { class: 'sb-phrase', 'aria-label': 'Lyric phrase ' + index });
+  const phrase = h('article', { class: 'sb-phrase' + (line.words.some(word => !!word.melody) ? ' has-melody' : ''), 'aria-label': 'Lyric phrase ' + index });
   const words = h('div', { class: 'sb-phrase-words' });
   for (const word of line.words) {
     words.appendChild(h('span', { class: 'sb-word-unit' },
