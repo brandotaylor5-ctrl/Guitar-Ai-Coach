@@ -9,7 +9,7 @@ describe('public release and cache recovery', () => {
   const deploy = readFileSync('.github/workflows/pages.yml', 'utf8');
 
   test('the installed app shows a release identifier and a cache repair link', () => {
-    assert.match(page, /data-release="2026-11-09-rhythm-placement-demo"/);
+    assert.match(page, /data-release="2026-11-16-songbook-phrase-demo-v2"/);
     assert.match(page, /id="build-status"/);
     assert.match(page, /href="\.\.\/repair\.html"/);
   });
@@ -19,6 +19,7 @@ describe('public release and cache recovery', () => {
     assert.match(repair, /new URL\('\.\/web\/index\.html'/);
     assert.match(repair, /navigator\.serviceWorker\.getRegistrations/);
     assert.match(repair, /reg\.scope\.startsWith\(scope\)/);
+    assert.match(repair, /target\.hash = 'songbook'/);
   });
 
   test('cache repair preserves user data and only clears workbench cached app versions', () => {
