@@ -41,10 +41,18 @@ try {
 
   await page.getByRole('button', { name: 'Edit song' }).click();
   await page.getByLabel('Song title').fill('But I Digress Draft');
-  await page.getByLabel('Lyrics and chord chart').fill('# Verse\n[G]Hello [C]world');
+  await page.getByLabel('Lyrics and chord chart').fill('# Verse\n[G]{E4}Hello [C]{↑}world | {G4}again');
+  assert.deepEqual((await page.locator('.sb-editor-preview .sb-chord').allInnerTexts()).filter(x => x.trim()), ['G', 'C']);
+  assert.deepEqual((await page.locator('.sb-editor-preview .sb-melody').allInnerTexts()).filter(x => x.trim()), ['E4', '↑', 'G4']);
+  assert.equal(await page.locator('.sb-editor-preview .sb-phrase').count(), 2);
+  assert.match(await page.locator('.sb-editor-preview .sb-breath').innerText(), /breath/);
   await page.getByRole('button', { name: 'Performance view' }).click();
   assert.match(await page.locator('.sb-performing-title').innerText(), /Draft/);
-  assert.deepEqual(await page.locator('.sb-chord').allInnerTexts(), ['G', 'C']);
+  assert.deepEqual((await page.locator('.sb-chord').allInnerTexts()).filter(x => x.trim()), ['G', 'C']);
+  assert.equal(await page.locator('.sb-phrase').count(), 2);
+  assert.deepEqual((await page.locator('.sb-melody').allInnerTexts()).filter(x => x.trim()), ['E4', '↑', 'G4']);
+  await page.getByRole('button', { name: 'Next phrase' }).click();
+  assert.ok(await page.locator('.sb-scroll').evaluate(el => el.scrollTop) > 0, 'Next phrase scrolls chart');
   await page.reload();
   await page.locator('.sb-song-card').first().waitFor({ timeout: 15000 });
   assert.match(await page.locator('.sb-song-list').innerText(), /Draft/);
@@ -56,6 +64,12 @@ try {
   await page.getByRole('button', { name: 'New song' }).click();
   await page.getByLabel('Song title').fill('A New Original');
   await page.getByLabel('Lyrics and chord chart').fill('# Chorus\n[Am]One more [F]song');
+  const lyrics = page.getByLabel('Lyrics and chord chart');
+  await lyrics.focus();
+  await lyrics.evaluate(el => { const place = el.value.indexOf('song'); el.setSelectionRange(place, place); });
+  await page.getByRole('button', { name: /Melody cue/ }).click();
+  assert.match(await lyrics.inputValue(), /\[F\]\{↑\}song$/);
+  assert.deepEqual((await page.locator('.sb-editor-preview .sb-melody').allInnerTexts()).filter(x => x.trim()), ['↑']);
   await page.getByRole('button', { name: /Library/ }).click();
   assert.match(await page.locator('.sb-song-list').innerText(), /A New Original/);
   const downloadPromise = page.waitForEvent('download');

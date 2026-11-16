@@ -5,6 +5,7 @@
  */
 import { h, clear } from '../ui/dom.ts';
 import type { View } from './context.ts';
+import { renderSongChart } from '../songbook/notation.ts';
 
 type Song = {
   id: string;
@@ -57,7 +58,7 @@ function newSong(): Song {
   return {
     id: crypto.randomUUID(),
     title: 'Untitled original',
-    content: '# Verse 1\n[Cmaj7]Type your [Em]lyrics here\n\n# Chorus\n[G]And put [C]chords before words',
+    content: '# Verse 1\n> Example only. Replace these words and cues with your own.\n[G]{E4}Put your [Em]{↑}lyrics here | [C]{↓}and breathe\n\n# Chorus\n[G]Place each [C]chord on its word',
     capo: 0,
     bpm: 78,
     timeSignature: '4/4',
@@ -102,31 +103,6 @@ function heading(text: string): HTMLElement {
 
 function field(labelText: string, input: HTMLElement): HTMLElement {
   return h('label', { class: 'sb-field' }, h('span', { text: labelText }), input);
-}
-
-function outputLine(line: string): HTMLElement {
-  if (line.trim().startsWith('# ')) {
-    return h('h3', { class: 'sb-section', text: line.trim().slice(2) });
-  }
-  if (line.trim().startsWith('> ')) {
-    return h('p', { class: 'sb-instruction', text: line.trim().slice(2) });
-  }
-  if (!line.trim()) return h('div', { class: 'sb-spacer', 'aria-hidden': 'true' });
-  const container = h('div', { class: 'sb-lyric-line' });
-  const re = /\[([^\]]+)\]([^\[]*)/g;
-  let cursor = 0;
-  let found = false;
-  for (const match of line.matchAll(re)) {
-    found = true;
-    const start = match.index ?? 0;
-    if (start > cursor) container.appendChild(h('span', { class: 'sb-plain', text: line.slice(cursor, start) }));
-    container.appendChild(h('span', { class: 'sb-pair' },
-      h('span', { class: 'sb-chord', text: match[1] ?? '' }),
-      h('span', { class: 'sb-word', text: match[2] || '\u00a0' })));
-    cursor = start + match[0].length;
-  }
-  if (cursor < line.length || !found) container.appendChild(h('span', { class: 'sb-plain', text: line.slice(cursor) }));
-  return container;
 }
 
 function downloadBackup(songs: Song[]): void {
@@ -299,7 +275,29 @@ export function songbookView(): View {
     capo.addEventListener('change', () => { song.capo = Math.min(12, Math.max(0, Number(capo.value) || 0)); capo.value = String(song.capo); touched(song); });
     meter.addEventListener('input', () => { song.timeSignature = meter.value; touched(song); });
     notes.addEventListener('input', () => { song.notes = notes.value; touched(song); });
-    contents.addEventListener('input', () => { song.content = contents.value; touched(song); });
+    const preview = h('div', { class: 'sb-editor-preview' });
+    function updatePreview(): void {
+      clear(preview);
+      preview.appendChild(renderSongChart(song.content));
+    }
+    contents.addEventListener('input', () => { song.content = contents.value; touched(song); updatePreview(); });
+    function insert(text: string, selectInside = false): void {
+      const start = contents.selectionStart;
+      const end = contents.selectionEnd;
+      contents.setRangeText(text, start, end, 'end');
+      if (selectInside) contents.setSelectionRange(start + 1, start + text.length - 1);
+      contents.focus();
+      song.content = contents.value;
+      touched(song);
+      updatePreview();
+    }
+    const inserts = h('div', { class: 'sb-annotation-toolbar' },
+      button('＋ Chord', () => insert('[G]', true)),
+      button('＋ Melody cue', () => insert('{↑}', true)),
+      button('＋ Breath', () => insert(' | ')),
+      button('＋ Section', () => insert('\n# Chorus\n')),
+    );
+    updatePreview();
 
     return h('div', { class: 'sb-editor' },
       h('div', { class: 'sb-actionbar' },
@@ -310,14 +308,18 @@ export function songbookView(): View {
         field('Title', title), field('BPM', bpm), field('Capo fret', capo), field('Time', meter)),
       field('Notes', notes),
       field('Chords and lyrics', contents),
-      h('p', { class: 'sb-help', text: 'Write [C]immediately before the word where the chord changes, like [G]here. Start a section with # Verse or # Chorus. For instrumentals, write [Cmaj7/G] [Em] [G] [Cmaj7]. Start instructions with >.' }),
+      inserts,
+      h('p', { class: 'sb-help', text: 'One lyric line is one sung phrase. Place [G] before a word for its chord; add {E4} before a word for a melody note or {↑}, {→}, {↓} for a rise, level, or fall cue. Use | for a breath or phrase break. Start a section with # Verse or # Chorus, or use > for playing instructions. Your melody cues are written by you, not guessed from audio.' }),
+      h('div', { class: 'sb-preview-block' },
+        h('div', { class: 'sb-preview-heading' }, h('strong', { text: 'Live chart preview' }), h('span', { class: 'sb-muted', text: 'Exactly how your phrases, chords, and melody cues will appear' })),
+        preview,
+      ),
       h('div', { class: 'sb-save-status', role: 'status', text: 'Changes save automatically on this device.' }),
     );
   }
 
   function performance(song: Song): HTMLElement {
-    const body = h('div', { class: 'sb-performance-lines' });
-    for (const line of song.content.split(/\r?\n/)) body.appendChild(outputLine(line));
+    const body = renderSongChart(song.content);
     const readArea = h('div', { class: 'sb-scroll', tabindex: '0', 'aria-label': 'Song lyrics and chords, scrollable' }, body);
     scroller = readArea;
     const toggle = button('▶ Auto-scroll', togglePlay, 'sb-primary');
@@ -330,6 +332,12 @@ export function songbookView(): View {
     sizeControl.addEventListener('input', () => { fontSize = Number(sizeControl.value); sizeValue.textContent = String(fontSize) + 'px'; body.style.fontSize = String(fontSize) + 'px'; });
     speedControl.addEventListener('input', () => { speed = Number(speedControl.value); speedValue.textContent = String(speed) + 'px/s'; });
     const restart = button('↺ Start over', () => { stop(); readArea.scrollTop = 0; });
+    const nextPhrase = button('Next phrase ↓', () => {
+      const phrases = [...readArea.querySelectorAll<HTMLElement>('.sb-phrase')];
+      const current = readArea.scrollTop;
+      const nextTarget = phrases.find(item => item.offsetTop - readArea.offsetTop > current + 16);
+      if (nextTarget) readArea.scrollTop = nextTarget.offsetTop - readArea.offsetTop;
+    });
     const next = button('Next section ↓', () => {
       const nextHeading = [...readArea.querySelectorAll<HTMLElement>('.sb-section')]
         .find(section => section.offsetTop > readArea.scrollTop + readArea.offsetTop + 12);
@@ -345,7 +353,7 @@ export function songbookView(): View {
         button('Library', () => show('library'))),
       h('h2', { class: 'sb-performing-title', text: song.title }),
       h('p', { class: 'sb-performance-meta', text: 'Capo ' + song.capo + '  ·  ' + song.bpm + ' BPM  ·  ' + song.timeSignature }),
-      h('div', { class: 'sb-transport' }, toggle, restart, next),
+      h('div', { class: 'sb-transport' }, toggle, restart, nextPhrase, next),
       h('div', { class: 'sb-controls' },
         field('Scroll speed', h('span', { class: 'sb-control' }, speedControl, speedValue)),
         field('Text size', h('span', { class: 'sb-control' }, sizeControl, sizeValue))),
