@@ -19,6 +19,26 @@ type Song = {
 };
 
 const STORAGE_KEY = 'guitar-workbench-original-songbook-v1';
+const DEMO_ID = '__songbook-v2-lyric-demo__';
+const LYRIC_DEMO: Song = {
+  id: DEMO_ID,
+  title: 'How to Read a Song · Demo',
+  capo: 0,
+  bpm: 76,
+  timeSignature: '4/4',
+  notes: 'Practice example, not one of your originals. The note names and arrows are demonstration cues, not automatically detected melody.',
+  content: [
+    '# Verse · demonstration',
+    '> Gold chords go above the exact words. Blue notes show a melody cue you entered. A breath separates the phrases.',
+    '[G]{G3}Porch lights [C]{A3}fade | [Em]{↑}one by one',
+    '[G]{B3}The morning [D]{↓}comes | [C]{G3}before I am done',
+    '',
+    '# Chorus · demonstration',
+    '> The words, chords, melody notes and breaths are all visible together.',
+    '[C]{→}Sing this [G]{↑}line | [Em]{↓}then breathe',
+  ].join('\n'),
+  updated: 0,
+};
 const SEED: Song = {
   id: 'but-i-digress-demo',
   title: 'But I Digress',
@@ -129,7 +149,16 @@ export function songbookView(): View {
   let frame = 0;
   let lastFrame = 0;
 
-  function chosen(): Song | undefined { return songs.find(song => song.id === selectedId); }
+  function chosen(): Song | undefined {
+    return selectedId === DEMO_ID ? LYRIC_DEMO : songs.find(song => song.id === selectedId);
+  }
+  function copyDemo(): void {
+    const song: Song = { ...LYRIC_DEMO, id: crypto.randomUUID(), title: 'My lyric chart', updated: Date.now() };
+    songs.unshift(song);
+    selectedId = song.id;
+    save();
+    show('edit');
+  }
   function status(text: string, error = false): void {
     const node = element.querySelector<HTMLElement>('.sb-save-status');
     if (node) {
@@ -254,6 +283,12 @@ export function songbookView(): View {
     updateList();
     return h('div', {},
       h('p', { class: 'sb-muted', text: 'Your private, on-device library. The backup download matters: clearing browser data can erase local songs.' }),
+      h('div', { class: 'sb-whats-new' },
+        h('div', { class: 'sb-whats-new-label', text: 'SONGBOOK 2 · NEW CHART VIEW' }),
+        h('h3', { text: 'See the words, chords, melody and breathing together' }),
+        h('p', { text: 'The instrumental below still has no lyrics. Open this separate example to see what changed, without touching your saved songs.' }),
+        button('▶ View lyric & melody example', () => { selectedId = DEMO_ID; show('play'); }, 'sb-primary'),
+      ),
       tools(),
       h('div', { class: 'sb-search' }, search),
       list);
@@ -349,7 +384,9 @@ export function songbookView(): View {
     readArea.addEventListener('keydown', tapToPause);
     return h('div', { class: 'sb-performance' },
       h('div', { class: 'sb-actionbar' },
-        button('← Edit song', () => show('edit')),
+        selectedId === DEMO_ID
+          ? button('＋ Copy this example to edit', copyDemo, 'sb-primary')
+          : button('← Edit song', () => show('edit')),
         button('Library', () => show('library'))),
       h('h2', { class: 'sb-performing-title', text: song.title }),
       h('p', { class: 'sb-performance-meta', text: 'Capo ' + song.capo + '  ·  ' + song.bpm + ' BPM  ·  ' + song.timeSignature }),
@@ -367,7 +404,8 @@ export function songbookView(): View {
     stop();
     clear(element);
     element.appendChild(h('header', { class: 'sb-page-header' },
-      h('div', {}, h('p', { class: 'sb-overline', text: 'ORIGINAL MUSIC' }), heading('Songbook')),
+      h('div', {}, h('p', { class: 'sb-overline', text: 'ORIGINAL MUSIC · v2 PHRASES' }), heading('Songbook'),
+        h('a', { class: 'sb-update-link', href: '../repair.html', text: 'Still seeing the old app? Update safely' })),
       h('span', { class: 'sb-save-status', role: 'status', text: 'Saved on this device' })));
     const song = chosen();
     if (page === 'library') element.appendChild(library());
