@@ -38,6 +38,7 @@ import { WorkbenchModel } from './workbench/model.ts';
 import { recordView } from './workbench/recordView.ts';
 import { developView } from './workbench/developView.ts';
 import { projectView } from './workbench/songsView.ts';
+import { songbookView } from './views/songbook.ts';
 import { acquireCaptureLock,installWorkbenchLifecycle,recoverAvailable } from './workbench/lifecycle.ts';
 import { transportBar } from './workbench/transportBar.ts';
 
@@ -62,7 +63,7 @@ const state = {
  * the one it belongs to — seven tabs is not a front page, it is a filing
  * cabinet, and nobody picks up a guitar to file.
  */
-const PRIMARY_TABS: Array<[ViewName, string]> = [['path','Learn'],['practice','Practice'],['projects','Songs'],['record','Record']];
+const PRIMARY_TABS: Array<[ViewName, string]> = [['path','Learn'],['practice','Practice'],['projects','Songs'],['songbook','Songbook'],['record','Record']];
 
 /**
  * Secondary places support the four musical front doors without competing
@@ -83,7 +84,7 @@ const MORE_TABS: Array<[ViewName, string]> = [
  * choosing one rather than from the navigation.
  */
 const VIEW_NAMES: string[] = [
-  'record', 'develop', 'projects',
+  'record', 'develop', 'projects', 'songbook',
   'session',
   'library',
   'path',
@@ -287,6 +288,7 @@ function buildView(): View {
     case 'record': return recordView(workbench!);
     case 'develop': return developView(workbench!);
     case 'projects': return projectView(workbench!);
+    case 'songbook': return songbookView();
     case 'lab': return labView(context, state.params);
     case 'lessons': return lessonsView(context, state.params);
     case 'session': return coachView(context);

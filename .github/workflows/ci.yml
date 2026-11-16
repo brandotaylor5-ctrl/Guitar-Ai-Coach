@@ -29,6 +29,8 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Exercise the real academy buttons in Chromium
         run: node scripts/academy-browser-smoke.mjs
+      - name: Exercise Songbook editing and scrolling in Chromium
+        run: node scripts/songbook-browser-smoke.mjs
       - name: Keep deployable app
         uses: actions/upload-artifact@v4
         with:
