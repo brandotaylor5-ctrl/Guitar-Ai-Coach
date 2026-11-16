@@ -62,3 +62,32 @@
   .sb-actionbar .sb-button { font-size:.83rem; }
 }
 @media (prefers-reduced-motion: reduce) { .sb-root * { scroll-behavior:auto !important; transition:none !important; } }
+
+/* Phrase-first chart: actual words get their own chord and optional melody lane. */
+.sb-annotation-toolbar { display:flex; flex-wrap:wrap; gap:.4rem; }
+.sb-annotation-toolbar .sb-button { border-style:dashed; color:var(--sb-warm); }
+.sb-preview-block { display:grid; gap:.65rem; margin-top:.5rem; }
+.sb-preview-heading { display:flex; justify-content:space-between; gap:.65rem; align-items:baseline; flex-wrap:wrap; }
+.sb-preview-heading strong { font-size:1rem; }
+.sb-editor-preview { padding:1rem; max-height:440px; overflow:auto; background:#171916; border-radius:12px; border:1px solid var(--line,#444); }
+.sb-editor-preview .sb-performance-lines { font-size:19px; padding-bottom:0; }
+.sb-performance-lines .sb-phrase { margin:.45rem 0 .8rem; background:#232621; border:1px solid #3a4038; border-left:3px solid #6d826c; padding:.85rem .85rem 1rem; border-radius:9px; }
+.sb-phrase-caption { margin:0 0 .65rem; line-height:1.1; font-size:.66rem; color:#c4c5b7; letter-spacing:.13em; font-family:system-ui,sans-serif; font-weight:680; }
+.sb-phrase-words { display:flex; flex-wrap:wrap; align-items:flex-end; gap:.3em .45em; }
+.sb-word-unit { display:inline-flex; flex-direction:column; min-width:0; max-width:100%; vertical-align:bottom; align-items:flex-start; overflow-wrap:anywhere; }
+.sb-word-unit .sb-melody { color:#b8caff; font-size:.65em; font-weight:730; line-height:1.2; min-height:1.2em; white-space:nowrap; }
+.sb-word-unit .sb-chord { color:var(--sb-warm); font-size:.67em; line-height:1.3; min-height:1.3em; white-space:nowrap; }
+.sb-word-unit .sb-word { font-size:1em; line-height:1.3; white-space:normal; }
+.sb-phrase:not(.has-melody) .sb-melody { display:none; }
+.sb-breath { display:flex; align-items:center; gap:.55rem; color:#b3c1ac; font-family:system-ui,sans-serif; font-size:.68rem; letter-spacing:.045em; margin:.1rem .4rem .6rem; }
+.sb-breath::before { content:""; width:24px; height:1px; background:#81967b; }
+.sb-instrumental .sb-chord-grid { display:flex; flex-wrap:wrap; gap:.55rem; }
+.sb-chord-step { display:flex; flex-direction:column; justify-content:center; align-items:center; flex:1 0 64px; max-width:130px; background:#1a1d19; border:1px solid #3e483e; border-radius:8px; padding:.65rem .4rem; min-width:0; }
+.sb-chord-step .sb-chord { font-size:.92em; font-weight:740; line-height:1.5; color:var(--sb-warm); white-space:normal; overflow-wrap:anywhere; text-align:center; }
+.sb-step-number { font-family:system-ui,sans-serif; color:#a9ada1; font-size:.56rem; line-height:1.3; }
+@media (max-width:650px) {
+ .sb-editor-preview { padding:.65rem; max-height:350px; }
+ .sb-performance-lines .sb-phrase { padding:.7rem; }
+ .sb-phrase-words { column-gap:.36em; }
+ .sb-chord-step { flex-basis:60px; }
+}
